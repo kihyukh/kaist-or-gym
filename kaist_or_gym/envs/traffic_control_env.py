@@ -32,7 +32,7 @@ class TrafficControlEnv(gym.Env):
         self.dt = 0.1
         self.signal = "RR"
         self._time_in_signal_state = 0.0
-        self._yellow_light_duration = 4 * (self.road_width / self.car_velocity)
+        self._yellow_light_duration = 2.2 * (self.road_width / self.car_velocity)
         self._target_signal = "RR"
 
 
@@ -206,6 +206,17 @@ class TrafficControlEnv(gym.Env):
         return observation, reward, terminated, truncated, info
 
 
+    def get_avg_waiting_time(self):
+        all_cars = []
+        for cars in self.active_cars.values():
+            all_cars.extend(cars)
+        all_cars.extend(self.finished_cars)
+        total_cars = len(all_cars)
+        total_wait_time = sum(car.total_wait_time for car in all_cars)
+        avg_waiting_time = total_wait_time / total_cars if total_cars > 0 else 0.0
+        return avg_waiting_time
+
+
     def render(self):
         if self.render_mode != "human":
             return
@@ -261,7 +272,6 @@ class TrafficControlEnv(gym.Env):
         description = " # of cars=%d\n" % sum(ncars.values())
         description += " # of waiting cars=%d\n" % sum(not car.is_moving for direction_list in self.active_cars.values() for car in direction_list)
         description += " avg waiting=%.2fs"% avg_waiting_time
-        description += f" target signal={self._target_signal}"
         self.ax.text( self.ax.get_xlim()[0], self.ax.get_ylim()[1], description, va="top", ha="left" )
 
         # Update the displayed plot
