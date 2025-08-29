@@ -107,7 +107,7 @@ class TrafficControlEnv(gym.Env):
                 self._plt = plt
                 self._display = display
             self.fig, self.ax = self._plt.subplots(figsize=(5,5))
-            self.display_handle = self._display(self.fig, display_id=True)
+            self.display_handle = self._display(self.fig, display_id=True) if self._display is not None else None
         return self._get_observation(), self._get_info()
 
     def step(self, action):
@@ -212,7 +212,10 @@ class TrafficControlEnv(gym.Env):
         # Ensure plt and display are available
         if self._plt is None or self._display is None:
             import matplotlib.pyplot as plt
-            from IPython.display import display
+            try:
+                from IPython.display import display
+            except ImportError:
+                display = None
             self._plt = plt
             self._display = display
         # Ensure fig and ax are available
@@ -224,10 +227,10 @@ class TrafficControlEnv(gym.Env):
 
         dirs = ["N", "S", "E", "W"]
         ncars = {d:len(self.active_cars[d]) for d in dirs}
-        self.ax.plot( -0.5*self.road_width*np.ones(ncars["N"]), [-car.position for car in self.active_cars["N"]], "v", alpha=0.5 )
-        self.ax.plot( 0.5*self.road_width*np.ones(ncars["S"]), [car.position for car in self.active_cars["S"]], "^", alpha=0.5 )
-        self.ax.plot( [-car.position for car in self.active_cars["E"]], 0.5*self.road_width*np.ones(ncars["E"]), "<", alpha=0.5 )
-        self.ax.plot( [car.position for car in self.active_cars["W"]], -0.5*self.road_width*np.ones(ncars["W"]), ">", alpha=0.5 )
+        self.ax.plot( -0.5*self.road_width*np.ones(ncars["N"]), [-car.position for car in self.active_cars["N"]], "v", c="b", alpha=0.5 )
+        self.ax.plot( 0.5*self.road_width*np.ones(ncars["S"]), [car.position for car in self.active_cars["S"]], "^", c="b", alpha=0.5 )
+        self.ax.plot( [-car.position for car in self.active_cars["E"]], 0.5*self.road_width*np.ones(ncars["E"]), "<", c="b", alpha=0.5 )
+        self.ax.plot( [car.position for car in self.active_cars["W"]], -0.5*self.road_width*np.ones(ncars["W"]), ">", c="b", alpha=0.5 )
 
         self.ax.axvline( -self.road_width, c="k", lw=1 )
         self.ax.axvline( 0, c="y", lw=1, ls="--" )
@@ -236,8 +239,8 @@ class TrafficControlEnv(gym.Env):
         self.ax.axhline( 0, c="y", lw=1, ls="--" )
         self.ax.axhline( self.road_width, c="k", lw=1 )
 
-        ns_color = "y" if self.signal[0] == "Y" else self.signal[0].lower()
-        ew_color = "y" if self.signal[1] == "Y" else self.signal[1].lower()
+        ns_color = self.signal[0].lower()
+        ew_color = self.signal[1].lower()
 
         self.ax.plot( [-0.5*self.road_width, 0.5*self.road_width], [self.road_width, -self.road_width], "o", c=ns_color )
         self.ax.plot( [-self.road_width, self.road_width], [-0.5*self.road_width, 0.5*self.road_width], "o", c=ew_color )
