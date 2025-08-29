@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "or-gym"
+name = "kaist-or-gym"
 version = "0.1.0"
 description = "Custom Gym/Gymnasium environments for operations research problems"
 readme = "README.md"

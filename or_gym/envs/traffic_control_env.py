@@ -39,6 +39,7 @@ class TrafficControlEnv(gym.Env):
             'E': [],
             'W': [],
         }
+        self.finished_cars = []  # Add this line to track finished cars
 
         self.action_space = spaces.Discrete(2)  # Example: 2 possible actions
         self.observation_space = spaces.Box(low=0, high=1, shape=(), dtype=float)
@@ -88,6 +89,7 @@ class TrafficControlEnv(gym.Env):
             'E': [],
             'W': [],
         }
+        self.finished_cars = []  # Reset finished cars on env reset
         if self.render_mode == "human":
             if self.fig is not None:
                 self._plt.close(self.fig)
@@ -181,7 +183,9 @@ class TrafficControlEnv(gym.Env):
                 if car.position > self.road_length + self.road_width:
                     car.is_done = True
                     num_cars_to_remove += 1
-            # Remove finished cars
+            # Remove finished cars and store them in finished_cars
+            finished = [car for car in car_list if car.is_done]
+            self.finished_cars.extend(finished)
             self.active_cars[direction] = [car for car in car_list if not car.is_done]
 
 
@@ -237,17 +241,14 @@ class TrafficControlEnv(gym.Env):
         self.ax.set_xlim( -self.road_width-self.road_length, self.road_width+self.road_length )
         self.ax.set_ylim( -self.road_width-self.road_length, self.road_width+self.road_length )
 
-        # Calculate average waiting time
-        total_cars = 0
-        total_wait_time = 0
+        # Calculate average waiting time for all cars (active + finished)
+        all_cars = []
         for cars in self.active_cars.values():
-          total_cars += len(cars)
-          total_wait_time += sum(car.total_wait_time for car in cars)
-        # Note: The original code included finished cars in the average wait time calculation.
-        # Since finished cars are not stored in the env, this calculation only includes active cars.
-        # If you need to include finished cars, you would need to modify the env to store them.
+            all_cars.extend(cars)
+        all_cars.extend(self.finished_cars)
+        total_cars = len(all_cars)
+        total_wait_time = sum(car.total_wait_time for car in all_cars)
         avg_waiting_time = total_wait_time / total_cars if total_cars > 0 else 0.0
-
 
         description = " # of cars=%d\n" % sum(ncars.values())
         description += " # of waiting cars=%d\n" % sum(not car.is_moving for direction_list in self.active_cars.values() for car in direction_list)
