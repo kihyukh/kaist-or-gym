@@ -21,7 +21,7 @@ class TrafficControlEnv(gym.Env):
         super().__init__()
         self.render_mode = render_mode
 
-        self.arrival_rates = {'N': 6/60, 'E': 3/60, 'S': 3/60, 'W': 3/60}
+        self.arrival_rates = {"N": 6/60, "E": 3/60, "S": 3/60, "W": 3/60}
         self.car_velocity = 30*1000/(60*60)
         self.road_length = 200
         self.road_width = 20
@@ -29,18 +29,18 @@ class TrafficControlEnv(gym.Env):
         self.min_distance = 25 # Added minimum distance
         self.t = 0.0
         self.dt = 0.1
-        self.signal = 'RR'
+        self.signal = "RR"
 
         self._time_in_signal_state = 0.0
         self._yellow_light_duration = 4 * (self.road_width / self.car_velocity)
-        self._target_signal = 'RR'
+        self._target_signal = "RR"
 
 
         self.active_cars = {
-            'N': [],
-            'S': [],
-            'E': [],
-            'W': [],
+            "N": [],
+            "S": [],
+            "E": [],
+            "W": [],
         }
         self.finished_cars = []  # Add this line to track finished cars
 
@@ -63,18 +63,18 @@ class TrafficControlEnv(gym.Env):
 
     def _get_info(self):
         return {
-            'target_signal': self._target_signal,
+            "target_signal": self._target_signal,
         }
 
     def _is_green(self, direction):
-        if direction in ('N', 'S') and self.signal[0] == 'G':
+        if direction in ("N", "S") and self.signal[0] == "G":
             return True
-        if direction in ('E', 'W') and self.signal[1] == 'G':
+        if direction in ("E", "W") and self.signal[1] == "G":
             return True
         # Return False if the signal for the given direction is yellow
-        if direction in ('N', 'S') and self.signal[0] == 'Y':
+        if direction in ("N", "S") and self.signal[0] == "Y":
             return False
-        if direction in ('E', 'W') and self.signal[1] == 'Y':
+        if direction in ("E", "W") and self.signal[1] == "Y":
             return False
         return False
 
@@ -83,14 +83,14 @@ class TrafficControlEnv(gym.Env):
         super().reset(seed=seed)
 
         self.t = 0.0
-        self.signal = 'RR'
+        self.signal = "RR"
         self._time_in_signal_state = 0.0
-        self._target_signal = 'RR'
+        self._target_signal = "RR"
         self.active_cars = {
-            'N': [],
-            'S': [],
-            'E': [],
-            'W': [],
+            "N": [],
+            "S": [],
+            "E": [],
+            "W": [],
         }
         self.finished_cars = []  # Reset finished cars on env reset
         if self.render_mode == "human":
