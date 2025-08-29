@@ -213,9 +213,6 @@ class TrafficControlEnv(gym.Env):
         # Ensure fig and ax are available
         if self.fig is None or self.ax is None:
             self.fig, self.ax = self._plt.subplots(figsize=(5,5))
-        # Ensure display_handle is available
-        if self.display_handle is None:
-            self.display_handle = self._display(self.fig, display_id=True)
 
         self.ax.cla() # Clear the previous plot
         self.ax.set_title( r"$t=%.1f$s"%self.t )
