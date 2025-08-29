@@ -12,7 +12,10 @@ class Car:
         self.total_move_time = 0.0
 
 class TrafficControlEnv(gym.Env):
-    metadata = {"render_modes": ["human"]}
+    metadata = {
+        "render_modes": ["human"],
+        "render_fps": 30
+    }
 
     def __init__(self, *, render_mode=None):
         super().__init__()
