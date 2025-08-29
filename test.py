@@ -1,7 +1,7 @@
 import gymnasium as gym
-import or_gym
+import kaist_or_gym
 
-env = gym.make("or/TrafficControlEnv-v0", render_mode="human")
+env = gym.make("kaist-or/TrafficControlEnv-v0", render_mode="human")
 env.reset()
 
 # Run a few simulation steps

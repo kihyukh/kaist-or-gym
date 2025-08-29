@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kaist-or-gym"
-version = "0.1.0"
+version = "0.1.2"
 description = "Custom Gym/Gymnasium environments for operations research problems"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -14,7 +14,7 @@ dependencies = [
   "gymnasium>=1.2.0",
   "numpy>=1.23",
   "matplotlib>=3.0",
-  "ipython>=8.0",
+  "ipython==7.34.0",
 ]
 
 [project.optional-dependencies]
@@ -23,7 +23,7 @@ examples = []
 test = ["pytest>=7", "gymnasium[other]>=0.29"]
 
 [tool.setuptools.packages.find]
-include = ["or_gym*"]
+include = ["kaist_or_gym*"]
 
 [tool.ruff]
 line-length = 100
