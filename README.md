@@ -56,3 +56,58 @@ env.close()
 ```
 
 This example demonstrates how to create the environment, take random actions, render the intersection, and run for a fixed number of steps.
+
+---
+
+# Windy Gridworld Environment
+
+## Description
+
+`WindyGridworld` is a Gymnasium-compatible grid navigation environment inspired by Sutton & Barto’s windy gridworld. The agent moves on a 2D grid from a start state to a goal state while being affected by a column-dependent upward wind. Wind is stochastic: with probability specified per column, the agent is pushed up by one cell before its chosen action is applied.
+
+Key properties (defaults in `windy_gridworld.py`):
+- Grid size: 7 rows × 10 columns
+- Start: `(3, 0)`; Goal: `(3, 7)`
+- Wind probabilities by column (example): `[0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 1.0, 1.0, 0.5, 0.0]`
+- Reward: +1 when the current state is the goal; −1 otherwise
+
+## Spaces
+
+- Action space: `Discrete(4)`
+  - `0`: Up, `1`: Down, `2`: Left, `3`: Right
+- Observation space: `Discrete(R*C)` where each state is the flattened index of `(row, col)`
+
+## Dynamics
+
+At each step:
+1) With probability `wind[c]` (for the current column `c`), the agent is pushed one cell up (clipped to the top boundary).
+2) The chosen action is then applied (with boundary clipping).
+3) Episode terminates when the agent reaches the goal state.
+
+In addition to the standard Gymnasium API, the environment provides:
+- `transition_probability(state, action, next_state) -> float`: one-step `P(s'|s,a)`
+- `possible_next_states(state, action) -> List[(next_state, prob)]`: enumerates the small set of feasible successors (wind/no-wind)
+- `reward(state, action) -> float`: immediate reward based on the current state (overridable)
+
+## Rendering
+
+When `render_mode="human"`, the grid is plotted with:
+- Blue translucent column shading indicating wind intensity (alpha ∝ wind probability)
+- Upward arrows showing wind direction
+- Start (S), Goal (G), and Agent (A) markers
+
+## Usage Example
+
+```python
+from kaist_or_gym.envs.windy_gridworld import WindyGridworld
+
+env = WindyGridworld(render_mode="human")
+obs, info = env.reset(seed=0)
+
+for _ in range(100):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    env.render()
+    if terminated or truncated:
+        break
+```

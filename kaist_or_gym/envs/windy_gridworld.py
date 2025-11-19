@@ -92,17 +92,159 @@ class WindyGridworld(gym.Env):
         self.current_state = (new_row, new_col)
 
         # Reward and termination condition
-        if self.current_state == self.goal_state:
-            reward = 1.0
-            terminated = True
-        else:
-            reward = -1.0
-            terminated = False
+        terminated = self.current_state == self.goal_state
+        # Use reward function (expected immediate reward given state and action)
+        reward = self.reward(self._state_to_int((row, col)), action)
 
         truncated = False
         observation = self._state_to_int(self.current_state)
         info = {}
         return observation, reward, terminated, truncated, info
+
+    def transition_probability(self, state, action, next_state) -> float:
+        """Return P(s' | s, a) for one step of dynamics.
+
+        Args:
+            state: int (Discrete index) or tuple (row, col)
+            action: int in {0:Up, 1:Down, 2:Left, 3:Right}
+            next_state: int (Discrete index) or tuple (row, col)
+
+        Notes:
+            - From the goal state, the process is absorbing: P(goal|goal,a)=1.
+            - Stochasticity arises only from wind in the current column.
+        """
+        assert self.action_space.contains(action), "Invalid action"
+
+        rows, cols = self.grid_size
+
+        def to_rc(s):
+            if isinstance(s, int):
+                return (s // cols, s % cols)
+            return s
+
+        s_r, s_c = to_rc(state)
+        ns_r, ns_c = to_rc(next_state)
+
+        # Absorbing goal state behavior
+        if (s_r, s_c) == self.goal_state:
+            return 1.0 if (ns_r, ns_c) == self.goal_state else 0.0
+
+        # Wind probability for the current column
+        wind_p = 0.0
+        if 0 <= s_c < len(self.wind):
+            wind_p = float(self.wind[s_c])
+        wind_p = max(0.0, min(1.0, wind_p))
+
+        # Action deltas
+        if action == 0:
+            dr, dc = -1, 0
+        elif action == 1:
+            dr, dc = 1, 0
+        elif action == 2:
+            dr, dc = 0, -1
+        else:  # action == 3
+            dr, dc = 0, 1
+
+        # Next state if wind occurs (agent pushed up by 1 first)
+        wr = max(0, s_r - 1)
+        wc = s_c
+        nr_w = min(rows - 1, max(0, wr + dr))
+        nc_w = min(cols - 1, max(0, wc + dc))
+
+        # Next state if no wind
+        wr = s_r
+        wc = s_c
+        nr_nw = min(rows - 1, max(0, wr + dr))
+        nc_nw = min(cols - 1, max(0, wc + dc))
+
+        prob = 0.0
+        if (ns_r, ns_c) == (nr_w, nc_w):
+            prob += wind_p
+        if (ns_r, ns_c) == (nr_nw, nc_nw):
+            prob += (1.0 - wind_p)
+        return prob
+
+    def possible_next_states(self, state, action):
+        """Return a list of (next_state, probability) for (state, action).
+
+        At most two outcomes exist in this environment: wind and no-wind. If
+        the current state is the absorbing goal, returns [(goal, 1.0)].
+
+        Args:
+            state: int (Discrete index) or tuple (row, col)
+            action: int in {0:Up, 1:Down, 2:Left, 3:Right}
+        """
+        assert self.action_space.contains(action), "Invalid action"
+
+        rows, cols = self.grid_size
+
+        def to_rc(s):
+            if isinstance(s, int):
+                return (s // cols, s % cols)
+            return s
+
+        sr, sc = to_rc(state)
+
+        # Absorbing goal
+        if (sr, sc) == self.goal_state:
+            goal_idx = self._state_to_int(self.goal_state)
+            return [(goal_idx, 1.0)]
+
+        # Wind probability for current column
+        wind_p = 0.0
+        if 0 <= sc < len(self.wind):
+            wind_p = float(self.wind[sc])
+        wind_p = max(0.0, min(1.0, wind_p))
+
+        # Action deltas
+        if action == 0:
+            dr, dc = -1, 0
+        elif action == 1:
+            dr, dc = 1, 0
+        elif action == 2:
+            dr, dc = 0, -1
+        else:
+            dr, dc = 0, 1
+
+        # With wind: pushed up then apply action
+        wr = max(0, sr - 1)
+        wc = sc
+        nr_w = min(rows - 1, max(0, wr + dr))
+        nc_w = min(cols - 1, max(0, wc + dc))
+        sp_w = self._state_to_int((nr_w, nc_w))
+
+        # No wind: just apply action
+        wr = sr
+        wc = sc
+        nr_nw = min(rows - 1, max(0, wr + dr))
+        nc_nw = min(cols - 1, max(0, wc + dc))
+        sp_nw = self._state_to_int((nr_nw, nc_nw))
+
+        if sp_w == sp_nw:
+            return [(sp_w, 1.0)]
+        else:
+            return [(sp_w, wind_p), (sp_nw, 1.0 - wind_p)]
+
+    def reward(self, state, action) -> float:
+        """Immediate reward R(s,a) that depends on the current state.
+
+        Args:
+            state: int (Discrete index) or tuple (row, col)
+            action: int in {0:Up, 1:Down, 2:Left, 3:Right} (ignored by default)
+
+        Reward scheme:
+            - +1.0 if the CURRENT state s is the goal state
+            - -1.0 otherwise
+        """
+        rows, cols = self.grid_size
+
+        def to_rc(s):
+            if isinstance(s, int):
+                return (s // cols, s % cols)
+            return s
+
+        sr, sc = to_rc(state)
+        return 1.0 if (sr, sc) == self.goal_state else 0.0
 
     def render(self):
         """Renders the current grid state using matplotlib without flickering (human mode)."""
