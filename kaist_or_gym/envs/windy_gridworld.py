@@ -246,6 +246,30 @@ class WindyGridworld(gym.Env):
         sr, sc = to_rc(state)
         return 1.0 if (sr, sc) == self.goal_state else 0.0
 
+    def get_transition_kernel(self):
+        """
+        Computes and returns the full transition probability kernel for the environment.
+
+        Returns:
+            A dictionary representing the transition kernel. The format is:
+            {
+                (state, action): {next_state_1: prob_1, next_state_2: prob_2, ...},
+                ...
+            }
+        """
+        n_states = self.observation_space.n
+        n_actions = self.action_space.n
+        kernel = {}
+
+        for s in range(n_states):
+            for a in range(n_actions):
+                # possible_next_states returns a list of (next_state, prob) tuples
+                # We convert it to the desired dictionary format.
+                next_state_probs = dict(self.possible_next_states(s, a))
+                kernel[(s, a)] = next_state_probs
+        
+        return kernel
+
     def render_policy(self, Q, ax=None):
         """Renders the greedy policy derived from a Q-matrix.
 
