@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kaist-or-gym"
-version = "0.1.7"
+version = "0.1.8"
 description = "Custom Gym/Gymnasium environments for operations research problems"
 readme = "README.md"
 requires-python = ">=3.9"
