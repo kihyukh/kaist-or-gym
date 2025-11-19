@@ -92,7 +92,7 @@ class WindyGridworld(gym.Env):
         self.current_state = (new_row, new_col)
 
         # Reward and termination condition
-        terminated = self.current_state == self.goal_state
+        terminated = (row, col) == self.goal_state
         # Use reward function (expected immediate reward given state and action)
         reward = self.reward(self._state_to_int((row, col)), action)
 
