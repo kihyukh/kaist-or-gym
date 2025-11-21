@@ -89,7 +89,10 @@ class DiscretePendulumEnv(gym.Env):
         assert self.action_space.contains(action), "Invalid action"
 
         # Current continuous state BEFORE action
-        continuous_prev = self.continuous_env.state  # (cos, sin, theta_dot)
+        # continuous_env.state is (theta, theta_dot) in radians
+        theta, theta_dot = self.continuous_env.state
+        # Expand to (cos(theta), sin(theta), theta_dot) for _discretize_state
+        continuous_prev = (np.cos(theta), np.sin(theta), theta_dot)
         discrete_prev = self._discretize_state(continuous_prev)
         reward = self.reward(discrete_prev, action)
 
