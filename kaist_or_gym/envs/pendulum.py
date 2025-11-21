@@ -85,11 +85,12 @@ class DiscretePendulumEnv(gym.Env):
         torque = self.torques[action]
         
         # Step the continuous environment
-        continuous_state, reward, terminated, truncated, info = self.continuous_env.step([torque])
+        continuous_state, _, terminated, truncated, info = self.continuous_env.step([torque])
         
         # Discretize the resulting state
         discrete_state = self._discretize_state(continuous_state)
-        
+        # Compute reward using member function (continuous state after transition)
+        reward = self.reward(continuous_state, action)
         return discrete_state, reward, terminated, truncated, info
 
     def render(self):
@@ -136,6 +137,21 @@ class DiscretePendulumEnv(gym.Env):
             else:
                 # Fallback to a tiny pause to refresh the canvas
                 self._plt.pause(0.001)
+
+    def reward(self, continuous_state, action):
+        """Compute continuous reward r = -(theta^2 + 0.1*theta_dot^2 + 0.001*torque^2).
+
+        Args:
+            continuous_state: sequence/array (cos(theta), sin(theta), theta_dot).
+            action: discrete action index used to select a torque from self.torques.
+
+        Returns:
+            Scalar float reward.
+        """
+        cos_theta, sin_theta, theta_dot = continuous_state
+        theta = np.arctan2(sin_theta, cos_theta)
+        torque = self.torques[action]
+        return -(theta**2 + 0.1 * (theta_dot**2) + 0.001 * (torque**2))
 
     def close(self):
         """Closes the environment."""
