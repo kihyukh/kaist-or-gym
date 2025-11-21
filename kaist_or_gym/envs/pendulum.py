@@ -45,9 +45,11 @@ class DiscretePendulumEnv(gym.Env):
 
         # Create bins for state discretization
         # Theta is in [-pi, pi]
-        self.theta_bins = np.linspace(-np.pi, np.pi, n_theta_bins + 1)[1:-1]
+        self.theta_edges = np.linspace(-np.pi, np.pi, n_theta_bins + 1)
+        self.theta_bins = self.theta_edges[1:-1]  # internal boundaries for digitize
         # Theta_dot is in [-max_speed, max_speed]
-        self.thetadot_bins = np.linspace(-self.continuous_env.max_speed, self.continuous_env.max_speed, n_thetadot_bins + 1)[1:-1]
+        self.thetadot_edges = np.linspace(-self.continuous_env.max_speed, self.continuous_env.max_speed, n_thetadot_bins + 1)
+        self.thetadot_bins = self.thetadot_edges[1:-1]
 
         # Lazy-rendering state for notebook-friendly rendering
         self._plt = None
@@ -67,6 +69,14 @@ class DiscretePendulumEnv(gym.Env):
 
         return theta_bin * self.n_thetadot_bins + thetadot_bin
 
+    def _undiscretize_state(self, discrete_state):
+        """Approximate continuous (theta, theta_dot) from discrete index using bin centers."""
+        theta_bin = discrete_state // self.n_thetadot_bins
+        thetadot_bin = discrete_state % self.n_thetadot_bins
+        theta_center = 0.5 * (self.theta_edges[theta_bin] + self.theta_edges[theta_bin + 1])
+        thetadot_center = 0.5 * (self.thetadot_edges[thetadot_bin] + self.thetadot_edges[thetadot_bin + 1])
+        return theta_center, thetadot_center
+
     def reset(self, *, seed=None, options=None):
         """Resets the environment and returns the initial discrete state."""
         super().reset(seed=seed)
@@ -75,23 +85,19 @@ class DiscretePendulumEnv(gym.Env):
         return discrete_state, info
 
     def step(self, action):
-        """
-        Takes a discrete action, converts it to a continuous torque,
-        and steps the continuous environment.
-        """
+        """Discrete step: reward computed from pre-action discrete state."""
         assert self.action_space.contains(action), "Invalid action"
-        
-        # Map discrete action to continuous torque
+
+        # Current continuous state BEFORE action
+        continuous_prev = self.continuous_env.state  # (cos, sin, theta_dot)
+        discrete_prev = self._discretize_state(continuous_prev)
+        reward = self.reward(discrete_prev, action)
+
+        # Apply action
         torque = self.torques[action]
-        
-        # Step the continuous environment
-        continuous_state, _, terminated, truncated, info = self.continuous_env.step([torque])
-        
-        # Discretize the resulting state
-        discrete_state = self._discretize_state(continuous_state)
-        # Compute reward using member function (continuous state after transition)
-        reward = self.reward(continuous_state, action)
-        return discrete_state, reward, terminated, truncated, info
+        continuous_next, _, terminated, truncated, info = self.continuous_env.step([torque])
+        discrete_next = self._discretize_state(continuous_next)
+        return discrete_next, reward, terminated, truncated, info
 
     def render(self):
         """Render suitable for Jupyter/Colab when render_mode='human'.
@@ -138,18 +144,14 @@ class DiscretePendulumEnv(gym.Env):
                 # Fallback to a tiny pause to refresh the canvas
                 self._plt.pause(0.001)
 
-    def reward(self, continuous_state, action):
-        """Compute continuous reward r = -(theta^2 + 0.1*theta_dot^2 + 0.001*torque^2).
+    def reward(self, discrete_state, action):
+        """Reward r = -(theta^2 + 0.1*theta_dot^2 + 0.001*torque^2) using discrete state.
 
         Args:
-            continuous_state: sequence/array (cos(theta), sin(theta), theta_dot).
-            action: discrete action index used to select a torque from self.torques.
-
-        Returns:
-            Scalar float reward.
+            discrete_state: integer index of discretized (theta, theta_dot).
+            action: discrete action index selecting a torque.
         """
-        cos_theta, sin_theta, theta_dot = continuous_state
-        theta = np.arctan2(sin_theta, cos_theta)
+        theta, theta_dot = self._undiscretize_state(discrete_state)
         torque = self.torques[action]
         return -(theta**2 + 0.1 * (theta_dot**2) + 0.001 * (torque**2))
 
