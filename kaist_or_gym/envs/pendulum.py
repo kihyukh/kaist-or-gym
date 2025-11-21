@@ -22,7 +22,9 @@ class DiscretePendulumEnv(gym.Env):
 
         self.render_mode = render_mode
         # The continuous environment that this class wraps
-        self.continuous_env = PendulumEnv(render_mode=render_mode)
+        # For Jupyter-friendly rendering in 'human' mode, get rgb frames from the base env
+        underlying_mode = 'rgb_array' if render_mode == 'human' else render_mode
+        self.continuous_env = PendulumEnv(render_mode=underlying_mode)
 
         # Discretization parameters
         self.n_theta_bins = n_theta_bins
@@ -46,6 +48,14 @@ class DiscretePendulumEnv(gym.Env):
         self.theta_bins = np.linspace(-np.pi, np.pi, n_theta_bins + 1)[1:-1]
         # Theta_dot is in [-max_speed, max_speed]
         self.thetadot_bins = np.linspace(-self.continuous_env.max_speed, self.continuous_env.max_speed, n_thetadot_bins + 1)[1:-1]
+
+        # Lazy-rendering state for notebook-friendly rendering
+        self._plt = None
+        self._display = None
+        self.fig = None
+        self.ax = None
+        self.img = None
+        self.display_handle = None
 
     def _discretize_state(self, continuous_state):
         """Converts a continuous state to a discrete integer state."""
@@ -83,9 +93,60 @@ class DiscretePendulumEnv(gym.Env):
         return discrete_state, reward, terminated, truncated, info
 
     def render(self):
-        """Renders the environment by calling the continuous environment's render method."""
-        return self.continuous_env.render()
+        """Render suitable for Jupyter/Colab when render_mode='human'.
+
+        - If render_mode is 'rgb_array', returns the frame from the underlying env.
+        - If render_mode is 'human', uses matplotlib + IPython.display to update inline.
+        """
+        # If user wants raw frames, just return them
+        if self.render_mode == 'rgb_array':
+            return self.continuous_env.render()
+
+        if self.render_mode != 'human':
+            return None
+
+        # Lazy imports/setup to avoid hard dependency when not rendering
+        if self._plt is None or self._display is None:
+            import matplotlib.pyplot as plt  # type: ignore
+            try:
+                from IPython.display import display  # type: ignore
+            except ImportError:
+                display = None  # type: ignore
+            self._plt = plt
+            self._display = display
+
+        frame = self.continuous_env.render()  # ndarray HxWx3
+
+        if self.fig is None or self.ax is None:
+            self.fig, self.ax = self._plt.subplots(figsize=(5, 5))
+            self.img = self.ax.imshow(frame)
+            self.ax.axis('off')
+            if self._display is not None:
+                self.display_handle = self._display(self.fig, display_id=True)
+            else:
+                self._plt.show(block=False)
+        else:
+            if self.img is None:
+                self.img = self.ax.imshow(frame)
+                self.ax.axis('off')
+            else:
+                self.img.set_data(frame)
+            if self.display_handle is not None:
+                self.display_handle.update(self.fig)
+            else:
+                # Fallback to a tiny pause to refresh the canvas
+                self._plt.pause(0.001)
 
     def close(self):
         """Closes the environment."""
         self.continuous_env.close()
+        if self.fig is not None:
+            try:
+                import matplotlib.pyplot as plt  # type: ignore
+                plt.close(self.fig)
+            except Exception:
+                pass
+        self.fig = None
+        self.ax = None
+        self.img = None
+        self.display_handle = None
