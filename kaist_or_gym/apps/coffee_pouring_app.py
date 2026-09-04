@@ -291,6 +291,7 @@ def _motor_text(motors: np.ndarray) -> str:
 def _metrics(session: InteractiveSession) -> dict[str, Any]:
     info = session.info
     time_remaining = info["time_remaining"]
+    displayed_flow_rate = float(info["flow_rate"]) if session.running else 0.0
     if not session.running:
         episode_status = "finished"
     elif session.paused:
@@ -305,9 +306,11 @@ def _metrics(session: InteractiveSession) -> dict[str, Any]:
         ),
         "time speed": f"{session.speed:g}×",
         "target (mL)": round(float(info["target_fill"]) * 1000.0, 1),
+        "in pot (mL)": round(float(info["source_remaining"]) * 1000.0, 1),
         "in cup (mL)": round(float(info["fill"]) * 1000.0, 1),
         "fill error (mL)": round(float(info["fill_error"]) * 1000.0, 1),
         "spilled (mL)": round(float(info["spill"]) * 1000.0, 1),
+        "pour rate (mL/s)": round(displayed_flow_rate * 1000.0, 1),
         "episode reward": round(float(session.cumulative_reward), 3),
         "recorded transitions": len(session.trajectory),
         "success": bool(info["is_success"]),
@@ -530,6 +533,10 @@ def build_app():
                 full_scale_quarter_turn_seconds=np.asarray(
                     session.env.FULL_SCALE_QUARTER_TURN_SECONDS
                 ),
+                cup_capacity_l=np.asarray(session.env.CUP_CAPACITY),
+                pot_capacity_l=np.asarray(session.env.POT_CAPACITY),
+                initial_pot_volume_l=np.asarray(session.env.INITIAL_POT_VOLUME),
+                physics_model=np.asarray("torricelli_ballistic_v3"),
                 joint_names=np.asarray(CoffeePouringEnv.JOINT_NAMES),
                 observation_names=np.asarray(CoffeePouringEnv.OBSERVATION_NAMES),
             )
@@ -569,7 +576,9 @@ def build_app():
             "**clockwise**. Several joints can run together while the timer keeps stepping "
             "the Gymnasium environment. At full command, a 90° joint rotation takes about "
             "ten simulated seconds. Motor commands are held between discrete decisions; "
-            "the scene animates smoothly between them."
+            "the scene animates smoothly between them. The rigid bodies stop at table or "
+            "robot contact. Coffee follows a gravity-driven "
+            "trajectory, and its flow rate changes with pot tilt and the amount remaining."
         )
         with gr.Row():
             with gr.Column(scale=3):
@@ -581,7 +590,6 @@ def build_app():
                     js_on_load=CANVAS_JAVASCRIPT,
                     apply_default_css=False,
                     container=False,
-                    min_height=560,
                 )
                 status = gr.Markdown()
                 motor_state = gr.Textbox(

@@ -81,6 +81,23 @@ function mixArray(a, b, amount) {
   return a.map((value, index) => mix(value, b[index], amount));
 }
 
+function mixPointArrays(a, b, amount) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return b.map((point) => point.slice());
+  }
+  return a.map((point, index) => mixArray(point, b[index], amount));
+}
+
+function isFiniteArray(value, length) {
+  return Array.isArray(value) && value.length === length && value.every(Number.isFinite);
+}
+
+function isFinitePointArray(value) {
+  return Array.isArray(value) && value.length >= 2 && value.every(
+    (point) => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite)
+  );
+}
+
 function normalizedSnapshot(snapshot) {
   const state = snapshot.state;
   const liquid = state.liquid;
@@ -91,10 +108,31 @@ function normalizedSnapshot(snapshot) {
     fill: liquid.fill_l,
     spill: liquid.spill_l,
     targetFill: liquid.target_fill_l,
+    cupCapacity: liquid.cup_capacity_l,
+    stableCupCapacity: liquid.stable_cup_capacity_l,
+    sourceInitial: liquid.source_initial_l,
+    sourceCapacity: liquid.source_capacity_l,
+    sourceRemaining: liquid.source_remaining_l,
     lastFlow: liquid.last_flow_l,
     lastFlowRate: liquid.last_flow_rate_l_s,
     lastCaptured: liquid.last_captured_l,
+    lastCaptureFraction: liquid.last_capture_fraction,
+    lastPourIntensity: liquid.last_pour_intensity,
+    lastExitSpeed: liquid.last_exit_speed_m_s,
+    lastJetRadius: liquid.last_jet_radius_m,
+    cupSurfaceY: liquid.cup_surface_y_m,
+    targetSurfaceY: liquid.target_surface_y_m,
+    potSurfaceY: liquid.pot_surface_y_m,
     streamEnd: liquid.stream_end_m.slice(),
+    streamPath: liquid.stream_path_m.map((point) => point.slice()),
+    spillPath: liquid.spill_path_m.map((point) => point.slice()),
+    directSpill: liquid.direct_spill_l,
+    directSpillRate: liquid.direct_spill_rate_l_s,
+    directSpillPath: liquid.direct_spill_path_m.map((point) => point.slice()),
+    cupRunoff: liquid.cup_runoff_l,
+    cupRunoffRate: liquid.cup_runoff_rate_l_s,
+    cupRunoffPath: liquid.cup_runoff_path_m.map((point) => point.slice()),
+    spillImpactX: liquid.spill_impact_x_m,
     step: state.step,
     elapsedTime: state.elapsed_time_s,
     dt: state.dt_s,
@@ -115,10 +153,43 @@ function blendedState(first, second, amount) {
     q: mixArray(first.q, second.q, amount),
     fill: mix(first.fill, second.fill, amount),
     spill: mix(first.spill, second.spill, amount),
+    stableCupCapacity: mix(
+      first.stableCupCapacity,
+      second.stableCupCapacity,
+      amount
+    ),
+    sourceRemaining: mix(first.sourceRemaining, second.sourceRemaining, amount),
     lastFlow: mix(first.lastFlow, second.lastFlow, amount),
     lastFlowRate: mix(first.lastFlowRate, second.lastFlowRate, amount),
     lastCaptured: mix(first.lastCaptured, second.lastCaptured, amount),
+    lastCaptureFraction: mix(
+      first.lastCaptureFraction,
+      second.lastCaptureFraction,
+      amount
+    ),
+    lastPourIntensity: mix(first.lastPourIntensity, second.lastPourIntensity, amount),
+    lastExitSpeed: mix(first.lastExitSpeed, second.lastExitSpeed, amount),
+    lastJetRadius: mix(first.lastJetRadius, second.lastJetRadius, amount),
+    cupSurfaceY: mix(first.cupSurfaceY, second.cupSurfaceY, amount),
+    targetSurfaceY: mix(first.targetSurfaceY, second.targetSurfaceY, amount),
+    potSurfaceY: mix(first.potSurfaceY, second.potSurfaceY, amount),
     streamEnd: mixArray(first.streamEnd, second.streamEnd, amount),
+    streamPath: mixPointArrays(first.streamPath, second.streamPath, amount),
+    spillPath: mixPointArrays(first.spillPath, second.spillPath, amount),
+    // Direct spill is a discrete event observed inside the target decision
+    // interval, so retain its measured path instead of blending it into a
+    // path that never occurred.
+    directSpill: second.directSpill,
+    directSpillRate: second.directSpillRate,
+    directSpillPath: second.directSpillPath.map((point) => point.slice()),
+    cupRunoff: mix(first.cupRunoff, second.cupRunoff, amount),
+    cupRunoffRate: mix(first.cupRunoffRate, second.cupRunoffRate, amount),
+    cupRunoffPath: mixPointArrays(
+      first.cupRunoffPath,
+      second.cupRunoffPath,
+      amount
+    ),
+    spillImpactX: mix(first.spillImpactX, second.spillImpactX, amount),
     elapsedTime: mix(first.elapsedTime, second.elapsedTime, amount),
   };
 }
@@ -134,20 +205,10 @@ function stateAt(now) {
   if (!fromState || !targetState) {
     return null;
   }
-  return blendedState(fromState, targetState, progressAt(now));
-}
-
-function freezeAt(current, metadata) {
+  const amount = progressAt(now);
   return {
-    ...metadata,
-    q: current.q.slice(),
-    fill: current.fill,
-    spill: current.spill,
-    lastFlow: current.lastFlow,
-    lastFlowRate: current.lastFlowRate,
-    lastCaptured: current.lastCaptured,
-    streamEnd: current.streamEnd.slice(),
-    elapsedTime: current.elapsedTime,
+    ...blendedState(fromState, targetState, amount),
+    transitioning: amount < 1 - 1e-6,
   };
 }
 
@@ -158,14 +219,56 @@ function ingestSnapshot() {
   } catch (error) {
     return;
   }
-  if (!raw || raw.schema_version !== 1 || !raw.state || !raw.playback) {
+  if (!raw || raw.schema_version !== 4 || !raw.state || !raw.playback) {
+    return;
+  }
+  const rawLiquid = raw.state.liquid;
+  const rawGeometry = raw.geometry;
+  if (
+    !rawLiquid || !rawGeometry || !rawGeometry.world_bounds_m ||
+    !rawGeometry.arms || !rawGeometry.arms.cup || !rawGeometry.arms.pot ||
+    !rawGeometry.tools || !rawGeometry.tools.cup || !rawGeometry.tools.pot ||
+    !isFiniteArray(raw.state.joint_angles_rad, 6) ||
+    !isFiniteArray(rawLiquid.stream_end_m, 2) ||
+    !isFinitePointArray(rawLiquid.stream_path_m) ||
+    !isFinitePointArray(rawLiquid.spill_path_m) ||
+    !isFinitePointArray(rawLiquid.direct_spill_path_m) ||
+    !isFinitePointArray(rawLiquid.cup_runoff_path_m) ||
+    !isFiniteArray(rawGeometry.world_bounds_m.x, 2) ||
+    !isFiniteArray(rawGeometry.world_bounds_m.y, 2) ||
+    !isFiniteArray(rawGeometry.arms.cup.base_m, 2) ||
+    !isFiniteArray(rawGeometry.arms.cup.link_lengths_m, 2) ||
+    !isFiniteArray(rawGeometry.arms.pot.base_m, 2) ||
+    !isFiniteArray(rawGeometry.arms.pot.link_lengths_m, 2) ||
+    !isFiniteArray(rawGeometry.tools.cup.grip_offset_m, 2) ||
+    !isFiniteArray(rawGeometry.tools.cup.landmark_offset_m, 2) ||
+    !isFiniteArray(rawGeometry.tools.cup.size_m, 2) ||
+    !isFiniteArray(rawGeometry.tools.pot.grip_offset_m, 2) ||
+    !isFiniteArray(rawGeometry.tools.pot.landmark_offset_m, 2) ||
+    !isFiniteArray(rawGeometry.tools.pot.size_m, 2) ||
+    !Number.isFinite(rawGeometry.table_y_m)
+  ) {
     return;
   }
 
-  const next = normalizedSnapshot(raw);
+  let next;
+  try {
+    next = normalizedSnapshot(raw);
+  } catch (error) {
+    return;
+  }
+  const scalarFields = [
+    "fill", "spill", "targetFill", "cupCapacity", "stableCupCapacity",
+    "sourceInitial", "sourceCapacity", "sourceRemaining", "lastFlow",
+    "lastFlowRate", "lastCaptured", "lastCaptureFraction",
+    "lastPourIntensity", "lastExitSpeed", "lastJetRadius", "cupSurfaceY",
+    "targetSurfaceY", "potSurfaceY", "directSpill", "directSpillRate",
+    "cupRunoff", "cupRunoffRate",
+    "spillImpactX", "step", "elapsedTime", "dt", "generation", "revision",
+    "speed", "intervalMs"
+  ];
   if (
-    !Array.isArray(next.q) || next.q.length !== 6 ||
-    !next.q.every(Number.isFinite) || !Number.isFinite(next.intervalMs) ||
+    !scalarFields.every((field) => Number.isFinite(next[field])) ||
     next.intervalMs <= 0 || next.generation < lastGeneration
   ) {
     return;
@@ -188,9 +291,10 @@ function ingestSnapshot() {
     const speedChanged = next.speed !== targetState.speed;
     const wasPaused = targetState.paused;
     if (next.paused) {
-      const frozen = freezeAt(current, next);
-      fromState = frozen;
-      targetState = frozen;
+      // Snap to the environment's exact current decision so the paused canvas,
+      // timeline, and metrics never disagree by a partial visual frame.
+      fromState = next;
+      targetState = next;
       segmentStart = now;
       segmentDuration = 0;
     } else if (sameDecision && !next.running) {
@@ -256,6 +360,29 @@ function armPoints(base, q1, q2, lengths) {
 
 function transformedPoints(center, angle, localPoints) {
   return localPoints.map((point) => add(center, rotate(point, angle)));
+}
+
+function horizontalSpan(points, worldY) {
+  const intersections = [];
+  points.forEach((first, index) => {
+    const second = points[(index + 1) % points.length];
+    const deltaY = second[1] - first[1];
+    if (Math.abs(deltaY) < 1e-12) {
+      if (Math.abs(first[1] - worldY) < 1e-12) {
+        intersections.push(first[0], second[0]);
+      }
+      return;
+    }
+    const fraction = (worldY - first[1]) / deltaY;
+    if (fraction >= -1e-12 && fraction <= 1 + 1e-12) {
+      intersections.push(first[0] + fraction * (second[0] - first[0]));
+    }
+  });
+  if (intersections.length < 2) {
+    const centre = points.reduce((sum, point) => sum + point[0], 0) / points.length;
+    return [centre, centre];
+  }
+  return [Math.min(...intersections), Math.max(...intersections)];
 }
 
 function canvasContext() {
@@ -466,9 +593,7 @@ function drawFrame(state) {
   context.save();
   polygonPath(context, cupOuter, xy);
   context.clip();
-  const fillRatio = clamp(state.fill / 1.02, 0, 1);
-  const surfaceY = cupCenter[1] - 0.5 * cupHeight + fillRatio * cupHeight;
-  const surfacePixel = xy([0, surfaceY])[1];
+  const surfacePixel = xy([0, state.cupSurfaceY])[1];
   context.fillStyle = coffee;
   context.fillRect(0, surfacePixel, width, height - surfacePixel);
   context.restore();
@@ -477,11 +602,11 @@ function drawFrame(state) {
   context.lineWidth = 3;
   context.stroke();
 
-  const targetRatio = clamp(state.targetFill / 1.02, 0, 1);
-  const targetY = cupCenter[1] - 0.5 * cupHeight + targetRatio * cupHeight;
+  const targetY = state.targetSurfaceY;
+  const targetSpan = horizontalSpan(cupOuter, targetY);
   strokeWorldLine(context, [
-    [cupCenter[0] - 0.32 * cupWidth, targetY],
-    [cupCenter[0] + 0.32 * cupWidth, targetY],
+    [targetSpan[0], targetY],
+    [targetSpan[1], targetY],
   ], xy, navy, 2);
 
   const cupHandle = [];
@@ -525,14 +650,22 @@ function drawFrame(state) {
   context.stroke();
 
   const coffeeWindow = transformedPoints(potCenter, potAngle, [
-    [-0.30 * potWidth, 0.10 * potHeight],
-    [0.28 * potWidth, 0.10 * potHeight],
-    [0.28 * potWidth, -0.26 * potHeight],
-    [-0.30 * potWidth, -0.26 * potHeight],
+    [-0.43 * potWidth, 0.45 * potHeight],
+    [0.43 * potWidth, 0.45 * potHeight],
+    [0.43 * potWidth, -0.45 * potHeight],
+    [-0.43 * potWidth, -0.45 * potHeight],
   ]);
+  context.save();
   polygonPath(context, coffeeWindow, xy);
+  context.clip();
   context.fillStyle = coffee;
-  context.fill();
+  const sourceSurfacePixel = xy([0, state.potSurfaceY])[1];
+  context.fillRect(0, sourceSurfacePixel, width, height - sourceSurfacePixel);
+  context.restore();
+  polygonPath(context, coffeeWindow, xy);
+  context.strokeStyle = "#394f58";
+  context.lineWidth = 1.5;
+  context.stroke();
 
   const potHandle = [];
   for (let index = 0; index < 24; index += 1) {
@@ -550,15 +683,62 @@ function drawFrame(state) {
     7
   );
 
-  if (state.lastFlow > 1e-5) {
-    const streamColor = state.lastCaptured > 0.5 * state.lastFlow ? coffee : red;
-    strokeWorldLine(context, [potSpout, state.streamEnd], xy, streamColor, 5);
+  const showTransientFlow = state.running || state.transitioning;
+  const streamOffset = subtract(potSpout, state.streamPath[0]);
+  const streamPath = state.streamPath.map((point) => add(point, streamOffset));
+  if (showTransientFlow && state.lastFlowRate > 1e-5) {
+    const streamWidth = clamp(2 * state.lastJetRadius * scale, 1.25, 6);
+    strokeWorldLine(context, streamPath, xy, coffee, streamWidth);
   }
-  if (state.spill > 0.002) {
-    const puddle = xy([0, geometry.table_y_m]);
-    const puddleRadius = clamp(26 + 140 * state.spill, 26, 90);
+  if (showTransientFlow && !state.paused && state.directSpill > 1e-8) {
+    const directRadius = clamp(
+      Math.sqrt((state.directSpillRate / 1000) / (Math.PI * 0.35)),
+      0,
+      0.0055
+    );
+    const directWidth = clamp(2 * directRadius * scale, 1.25, 6);
+    strokeWorldLine(context, state.directSpillPath, xy, coffee, directWidth);
+  }
+  if (showTransientFlow && state.cupRunoff > 1e-8) {
+    const pathStart = state.cupRunoffPath[0];
+    const nearestRim = Math.hypot(
+      cupOuter[0][0] - pathStart[0],
+      cupOuter[0][1] - pathStart[1]
+    ) <= Math.hypot(
+      cupOuter[1][0] - pathStart[0],
+      cupOuter[1][1] - pathStart[1]
+    ) ? cupOuter[0] : cupOuter[1];
+    const runoffOffset = subtract(nearestRim, pathStart);
+    const cupRunoffPath = state.cupRunoffPath.map(
+      (point) => add(point, runoffOffset)
+    );
+    const runoffRadius = clamp(
+      Math.sqrt((state.cupRunoffRate / 1000) / (Math.PI * 0.35)),
+      0,
+      0.0055
+    );
+    const runoffWidth = clamp(2 * runoffRadius * scale, 1.25, 6);
+    strokeWorldLine(context, cupRunoffPath, xy, coffee, runoffWidth);
+  }
+  if (state.spill > 1e-8) {
+    const puddle = xy([state.spillImpactX, geometry.table_y_m]);
+    const puddleWorldRadius = clamp(
+      0.13 * Math.sqrt(state.spill / 0.10),
+      0.005,
+      0.26
+    );
+    const puddleRadius = Math.max(2, puddleWorldRadius * scale);
+    const puddleHeight = Math.max(2, 0.16 * puddleRadius);
     context.beginPath();
-    context.ellipse(puddle[0], puddle[1], puddleRadius, 7, 0, 0, 2 * Math.PI);
+    context.ellipse(
+      puddle[0],
+      puddle[1],
+      puddleRadius,
+      puddleHeight,
+      0,
+      0,
+      2 * Math.PI
+    );
     context.fillStyle = "#94644a";
     context.fill();
   }
@@ -571,14 +751,21 @@ function drawFrame(state) {
   context.textAlign = "left";
   context.fillStyle = dark;
   context.fillText(
-    "fill " + Math.round(state.fill * 1000) + "/" +
-      Math.round(state.targetFill * 1000) + " mL",
+    "cup " + Math.round(state.fill * 1000) + "/" +
+      Math.round(state.targetFill * 1000) + " mL · pot " +
+      Math.round(state.sourceRemaining * 1000) + " mL",
     40,
     height - 26
   );
   context.textAlign = "center";
   context.fillStyle = state.spill > 0.02 ? red : muted;
-  context.fillText("spill " + Math.round(state.spill * 1000) + " mL", width / 2, height - 26);
+  const displayFlowRate = showTransientFlow ? state.lastFlowRate : 0;
+  context.fillText(
+    "spill " + Math.round(state.spill * 1000) + " mL · pour " +
+      Math.round(displayFlowRate * 1000) + " mL/s",
+    width / 2,
+    height - 26
+  );
   context.textAlign = "right";
   context.fillStyle = amber;
   const timeText = state.horizon === null

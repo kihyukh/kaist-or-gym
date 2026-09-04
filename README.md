@@ -122,15 +122,21 @@ for _ in range(100):
 reward-based fine-tuning. Two planar robot arms hold a cup and a coffee pot. The goal is to reach
 a requested fill amount while limiting spill, unnecessary motion, and cup tilt.
 
-This is not a physics engine or a real-robot controller. Arm geometry uses exact planar forward
-kinematics, while liquid flow is a lightweight geometric approximation intended to run quickly in
-a notebook.
+This is not a full fluid simulator or a real-robot controller. Arm geometry uses exact planar
+forward kinematics, while the liquid uses a fast, deterministic physical approximation: a finite
+pot reservoir with a horizontal free surface, tilt- and head-dependent Torricelli flow, a ballistic
+stream under gravity, and geometric intersection with the rotated cup opening. Stream thickness
+follows the current flow, tilted cups retain only the liquid below their lower rim, and runoff lands
+on the table at the rendered impact location. Rim and wall impacts become exterior runoff, so a
+missed stream never passes through the drawn cup.
 
 ## Rigid robot model
 
 Each arm has two fixed-length links and one revolute wrist. The simulator stores only six joint
 angles. Every visible elbow, wrist, cup, pot, mouth, and spout position is derived from those angles,
-so an arm segment cannot extend or contract.
+so an arm segment cannot extend or contract. Each physics substep also projects the links and
+vessels to first contact with the tabletop or the other robot. Simultaneous six-joint contact
+projection prevents the arms, cup, pot, and their handles from moving through the other system.
 
 The six-dimensional continuous action is ordered as:
 
@@ -145,8 +151,9 @@ Every action component is normalized to `[-1, 1]`. The 16-dimensional observatio
 joint angles, sine/cosine encodings of both vessel angles, cup-to-spout geometry, fill, spill,
 target amount, and elapsed time. At full command, every joint rotates at 9 degrees per simulated
 second, so a 90-degree turn takes ten simulated seconds when a mechanical stop is not reached.
-Each action is held as a constant angular velocity for the 0.125-second decision interval. This is
-a continuous-time motor model sampled at discrete Gymnasium decision epochs.
+Each action is held as a constant angular velocity for the 0.125-second decision interval. Fixed
+1/64-second physics substeps integrate joint motion and liquid flow together, while the agent still
+observes and acts only at discrete Gymnasium decision epochs.
 
 ## Gymnasium usage
 
@@ -171,11 +178,15 @@ The coffee environment uses a 330-step horizon by default so training returns an
 episodes are comparable. Pass `horizon=None` for a continuing attempt with no time-limit
 truncation; success and irrecoverable spill still terminate the episode normally.
 
-`info` reports fill, target, fill error, spill, flow, success, joint angles, tool positions, and the
-termination reason. `reset(options=...)` accepts `target_fill`, `joint_angles`, `cup_center`,
-`pot_center`, `fill`, and `spill` for controlled experiments.
+`info` reports fill, target, fill error, spill, remaining coffee, flow rate, stream and cup-runoff
+paths, stream thickness and speed, capture fraction, spill impact location, success, joint angles,
+tool positions, and the termination reason.
+`reset(options=...)` accepts `target_fill`, `joint_angles`, `cup_center`, `pot_center`, `fill`, and
+`spill` for controlled experiments.
 
-`env.unwrapped.render_snapshot()` returns the same scene as a versioned, JSON-safe keyframe. It is
+`env.unwrapped.render_snapshot()` returns the same scene as a versioned, JSON-safe keyframe. Schema
+version 4 includes the physical stream width, cup-runoff path, direct-spill event path, and
+spill-impact location. It is
 intended for interactive front ends that need smooth visual interpolation without advancing the
 environment or changing the recorded trajectory.
 
@@ -205,6 +216,13 @@ number of steps. **Finish** stops the timer and marks the final recorded transit
 truncated. The app exports the resulting human demonstration, including `dt`, joint-speed metadata,
 and the effective horizon, as an `.npz` file suitable for behavior-cloning experiments; an exported
 horizon of `-1` denotes unlimited practice.
+
+The current exports identify the dynamics as `torricelli_ballistic_v3`. Re-record demonstrations
+made with earlier coffee-flow rules before comparing behavior cloning and reward fine-tuning.
+
+The environment remains a fast teaching approximation rather than a rigid-body/fluid simulator:
+table, arm-to-arm, vessel, and handle contacts are enforced, while droplet breakup, splashing, and
+surface tension are not modeled.
 
 [Open the interactive notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/coffee_pouring_colab.ipynb).
 

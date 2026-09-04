@@ -108,6 +108,11 @@ def test_episode_cap_configuration_is_explicit():
 def test_animation_snapshots_do_not_create_extra_decisions_or_demonstration_rows():
     session = InteractiveSession(seed=7001, target_ml=700)
     initial = session.animation_snapshot()
+    assert initial["schema_version"] == 4
+    assert "stream_path_m" in initial["state"]["liquid"]
+    assert "spill_path_m" in initial["state"]["liquid"]
+    assert "direct_spill_path_m" in initial["state"]["liquid"]
+    assert "cup_runoff_path_m" in initial["state"]["liquid"]
     for _ in range(100):
         snapshot = session.animation_snapshot()
         json.dumps(snapshot, allow_nan=False)
@@ -125,6 +130,14 @@ def test_animation_snapshots_do_not_create_extra_decisions_or_demonstration_rows
         session.animation_snapshot()
     assert session.env.elapsed_steps == 1
     assert len(session.trajectory) == 1
+    session.close()
+
+
+def test_finished_session_reports_zero_live_pour_rate():
+    session = InteractiveSession(seed=7001, target_ml=700)
+    session.info["flow_rate"] = 0.1
+    session.finish()
+    assert _metrics(session)["pour rate (mL/s)"] == 0.0
     session.close()
 
 
@@ -155,4 +168,8 @@ def test_gradio_app_builds_when_interactive_extra_is_installed():
     )
     assert "requestAnimationFrame" in canvas["props"]["js_on_load"]
     assert "joint_angles_rad" in canvas["props"]["js_on_load"]
+    assert "raw.schema_version !== 4" in canvas["props"]["js_on_load"]
+    assert "direct_spill_path_m" in canvas["props"]["js_on_load"]
+    assert "cup_runoff_path_m" in canvas["props"]["js_on_load"]
+    assert canvas["props"].get("min_height") is None
     app.close()

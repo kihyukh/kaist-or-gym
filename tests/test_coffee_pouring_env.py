@@ -1,4 +1,5 @@
 import json
+from itertools import pairwise
 
 import gymnasium as gym
 import numpy as np
@@ -56,6 +57,43 @@ def _joints_for_geometry(env, cup_center, cup_angle, spout, pot_angle):
     )
 
 
+def _rendered_cup_opening(env, cup_center, cup_angle):
+    """Return the world-space endpoints of the cup's rendered top edge."""
+
+    geometry = env.geometry
+    cup_center = np.asarray(cup_center, dtype=np.float64)
+    local_opening = np.array(
+        [
+            [-0.5 * geometry.cup_width, 0.5 * geometry.cup_height],
+            [0.5 * geometry.cup_width, 0.5 * geometry.cup_height],
+        ]
+    )
+    return cup_center + local_opening @ env._rotation(cup_angle).T
+
+
+def _opening_coordinates(opening, point):
+    """Return along-opening and normal coordinates of a world-space point."""
+
+    opening = np.asarray(opening, dtype=np.float64)
+    point = np.asarray(point, dtype=np.float64)
+    center = np.mean(opening, axis=0)
+    tangent = opening[1] - opening[0]
+    tangent /= np.linalg.norm(tangent)
+    normal = np.array([-tangent[1], tangent[0]])
+    return float(np.dot(point - center, tangent)), float(np.dot(point - center, normal))
+
+
+def _strictly_inside_convex_polygon(point, polygon, tolerance=1e-8):
+    """Whether ``point`` lies away from every edge of a convex polygon."""
+
+    polygon = np.asarray(polygon, dtype=np.float64)
+    point = np.asarray(point, dtype=np.float64)
+    edges = np.roll(polygon, -1, axis=0) - polygon
+    offsets = point - polygon
+    crosses = edges[:, 0] * offsets[:, 1] - edges[:, 1] * offsets[:, 0]
+    return bool(np.all(crosses > tolerance) or np.all(crosses < -tolerance))
+
+
 def _reference_action(env, desired_pot_angle):
     geometry = env.geometry
     desired_cup = np.array([-0.05, 0.27])
@@ -71,10 +109,10 @@ def _reference_action(env, desired_pot_angle):
 
     # Recompute shoulder and elbow IK throughout the tilt so the rigid pot
     # follows a constant-spout path over the cup.
-    desired_spout = desired_cup + np.asarray(geometry.cup_mouth) + np.array([0.0, 0.20])
-    pot_center = desired_spout - env._rotation(desired_pot_angle) @ np.asarray(
-        geometry.pot_spout
-    )
+    # Aim right of the mouth so the gravity-driven ballistic arc lands near
+    # the centre instead of pretending that the stream is vertical.
+    desired_spout = desired_cup + np.asarray(geometry.cup_mouth) + np.array([0.10, 0.20])
+    pot_center = desired_spout - env._rotation(desired_pot_angle) @ np.asarray(geometry.pot_spout)
     pot_wrist = pot_center + env._rotation(desired_pot_angle) @ np.asarray(geometry.pot_grip)
     pot_q1, pot_q2 = env._inverse_kinematics(
         np.asarray(geometry.pot_base),
@@ -101,19 +139,24 @@ def _reference_action(env, desired_pot_angle):
 def _predicted_return_volume(env, pot_angle, pot_path_rate):
     """Approximate coffee released while the constant-spout path returns upright."""
 
-    angle_grid = np.linspace(0.0, pot_angle, 257)
-    spout_offset = np.asarray(env.geometry.pot_spout)
-    rotated_spout_y = (
-        np.sin(angle_grid) * spout_offset[0] + np.cos(angle_grid) * spout_offset[1]
-    )
-    intensity = np.clip(
-        (-rotated_spout_y - env.FLOW_START_SPOUT_DROP)
-        / (env.FLOW_FULL_SPOUT_DROP - env.FLOW_START_SPOUT_DROP),
-        0.0,
-        1.0,
-    )
-    integral = np.sum(0.5 * (intensity[:-1] + intensity[1:]) * np.diff(angle_grid))
-    return env.max_flow_rate * integral / pot_path_rate
+    if pot_angle <= 0.0:
+        return 0.0
+    angle_grid = np.linspace(pot_angle, 0.0, 257)
+    remaining = env.source_remaining
+    released = 0.0
+    saved_joints = env.joint_angles.copy()
+    try:
+        for start, end in pairwise(angle_grid):
+            middle = 0.5 * (start + end)
+            env.joint_angles[5] = middle - np.sum(env.joint_angles[3:5])
+            rate, _, _ = env._flow_state(remaining)
+            interval = abs(end - start) / pot_path_rate
+            amount = min(rate * interval, remaining)
+            released += amount
+            remaining -= amount
+    finally:
+        env.joint_angles = saved_joints
+    return float(released)
 
 
 def test_environment_passes_gymnasium_checker_and_registration():
@@ -144,7 +187,11 @@ def test_observation_and_action_contract():
 
 def test_full_scale_joint_command_takes_ten_seconds_for_a_quarter_turn():
     env = CoffeePouringEnv(horizon=None)
-    initial_joints = env.joint_low + 0.05
+    # A collision-free configuration whose full 90-degree all-joint sweep
+    # remains clear of the tabletop and mechanical upper limits.
+    initial_joints = np.array(
+        [1.06569964, -1.67585190, -2.03996040, 0.48670250, 0.18905989, -1.52938532]
+    )
     env.reset(seed=7, options={"joint_angles": initial_joints})
     env.max_flow_rate = 0.0
     env.max_leak_rate = 0.0
@@ -269,11 +316,18 @@ def test_render_snapshot_is_json_safe_deep_copied_and_side_effect_free():
     second = env.render_snapshot()
     assert first == second
     json.dumps(first, allow_nan=False)
-    assert first["schema_version"] == 1
+    assert first["schema_version"] == 4
     assert first["state"]["step"] == env.elapsed_steps
     assert first["state"]["elapsed_time_s"] == pytest.approx(env.elapsed_steps * env.dt)
     assert first["geometry"]["table_y_m"] == env.geometry.table_y
     np.testing.assert_allclose(first["state"]["joint_angles_rad"], env.joint_angles)
+    assert len(first["state"]["liquid"]["stream_path_m"]) == env.STREAM_PATH_SAMPLES
+    assert len(first["state"]["liquid"]["spill_path_m"]) == env.STREAM_PATH_SAMPLES
+    assert len(first["state"]["liquid"]["direct_spill_path_m"]) == env.STREAM_PATH_SAMPLES
+    assert len(first["state"]["liquid"]["cup_runoff_path_m"]) == env.STREAM_PATH_SAMPLES
+    assert first["state"]["liquid"]["last_jet_radius_m"] == 0.0
+    assert first["state"]["liquid"]["spill_impact_x_m"] == 0.0
+    assert first["state"]["liquid"]["source_remaining_l"] == env.source_remaining
 
     tools = env.tool_positions()
     for name in ("cup_center", "cup_mouth", "pot_center", "pot_spout"):
@@ -340,6 +394,65 @@ def test_joint_angles_are_clipped_to_mechanical_limits():
     env.close()
 
 
+def test_table_contact_stops_the_arm_without_allowing_penetration():
+    env = CoffeePouringEnv(horizon=None)
+    env.reset(seed=7)
+    env.max_flow_rate = 0.0
+    action = np.array([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+    for _ in range(300):
+        env.step(action)
+
+    contact_angles = env.joint_angles.copy()
+    assert env._arm_table_clearance("cup", contact_angles[:3]) >= -1e-9
+    assert contact_angles[0] > env.joint_low[0] + 0.5
+    for _ in range(20):
+        env.step(action)
+    np.testing.assert_allclose(env.joint_angles, contact_angles, atol=1e-10)
+    env.close()
+
+
+def test_cross_robot_contact_stops_inward_motion_and_allows_separation():
+    env = CoffeePouringEnv(horizon=None)
+    default_joints = env.reset(seed=0)[1]["joint_angles"].astype(np.float64)
+    colliding_joints = np.array(
+        [0.69334231, -0.85815422, -1.90451004, 1.50150783, 1.31243359, -1.46690584]
+    )
+    with pytest.raises(ValueError, match="robot configuration"):
+        env.reset(options={"joint_angles": colliding_joints})
+    handle_collision = np.array(
+        [1.347713392, -0.942228745, -1.693278731, 2.375357950, 0.307520056, -0.707350249]
+    )
+    assert env._cross_robot_collision(handle_collision)
+    with pytest.raises(ValueError, match="robot configuration"):
+        env.reset(options={"joint_angles": handle_collision})
+
+    direction = colliding_joints - default_joints
+    start = default_joints + 0.89 * direction
+    action = direction / np.max(np.abs(direction))
+    env.reset(options={"joint_angles": start})
+    env.max_flow_rate = 0.0
+
+    unconstrained = np.clip(
+        start + env.dt * env.max_joint_speeds * action,
+        env.joint_low,
+        env.joint_high,
+    )
+    env.step(action)
+    contact = env.joint_angles.copy()
+
+    assert not env._cross_robot_collision(contact)
+    assert np.linalg.norm(contact - start) < np.linalg.norm(unconstrained - start)
+
+    env.step(action)
+    np.testing.assert_allclose(env.joint_angles, contact, atol=1e-8)
+
+    env.step(-action)
+    assert np.linalg.norm(env.joint_angles - contact) > 1e-4
+    assert not env._cross_robot_collision(env.joint_angles)
+    env.close()
+
+
 def test_upright_pot_has_no_flow():
     env = CoffeePouringEnv()
     env.reset(seed=1)
@@ -350,18 +463,132 @@ def test_upright_pot_has_no_flow():
     env.close()
 
 
+def test_pour_rate_increases_with_tilt_and_decreases_as_pot_empties():
+    env = CoffeePouringEnv(horizon=None)
+    env.reset(seed=1)
+    rates = []
+    for angle_degrees in (20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0):
+        env.joint_angles[5] = np.deg2rad(angle_degrees) - np.sum(env.joint_angles[3:5])
+        rates.append(env._flow_state(env.INITIAL_POT_VOLUME)[0])
+
+    assert all(first < second for first, second in pairwise(rates))
+    assert 0.015 < rates[1] < 0.035
+    assert 0.095 < rates[-2] < 0.120
+    assert rates[-1] > rates[-2]
+    full_rate = env._flow_state(env.INITIAL_POT_VOLUME)[0]
+    low_head_rate = env._flow_state(0.30)[0]
+    assert 0.0 < low_head_rate < full_rate
+    env.close()
+
+
+def test_tilt_flow_curve_is_smooth_and_stream_width_follows_flow_continuity():
+    env = CoffeePouringEnv(horizon=None)
+    env.reset(seed=1)
+    rates = []
+    radii = []
+    for angle_degrees in np.arange(15.0, 80.01, 0.25):
+        env.joint_angles[5] = np.deg2rad(angle_degrees) - np.sum(env.joint_angles[3:5])
+        rate, exit_speed, _ = env._flow_state(env.INITIAL_POT_VOLUME)
+        rates.append(rate)
+        radii.append(env._jet_radius(rate, exit_speed))
+
+    rate_changes = np.diff(rates)
+    assert np.all(rate_changes >= -1e-12)
+    assert np.max(rate_changes) < 0.003
+    assert np.all(np.isfinite(radii))
+    assert np.all(np.asarray(radii) >= 0.0)
+    assert max(radii) <= env.JET_RADIUS
+    env.close()
+
+
+def test_liquid_landmarks_match_the_rendered_rim_and_spout_tip():
+    env = CoffeePouringEnv()
+    geometry = env.geometry
+    assert geometry.cup_mouth == pytest.approx((0.0, 0.5 * geometry.cup_height))
+    assert geometry.pot_spout == pytest.approx(
+        (-0.78 * geometry.pot_width, 0.22 * geometry.pot_height)
+    )
+    env.close()
+
+
+def test_tilted_cup_retains_only_volume_below_its_rendered_lower_rim():
+    env = CoffeePouringEnv(horizon=None)
+    base_joints = env.reset(seed=3)[1]["joint_angles"].astype(np.float64)
+    cup_center = np.array([-0.05, 0.27])
+    cup_angle = np.deg2rad(60.0)
+    geometry = env.geometry
+    cup_wrist = cup_center + env._rotation(cup_angle) @ np.asarray(geometry.cup_grip)
+    cup_q1, cup_q2 = env._inverse_kinematics(
+        np.asarray(geometry.cup_base),
+        cup_wrist,
+        geometry.cup_upper,
+        geometry.cup_fore,
+        elbow_sign=-1.0,
+    )
+    base_joints[:3] = [cup_q1, cup_q2, cup_angle - cup_q1 - cup_q2]
+    env.reset(
+        seed=3,
+        options={"joint_angles": base_joints, "target_fill": 0.90, "fill": 0.80},
+    )
+    stable_capacity = env._stable_cup_capacity()
+    env.max_flow_rate = 0.0
+
+    _, _, _, _, info = env.step(np.zeros(6))
+
+    assert stable_capacity < 0.80
+    assert info["fill"] == pytest.approx(stable_capacity)
+    assert info["spill"] == pytest.approx(0.80 - stable_capacity)
+    assert info["fill"] + info["spill"] == pytest.approx(0.80)
+    assert info["cup_runoff"] == pytest.approx(info["spill"])
+    cup_rims = env._cup_polygon()[:2]
+    lower_rim = cup_rims[np.argmin(cup_rims[:, 1])]
+    np.testing.assert_allclose(info["cup_runoff_path"][0], lower_rim, atol=1e-7)
+    assert info["cup_runoff_path"][-1, 1] == pytest.approx(env.geometry.table_y)
+    assert info["spill_impact_x"] == pytest.approx(info["cup_runoff_path"][-1, 0])
+    env.close()
+
+
+def test_large_tilt_dump_stays_inside_observation_space_and_conserves_volume():
+    env = CoffeePouringEnv(horizon=None)
+    base_joints = env.reset(seed=3)[1]["joint_angles"].astype(np.float64)
+    cup_center = np.array([-0.05, 0.27])
+    cup_angle = np.deg2rad(89.0)
+    geometry = env.geometry
+    cup_wrist = cup_center + env._rotation(cup_angle) @ np.asarray(geometry.cup_grip)
+    cup_q1, cup_q2 = env._inverse_kinematics(
+        np.asarray(geometry.cup_base),
+        cup_wrist,
+        geometry.cup_upper,
+        geometry.cup_fore,
+        elbow_sign=-1.0,
+    )
+    base_joints[:3] = [cup_q1, cup_q2, cup_angle - cup_q1 - cup_q2]
+    env.reset(
+        seed=3,
+        options={"joint_angles": base_joints, "target_fill": 0.90, "fill": 0.80},
+    )
+    env.max_flow_rate = 0.0
+
+    observation, _, _, _, info = env.step(np.zeros(6))
+
+    assert info["spill"] > 0.60
+    assert info["fill"] + info["spill"] == pytest.approx(0.80)
+    assert env.observation_space.contains(observation)
+    env.close()
+
+
 def test_liquid_dynamics_scale_with_simulated_time_not_step_count():
     cup_center = np.array([-0.05, 0.27])
-    cup_mouth = cup_center + np.array([0.0, 0.13])
     pot_angle = 1.05
     fills = []
     for dt in (0.0625, 0.125, 0.25):
         env = CoffeePouringEnv(dt=dt, horizon=100)
+        cup_mouth = cup_center + np.asarray(env.geometry.cup_mouth)
         joints = _joints_for_geometry(
             env,
             cup_center,
             0.0,
-            cup_mouth + np.array([0.0, 0.20]),
+            cup_mouth + np.array([0.10, 0.20]),
             pot_angle,
         )
         env.reset(seed=1, options={"joint_angles": joints, "target_fill": 0.90})
@@ -382,7 +609,7 @@ def test_pour_rule_is_continuous_across_angle_wrap_and_upside_down_is_not_succes
         joints[5] = unwrapped_angle - np.sum(joints[3:5])
         env.reset(
             seed=2,
-            options={"joint_angles": joints, "target_fill": 0.70, "fill": 0.70},
+            options={"joint_angles": joints, "target_fill": 0.70},
         )
         _, _, _, _, info = env.step(np.zeros(6))
         intensities.append(info["flow_rate"])
@@ -392,17 +619,171 @@ def test_pour_rule_is_continuous_across_angle_wrap_and_upside_down_is_not_succes
     env.close()
 
 
+def test_safe_off_center_stream_is_fully_captured_at_rendered_opening():
+    env = CoffeePouringEnv(horizon=None)
+    cup_center = np.array([-0.05, 0.27])
+    cup_angle = 0.0
+    pot_angle = 1.05
+    opening = _rendered_cup_opening(env, cup_center, cup_angle)
+    opening_center = np.mean(opening, axis=0)
+    # Aim right of centre so the ballistic stream lands visibly off-centre
+    # while retaining ample clearance from both rendered rims.
+    spout = np.array([opening_center[0] + 0.100, np.max(opening[:, 1]) + 0.180])
+    joints = _joints_for_geometry(env, cup_center, cup_angle, spout, pot_angle)
+    env.reset(seed=1, options={"joint_angles": joints, "target_fill": 0.90})
+
+    _, _, _, _, info = env.step(np.zeros(6))
+
+    rendered_opening = _rendered_cup_opening(env, env.tool_positions()["cup_center"], env.cup_angle)
+    along, normal_distance = _opening_coordinates(rendered_opening, info["stream_end"])
+    rim_clearance = 0.5 * env.geometry.cup_width - abs(along)
+    assert rim_clearance > 0.035
+    assert info["flow"] > 0.0
+    assert info["captured"] == pytest.approx(info["flow"])
+    assert info["fill"] == pytest.approx(info["flow"])
+    assert info["spill"] == pytest.approx(0.0)
+    assert normal_distance == pytest.approx(0.0, abs=1e-6)
+    env.close()
+
+
+def test_tilted_cup_fully_captures_stream_on_rotated_rendered_opening():
+    env = CoffeePouringEnv(horizon=None)
+    cup_center = np.array([-0.05, 0.27])
+    cup_angle = np.deg2rad(12.0)
+    pot_angle = 1.05
+    opening = _rendered_cup_opening(env, cup_center, cup_angle)
+    opening_center = np.mean(opening, axis=0)
+    spout = np.array([opening_center[0] + 0.100, np.max(opening[:, 1]) + 0.180])
+    joints = _joints_for_geometry(env, cup_center, cup_angle, spout, pot_angle)
+    env.reset(seed=1, options={"joint_angles": joints, "target_fill": 0.90})
+
+    _, _, _, _, info = env.step(np.zeros(6))
+
+    rendered_opening = _rendered_cup_opening(env, env.tool_positions()["cup_center"], env.cup_angle)
+    along, normal_distance = _opening_coordinates(rendered_opening, info["stream_end"])
+    assert abs(along) < 0.050
+    assert info["flow"] > 0.0
+    assert info["captured"] == pytest.approx(info["flow"])
+    assert info["fill"] == pytest.approx(info["flow"])
+    assert info["spill"] == pytest.approx(0.0)
+    assert normal_distance == pytest.approx(0.0, abs=1e-6)
+    env.close()
+
+
+def test_jet_straddling_rendered_rim_splits_and_draws_exterior_runoff():
+    env = CoffeePouringEnv(horizon=None)
+    cup_center = np.array([-0.05, 0.27])
+    cup_angle = 0.0
+    pot_angle = 1.05
+    opening = _rendered_cup_opening(env, cup_center, cup_angle)
+    opening_center = np.mean(opening, axis=0)
+    spout = np.array([opening_center[0] + 0.140, opening_center[1] + 0.180])
+    joints = _joints_for_geometry(env, cup_center, cup_angle, spout, pot_angle)
+    env.reset(seed=1, options={"joint_angles": joints, "target_fill": 0.90})
+
+    _, _, _, _, info = env.step(np.zeros(6))
+
+    assert 0.0 < info["capture_fraction"] < 1.0
+    assert info["fill"] == pytest.approx(info["captured"])
+    assert info["fill"] + info["spill"] == pytest.approx(info["flow"])
+    np.testing.assert_allclose(info["spill_path"][0], opening[1], atol=1e-6)
+    assert info["spill_path"][-1, 1] == pytest.approx(env.geometry.table_y)
+    assert info["spill_impact_x"] == pytest.approx(info["spill_path"][-1, 0], abs=5e-4)
+    cup_polygon = env._cup_polygon()
+    assert not any(
+        _strictly_inside_convex_polygon(point, cup_polygon)
+        for point in np.vstack([info["stream_path"], info["spill_path"]])
+    )
+    env.close()
+
+
+def test_stream_outside_rotated_rendered_opening_spills():
+    env = CoffeePouringEnv(horizon=None)
+    cup_center = np.array([-0.05, 0.27])
+    cup_angle = np.deg2rad(12.0)
+    pot_angle = 1.05
+    opening = _rendered_cup_opening(env, cup_center, cup_angle)
+    opening_center = np.mean(opening, axis=0)
+    spout = np.array([opening_center[0] + 0.180, np.max(opening[:, 1]) + 0.180])
+    joints = _joints_for_geometry(env, cup_center, cup_angle, spout, pot_angle)
+    env.reset(seed=1, options={"joint_angles": joints, "target_fill": 0.90})
+
+    _, _, _, _, info = env.step(np.zeros(6))
+
+    assert info["flow"] > 0.0
+    assert info["captured"] == pytest.approx(0.0)
+    assert info["fill"] == pytest.approx(0.0)
+    assert info["spill"] == pytest.approx(info["flow"])
+    np.testing.assert_allclose(info["spill_path"][0], info["stream_end"], atol=1e-6)
+    assert info["spill_path"][-1, 1] == pytest.approx(env.geometry.table_y)
+    assert info["spill_impact_x"] == pytest.approx(info["spill_path"][-1, 0], abs=5e-4)
+    cup_polygon = env._cup_polygon()
+    assert not any(
+        _strictly_inside_convex_polygon(point, cup_polygon)
+        for point in np.vstack([info["stream_path"], info["spill_path"]])
+    )
+    env.close()
+
+
+def test_inverted_cup_impacts_follow_solid_boundary_without_crossing_cup():
+    configurations = (
+        np.array([0.50096306, -0.73832156, -1.71726589, 1.41459615, 0.87317342, -1.04224464]),
+        np.array([0.67480088, -0.67781375, -3.14148182, 1.49979242, 0.65396784, -1.01210920]),
+        np.array([0.58788369, -0.31576590, 2.84017674, 2.07837846, 1.00368681, -0.47051473]),
+        np.array([1.23095226, -1.64949960, 1.65107044, 2.06157912, 0.36348720, -1.04090282]),
+    )
+    for joints in configurations:
+        env = CoffeePouringEnv(horizon=None)
+        env.reset(seed=0)
+        # These deliberately pathological legacy poses are injected directly;
+        # current resets reject their cross-robot collisions before simulation.
+        env.joint_angles = joints.copy()
+        tools = env.tool_positions()
+        flow_rate, exit_speed, _ = env._flow_state()
+        stream_path, capture_fraction, spill_path = env._ballistic_stream(
+            tools, flow_rate, exit_speed
+        )
+        cup_polygon = env._cup_polygon(tools)
+
+        assert capture_fraction == 0.0
+        if not _strictly_inside_convex_polygon(stream_path[0], cup_polygon):
+            assert not env._path_enters_convex_polygon(stream_path[1:], cup_polygon)
+        assert not env._path_enters_convex_polygon(spill_path, cup_polygon)
+        assert spill_path[-1, 1] == pytest.approx(env.geometry.table_y)
+        env.close()
+
+
+def test_substep_spill_keeps_its_causal_path_when_endpoint_capture_is_clean():
+    env = CoffeePouringEnv(horizon=None)
+    joints = np.array([1.2031278, -1.67021086, 0.54789723, 1.60754743, 0.88192041, -1.81671864])
+    action = np.array([0.26200419, -0.0901046, 0.53661246, 0.91232352, -0.40584921, -0.06192144])
+    env.reset(options={"joint_angles": joints})
+
+    _, _, _, _, info = env.step(action)
+
+    assert info["fill"] > 0.0
+    assert info["spill"] > 0.0
+    assert info["capture_fraction"] == pytest.approx(1.0)
+    assert info["direct_spill"] == pytest.approx(info["spill"])
+    assert info["direct_spill_rate"] == pytest.approx(info["direct_spill"] / env.dt)
+    assert np.linalg.norm(info["direct_spill_path"][-1] - info["direct_spill_path"][0]) > 0.1
+    assert info["direct_spill_path"][-1, 1] == pytest.approx(env.geometry.table_y)
+    snapshot = env.render_snapshot()
+    assert snapshot["state"]["liquid"]["direct_spill_l"] == pytest.approx(info["spill"])
+    env.close()
+
+
 def test_aligned_tilted_pot_fills_cup_and_misaligned_pot_spills():
     cup_center = np.array([-0.05, 0.27])
-    cup_mouth = cup_center + np.array([0.0, 0.13])
     pot_angle = 1.05
 
     aligned = CoffeePouringEnv()
+    cup_mouth = cup_center + np.asarray(aligned.geometry.cup_mouth)
     aligned_joints = _joints_for_geometry(
         aligned,
         cup_center,
         0.0,
-        cup_mouth + np.array([0.0, 0.20]),
+        cup_mouth + np.array([0.10, 0.20]),
         pot_angle,
     )
     aligned.reset(
@@ -412,7 +793,8 @@ def test_aligned_tilted_pot_fills_cup_and_misaligned_pot_spills():
     _, _, _, _, aligned_info = aligned.step(np.zeros(6))
     assert aligned_info["flow"] > 0.0
     assert aligned_info["fill"] > 0.0
-    assert aligned_info["spill"] < aligned_info["flow"]
+    assert aligned_info["captured"] == pytest.approx(aligned_info["flow"])
+    assert aligned_info["spill"] == pytest.approx(0.0)
 
     misaligned = CoffeePouringEnv()
     misaligned_joints = _joints_for_geometry(
@@ -435,6 +817,33 @@ def test_aligned_tilted_pot_fills_cup_and_misaligned_pot_spills():
     misaligned.close()
 
 
+def test_depleted_source_has_no_stale_stream_at_decision_endpoint():
+    env = CoffeePouringEnv(horizon=None)
+    joints = env.reset(seed=1)[1]["joint_angles"].astype(np.float64)
+    joints[5] = np.deg2rad(80.0) - np.sum(joints[3:5])
+    env.reset(
+        seed=1,
+        options={
+            "joint_angles": joints,
+            "target_fill": 0.90,
+            "fill": 0.70,
+            "spill": 0.4995,
+        },
+    )
+
+    _, _, _, _, info = env.step(np.zeros(6))
+
+    assert info["flow"] == pytest.approx(0.0005)
+    assert info["source_remaining"] == 0.0
+    assert info["flow_rate"] == 0.0
+    np.testing.assert_allclose(
+        info["stream_path"],
+        np.repeat(info["pot_spout"][None, :], env.STREAM_PATH_SAMPLES, axis=0),
+        atol=1e-7,
+    )
+    env.close()
+
+
 def test_reset_rejects_invalid_or_unreachable_state_options():
     env = CoffeePouringEnv()
     with pytest.raises(ValueError, match="fill"):
@@ -447,6 +856,8 @@ def test_reset_rejects_invalid_or_unreachable_state_options():
         env.reset(options={"joint_angles": np.full(6, 100.0)})
     with pytest.raises(ValueError, match="cannot be combined"):
         env.reset(options={"joint_angles": np.zeros(6), "cup_center": [0.0, 0.0]})
+    with pytest.raises(ValueError, match="intersects the table"):
+        env.reset(options={"joint_angles": env.joint_low + 0.05})
     env.close()
 
 
@@ -530,9 +941,7 @@ def test_environment_is_solvable_by_a_simple_joint_space_reference_controller():
 
             if phase == "pour":
                 remaining = env.target_fill - env.fill
-                expected_return = _predicted_return_volume(
-                    env, pot_reference_angle, pot_path_rate
-                )
+                expected_return = _predicted_return_volume(env, pot_reference_angle, pot_path_rate)
                 if remaining <= expected_return + 0.010 or pot_reference_angle >= maximum_pot_angle:
                     phase = "return"
                 else:

@@ -32,6 +32,25 @@ def _rotated_points(
     return np.asarray([center + rotation @ np.asarray(point) for point in points])
 
 
+def _horizontal_span(points: np.ndarray, world_y: float) -> tuple[float, float]:
+    """Exact horizontal intersection span of a polygon at ``world_y``."""
+
+    intersections: list[float] = []
+    for first, second in zip(points, np.roll(points, -1, axis=0), strict=True):
+        delta_y = float(second[1] - first[1])
+        if abs(delta_y) < 1e-12:
+            if abs(float(first[1]) - world_y) < 1e-12:
+                intersections.extend([float(first[0]), float(second[0])])
+            continue
+        fraction = (world_y - float(first[1])) / delta_y
+        if -1e-12 <= fraction <= 1.0 + 1e-12:
+            intersections.append(float(first[0] + fraction * (second[0] - first[0])))
+    if len(intersections) < 2:
+        centre = float(np.mean(points[:, 0]))
+        return centre, centre
+    return min(intersections), max(intersections)
+
+
 def render_frame(env, *, width: int, height: int) -> np.ndarray:
     """Render the current environment state as an ``H x W x 3`` RGB array."""
 
@@ -132,8 +151,7 @@ def render_frame(env, *, width: int, height: int) -> np.ndarray:
     cup_mask = Image.new("L", (width, height), 0)
     mask_draw = ImageDraw.Draw(cup_mask)
     mask_draw.polygon([xy(point) for point in cup_outer], fill=255)
-    fill_ratio = float(np.clip(env.fill / 1.02, 0.0, 1.0))
-    surface_world_y = cup_center[1] - 0.50 * g.cup_height + fill_ratio * g.cup_height
+    surface_world_y = env._cup_surface_world_y(tools)
     surface_pixel_y = int(np.clip(xy((0.0, surface_world_y))[1], 0, height))
     liquid_layer = Image.new("RGB", (width, height), coffee)
     liquid_mask = Image.new("L", (width, height), 0)
@@ -147,10 +165,8 @@ def render_frame(env, *, width: int, height: int) -> np.ndarray:
     draw.line([xy(point) for point in np.vstack([cup_outer, cup_outer[0]])], fill=muted, width=3)
 
     # Target fill line is intentionally world-horizontal, matching the liquid.
-    target_ratio = float(np.clip(env.target_fill / 1.02, 0.0, 1.0))
-    target_y = cup_center[1] - 0.50 * g.cup_height + target_ratio * g.cup_height
-    target_left = cup_center[0] - 0.32 * g.cup_width
-    target_right = cup_center[0] + 0.32 * g.cup_width
+    target_y = env._cup_surface_world_y(tools, env.target_fill)
+    target_left, target_right = _horizontal_span(cup_outer, target_y)
     target_y_px = xy((0.0, target_y))[1]
     draw.line(
         (xy((target_left, 0.0))[0], target_y_px, xy((target_right, 0.0))[0], target_y_px),
@@ -194,13 +210,29 @@ def render_frame(env, *, width: int, height: int) -> np.ndarray:
         pot_center,
         pot_angle,
         [
-            (-0.30 * g.pot_width, 0.10 * g.pot_height),
-            (0.28 * g.pot_width, 0.10 * g.pot_height),
-            (0.28 * g.pot_width, -0.26 * g.pot_height),
-            (-0.30 * g.pot_width, -0.26 * g.pot_height),
+            (-0.43 * g.pot_width, 0.45 * g.pot_height),
+            (0.43 * g.pot_width, 0.45 * g.pot_height),
+            (0.43 * g.pot_width, -0.45 * g.pot_height),
+            (-0.43 * g.pot_width, -0.45 * g.pot_height),
         ],
     )
-    polygon(coffee_window, fill=coffee)
+    pot_mask = Image.new("L", (width, height), 0)
+    pot_mask_draw = ImageDraw.Draw(pot_mask)
+    pot_mask_draw.polygon([xy(point) for point in coffee_window], fill=255)
+    pot_liquid_mask = Image.new("L", (width, height), 0)
+    pot_liquid_draw = ImageDraw.Draw(pot_liquid_mask)
+    pot_surface_pixel_y = xy((0.0, env._pot_surface_world_y(tools)))[1]
+    pot_liquid_draw.rectangle((0, pot_surface_pixel_y, width, height), fill=255)
+    pot_clipped_mask = Image.fromarray(
+        np.minimum(np.asarray(pot_mask), np.asarray(pot_liquid_mask)).astype(np.uint8)
+    )
+    coffee_layer = Image.new("RGB", (width, height), coffee)
+    image.paste(coffee_layer, mask=pot_clipped_mask)
+    draw.line(
+        [xy(point) for point in np.vstack([coffee_window, coffee_window[0]])],
+        fill=(57, 79, 88),
+        width=2,
+    )
     pot_handle_angles = np.linspace(-np.pi / 2.0, np.pi / 2.0, 24)
     pot_handle_local = np.column_stack(
         [
@@ -216,21 +248,47 @@ def render_frame(env, *, width: int, height: int) -> np.ndarray:
         joint="curve",
     )
 
-    # Approximate stream and spilled coffee.
-    if env.last_flow > 1e-5:
-        spout = np.asarray(tools["pot_spout"])
-        stream_end = np.asarray(env.last_stream_end)
-        stream_color = coffee if env.last_captured > 0.5 * env.last_flow else red
-        draw.line((xy(spout), xy(stream_end)), fill=stream_color, width=5)
-    if env.spill > 0.002:
-        puddle_center = xy((0.0, env.geometry.table_y))
-        puddle_width = int(np.clip(26 + 140 * env.spill, 26, 90))
+    # The environment supplies the exact ballistic path used for capture.
+    if env.last_flow_rate > 1e-5:
+        stream_width = max(1, round(2.0 * env.last_jet_radius * scale))
+        draw.line(
+            [xy(point) for point in env.last_stream_path],
+            fill=coffee,
+            width=stream_width,
+            joint="curve",
+        )
+    # This is an interval event rather than endpoint state.  Keeping its
+    # actual substep path explains a puddle that began just before the endpoint
+    # geometry became a clean capture.
+    if env.last_direct_spill > 1e-8:
+        direct_radius = env._jet_radius(env.last_direct_spill_rate, 0.35)
+        direct_width = max(1, round(2.0 * direct_radius * scale))
+        draw.line(
+            [xy(point) for point in env.last_direct_spill_path],
+            fill=coffee,
+            width=direct_width,
+            joint="curve",
+        )
+    if env.last_cup_runoff > 1e-8:
+        runoff_radius = env._jet_radius(env.last_cup_runoff_rate, 0.35)
+        runoff_width = max(1, round(2.0 * runoff_radius * scale))
+        draw.line(
+            [xy(point) for point in env.last_cup_runoff_path],
+            fill=coffee,
+            width=runoff_width,
+            joint="curve",
+        )
+    if env.spill > 1e-8:
+        puddle_center = xy((env.spill_impact_x, env.geometry.table_y))
+        puddle_world_radius = float(np.clip(0.13 * np.sqrt(env.spill / 0.10), 0.005, 0.26))
+        puddle_width = max(2, round(puddle_world_radius * scale))
+        puddle_height = max(2, round(0.16 * puddle_width))
         draw.ellipse(
             (
                 puddle_center[0] - puddle_width,
-                puddle_center[1] - 7,
+                puddle_center[1] - puddle_height,
                 puddle_center[0] + puddle_width,
-                puddle_center[1] + 7,
+                puddle_center[1] + puddle_height,
             ),
             fill=(148, 100, 74),
         )
@@ -239,13 +297,14 @@ def render_frame(env, *, width: int, height: int) -> np.ndarray:
     draw.rounded_rectangle((25, height - 42, width - 25, height - 10), 8, fill=(255, 255, 255))
     draw.text(
         (40, height - 34),
-        f"fill {env.fill * 1000:>4.0f}/{env.target_fill * 1000:>4.0f} mL",
+        f"cup {env.fill * 1000:>4.0f}/{env.target_fill * 1000:>4.0f} mL · "
+        f"pot {env.source_remaining * 1000:>4.0f} mL",
         font=_font(14, bold=True),
         fill=dark,
     )
     draw.text(
         (width // 2, height - 34),
-        f"spill {env.spill * 1000:>4.0f} mL",
+        f"spill {env.spill * 1000:>4.0f} mL · pour {env.last_flow_rate * 1000:>3.0f} mL/s",
         font=_font(14, bold=True),
         fill=red if env.spill > 0.02 else muted,
         anchor="ma",
