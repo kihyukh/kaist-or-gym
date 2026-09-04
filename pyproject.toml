@@ -7,23 +7,33 @@ name = "kaist-or-gym"
 version = "0.1.15"
 description = "Custom Gym/Gymnasium environments for operations research problems"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Kihyuk Hong", email = "kihyukh@kaist.ac.kr" }]
 dependencies = [
   "gymnasium>=1.2.0",
   "numpy>=1.23",
   "matplotlib>=3.0",
-  "ipython==7.34.0",
+  "ipython>=7.34.0",
+  "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "ruff", "mypy"]
-examples = []
+examples = ["gradio>=6.26,<7"]
+interactive = ["gradio>=6.26,<7"]
+human = ["pygame>=2.5,<3"]
 test = ["pytest>=7", "gymnasium[other]>=0.29"]
+
+[project.scripts]
+coffee-pouring-app = "kaist_or_gym.apps.coffee_pouring_app:main"
 
 [tool.setuptools.packages.find]
 include = ["kaist_or_gym*"]
 
 [tool.ruff]
 line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -6,6 +6,7 @@ def _register():
 
     # Map of env IDs to entry points
     env_specs = {
+        "kaist-or/CoffeePouringEnv-v0": "kaist_or_gym.envs:CoffeePouringEnv",
         "kaist-or/TrafficControlEnv-v0": "kaist_or_gym.envs:TrafficControlEnv",
     }
 
