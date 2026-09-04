@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 
-from kaist_or_gym.apps.coffee_pouring_app import (
+from kaist_rl_lab.apps.coffee_pouring_app import (
     InteractiveSession,
     _configured_horizon,
     _metrics,

@@ -1,6 +1,6 @@
 import gymnasium as gym
-import kaist_or_gym
-from kaist_or_gym.envs.windy_gridworld import WindyGridworld
+import kaist_rl_lab
+from kaist_rl_lab.envs.windy_gridworld import WindyGridworld
 
 
 env = WindyGridworld(render_mode="human")

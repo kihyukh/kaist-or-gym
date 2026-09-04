@@ -38,7 +38,7 @@ Below is a minimal example of how to use the `TrafficControlEnv` environment for
 
 ```python
 import gymnasium as gym
-import kaist_or_gym
+import kaist_rl_lab
 
 # Create the environment
 env = gym.make("kaist-or/TrafficControlEnv-v0", render_mode="human")
@@ -99,7 +99,7 @@ When `render_mode="human"`, the grid is plotted with:
 ## Usage Example
 
 ```python
-from kaist_or_gym.envs.windy_gridworld import WindyGridworld
+from kaist_rl_lab.envs.windy_gridworld import WindyGridworld
 
 env = WindyGridworld(render_mode="human")
 obs, info = env.reset(seed=0)
@@ -159,7 +159,7 @@ observes and acts only at discrete Gymnasium decision epochs.
 
 ```python
 import gymnasium as gym
-import kaist_or_gym
+import kaist_rl_lab
 
 env = gym.make("kaist-or/CoffeePouringEnv-v0", render_mode="rgb_array")
 observation, info = env.reset(seed=7001)
@@ -203,7 +203,7 @@ Install the optional interface and launch it locally:
 
 ```sh
 pip install -e ".[interactive]"
-python -m kaist_or_gym.apps.coffee_pouring_app
+python -m kaist_rl_lab.apps.coffee_pouring_app
 ```
 
 In the app, clockwise/counterclockwise commands latch. This allows several joints to rotate at the

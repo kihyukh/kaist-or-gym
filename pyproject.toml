@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kaist-rl-lab"
-version = "0.1.16"
+version = "0.1.17"
 description = "Custom Gym/Gymnasium environments for operations research problems"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,10 +26,10 @@ human = ["pygame>=2.5,<3"]
 test = ["pytest>=7", "gymnasium[other]>=0.29"]
 
 [project.scripts]
-coffee-pouring-app = "kaist_or_gym.apps.coffee_pouring_app:main"
+coffee-pouring-app = "kaist_rl_lab.apps.coffee_pouring_app:main"
 
 [tool.setuptools.packages.find]
-include = ["kaist_or_gym*"]
+include = ["kaist_rl_lab*"]
 
 [tool.ruff]
 line-length = 100

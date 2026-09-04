@@ -1,6 +1,6 @@
 """Browser renderer for smooth interpolation between environment keyframes.
 
-The Gymnasium environment owns every scene value through ``render_snapshot``.
+The Gymnasium environment owns each scene value through ``render_snapshot``.
 This module only draws those values in a browser canvas.  In particular, it
 interpolates joint angles and reruns rigid forward kinematics on every display
 frame; it never interpolates arm endpoints.

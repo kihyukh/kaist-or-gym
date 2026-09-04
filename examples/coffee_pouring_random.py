@@ -3,7 +3,7 @@
 import gymnasium as gym
 from PIL import Image
 
-import kaist_or_gym  # noqa: F401 - registers kaist-or environments
+import kaist_rl_lab  # noqa: F401 - registers kaist-or environments
 
 env = gym.make("kaist-or/CoffeePouringEnv-v0", render_mode="rgb_array")
 observation, info = env.reset(seed=7001)

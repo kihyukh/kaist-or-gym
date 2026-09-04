@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 from gymnasium.utils.env_checker import check_env
 
-import kaist_or_gym  # noqa: F401 - importing registers package environments
-from kaist_or_gym.envs import CoffeePouringEnv
+import kaist_rl_lab  # noqa: F401 - importing registers package environments
+from kaist_rl_lab.envs import CoffeePouringEnv
 
 
 def _assert_rigid_lengths(env):

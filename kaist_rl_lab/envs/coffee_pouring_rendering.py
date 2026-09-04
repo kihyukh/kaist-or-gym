@@ -1,4 +1,4 @@
-"""Raster renderer for :mod:`kaist_or_gym.envs.coffee_pouring`.
+"""Raster renderer for :mod:`kaist_rl_lab.envs.coffee_pouring`.
 
 The renderer deliberately receives the environment itself so the Gymnasium
 environment remains the sole owner of scene state and geometry.  Interactive

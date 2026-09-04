@@ -1904,7 +1904,7 @@ class CoffeePouringEnv(gym.Env):
         return frame
 
     def _render_frame(self) -> np.ndarray:
-        from kaist_or_gym.envs.coffee_pouring_rendering import render_frame
+        from kaist_rl_lab.envs.coffee_pouring_rendering import render_frame
 
         return render_frame(self, width=self.width, height=self.height)
 

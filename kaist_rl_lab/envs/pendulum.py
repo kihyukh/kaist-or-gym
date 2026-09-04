@@ -1,3 +1,5 @@
+"""Discretized pendulum environment for KAIST RL Lab."""
+
 import gymnasium as gym
 from gymnasium import spaces
 from gymnasium.envs.classic_control import PendulumEnv

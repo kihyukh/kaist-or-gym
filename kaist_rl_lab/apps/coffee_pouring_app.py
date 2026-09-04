@@ -14,8 +14,8 @@ from typing import Any
 
 import numpy as np
 
-from kaist_or_gym.envs import CoffeePouringEnv
-from kaist_or_gym.envs.coffee_pouring_canvas import (
+from kaist_rl_lab.envs import CoffeePouringEnv
+from kaist_rl_lab.envs.coffee_pouring_canvas import (
     CANVAS_CSS,
     CANVAS_HTML,
     CANVAS_JAVASCRIPT,
