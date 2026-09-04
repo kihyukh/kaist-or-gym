@@ -1913,7 +1913,7 @@ class CoffeePouringEnv(gym.Env):
             import pygame
         except ImportError as exc:  # pragma: no cover - optional desktop dependency
             raise gym.error.DependencyNotInstalled(
-                "Human rendering needs pygame; install kaist-or-gym[human]."
+                "Human rendering needs pygame; install kaist-rl-lab[human]."
             ) from exc
 
         if self._pygame is None:

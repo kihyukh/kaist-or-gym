@@ -367,7 +367,7 @@ def build_app():
         import gradio as gr
     except ImportError as exc:
         raise RuntimeError(
-            "The interactive app needs Gradio. Install with: pip install 'kaist-or-gym[interactive]'"
+            "The interactive app needs Gradio. Install with: pip install 'kaist-rl-lab[interactive]'"
         ) from exc
 
     def timer_update(session: InteractiveSession, active: bool):

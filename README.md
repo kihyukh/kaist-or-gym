@@ -29,7 +29,7 @@ When a transition between green signals is requested (e.g., from North/South gre
 You can install the package directly from PyPI using pip:
 
 ```sh
-pip install kaist-or-gym
+pip install kaist-rl-lab
 ```
 
 ## Usage Example
