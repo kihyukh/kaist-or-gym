@@ -342,6 +342,15 @@ class CoffeePouringEnv(gym.Env):
         radius: float,
         polygon: np.ndarray,
     ) -> bool:
+        # Most link/vessel pairs are far apart. Reject their expanded bounding
+        # boxes before testing every polygon edge (especially costly on Colab).
+        if (
+            max(start[0], end[0]) + radius < np.min(polygon[:, 0])
+            or min(start[0], end[0]) - radius > np.max(polygon[:, 0])
+            or max(start[1], end[1]) + radius < np.min(polygon[:, 1])
+            or min(start[1], end[1]) - radius > np.max(polygon[:, 1])
+        ):
+            return False
         if cls._point_in_convex_polygon(start, polygon) or cls._point_in_convex_polygon(
             end, polygon
         ):
@@ -1656,15 +1665,18 @@ class CoffeePouringEnv(gym.Env):
                 self.joint_high,
             )
             for arm_name, arm_slice in (("cup", slice(0, 3)), ("pot", slice(3, 6))):
+                if np.array_equal(proposed_angles[arm_slice], self.joint_angles[arm_slice]):
+                    continue
                 proposed_angles[arm_slice] = self._constrain_arm_above_table(
                     arm_name,
                     self.joint_angles[arm_slice],
                     proposed_angles[arm_slice],
                 )
-            proposed_angles = self._constrain_cross_robot_motion(
-                self.joint_angles,
-                proposed_angles,
-            )
+            if not np.array_equal(proposed_angles, self.joint_angles):
+                proposed_angles = self._constrain_cross_robot_motion(
+                    self.joint_angles,
+                    proposed_angles,
+                )
             self.joint_angles = proposed_angles
             final_tools = self.tool_positions()
             final_spout = np.asarray(final_tools["pot_spout"])

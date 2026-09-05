@@ -8,8 +8,10 @@ RGB renderer for training, tests, and video export.
 
 import json
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from threading import RLock
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 
@@ -21,6 +23,7 @@ from kaist_rl_lab.envs.coffee_pouring_canvas import (
 )
 
 DEFAULT_HORIZON = CoffeePouringEnv.DEFAULT_HORIZON
+DEFAULT_STEPS_PER_UPDATE = 4
 MIN_TIME_SPEED = 0.25
 MAX_TIME_SPEED = 2.0
 
@@ -68,6 +71,8 @@ class InteractiveSession:
         *,
         speed: float = 1.0,
         horizon: int | None = None,
+        steps_per_update: int = DEFAULT_STEPS_PER_UPDATE,
+        start_paused: bool = False,
     ) -> None:
         self.lock = RLock()
         self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon)
@@ -76,7 +81,16 @@ class InteractiveSession:
         self.motors = np.zeros(6, dtype=np.float32)
         self.trajectory: list[dict[str, Any]] = []
         self.running = True
-        self.paused = False
+        self.paused = bool(start_paused)
+        if (
+            isinstance(steps_per_update, bool)
+            or not isinstance(steps_per_update, (int, np.integer))
+            or steps_per_update not in range(1, 9)
+        ):
+            raise ValueError("steps_per_update must be an integer between 1 and 8")
+        self.steps_per_update = int(steps_per_update)
+        self.episode_id = str(uuid4())
+        self.saved_demonstration: Path | None = None
         self.manual_finish = False
         self.message = "New episode"
         self.cumulative_reward = 0.0
@@ -113,6 +127,8 @@ class InteractiveSession:
         self.speed = _validated_speed(speed)
         self.motors = np.zeros(6, dtype=np.float32)
         self.trajectory = []
+        self.episode_id = str(uuid4())
+        self.saved_demonstration = None
         self.running = True
         self.paused = False
         self.manual_finish = False
@@ -141,9 +157,9 @@ class InteractiveSession:
 
     @property
     def timer_interval(self) -> float:
-        """Wall-clock seconds per fixed-duration environment step."""
+        """Wall-clock seconds per browser update, independent of physics substeps."""
 
-        return self.env.dt / self.speed
+        return self.env.dt * self.steps_per_update / self.speed
 
     def set_speed(self, speed: float) -> None:
         value = _validated_speed(speed)
@@ -218,6 +234,38 @@ class InteractiveSession:
             self.motors.fill(0.0)
         return True
 
+    def advance_batch(self) -> int:
+        """Record every Gym transition but send just one keyframe per batch."""
+
+        count = 0
+        for _ in range(self.steps_per_update):
+            if not self.advance():
+                break
+            count += 1
+        return count
+
+    def save_demonstration(self, participant: str = "") -> Path:
+        """Finish once and keep identical bytes available for download or retry."""
+        from kaist_rl_lab.apps.coffee_demonstrations import MAX_TRANSITIONS, encode_demonstration
+
+        if self.saved_demonstration is not None:
+            return self.saved_demonstration
+        if not self.trajectory:
+            raise ValueError("No trajectory yet. Resume time and make an attempt first.")
+        if len(self.trajectory) > MAX_TRANSITIONS:
+            raise ValueError("This attempt is too long to submit. Save shorter classroom attempts.")
+        if len(participant.strip()) > 64:
+            raise ValueError("Use a participant code of at most 64 characters.")
+        if self.running:
+            self.finish()
+        data = encode_demonstration(self, participant)
+        with NamedTemporaryFile(prefix=f"coffee_{self.episode_id}_", suffix=".npz", delete=False) as file:
+            file.write(data)
+            path = Path(file.name)
+        self.saved_demonstration = path
+        self.exported_files.append(path)
+        return path
+
 
 _sessions: dict[str, InteractiveSession] = {}
 _sessions_lock = RLock()
@@ -240,6 +288,7 @@ def _new_session(
         float(target_ml),
         speed=float(speed),
         horizon=_configured_horizon(cap_time, max_steps),
+        start_paused=True,
     )
 
 
@@ -373,7 +422,7 @@ def _view(session: InteractiveSession, message: str | None = None):
     )
 
 
-def build_app():
+def build_app(*, collector_url: str | None = None, lecture_code: str | None = None):
     """Build and return the Colab-compatible Gradio application."""
 
     try:
@@ -384,6 +433,8 @@ def build_app():
         ) from exc
 
     # The demo uses the original defaults: 700 mL, normal speed, unlimited practice.
+    if bool(collector_url) != bool(lecture_code):
+        raise ValueError("Provide both the collector URL and lecture code, or leave both empty.")
     config = (7001, 700.0, 1.0, False, DEFAULT_HORIZON)
 
     def timer_update(session: InteractiveSession, active: bool):
@@ -400,10 +451,12 @@ def build_app():
 
     def initialize(request: gr.Request):
         session = _create_session(request, *config)
-        return view(session, "Choose a joint direction below to begin.")
+        session.paused = True
+        return view(session, "Time is paused. Set your joint commands, then resume when ready.")
 
     def reset(request: gr.Request):
         session = _create_session(request, *config)
+        session.paused = False
         return (
             *view(session, "New episode. All joints held; time is running."),
             timer_update(session, True),
@@ -414,7 +467,7 @@ def build_app():
         with session.lock:
             if not session.running or session.paused:
                 return (*view(session), timer_update(session, False))
-            session.advance()
+            session.advance_batch()
             if not session.running:
                 message = "Success! Reset to pour again." if session.info["is_success"] else (
                     "Episode complete. Reset to try again."
@@ -462,6 +515,44 @@ def build_app():
     def cleanup(request: gr.Request):
         _cleanup_session(request)
 
+    def save_attempt(participant: str, request: gr.Request):
+        from kaist_rl_lab.apps.coffee_demonstrations import submit_demonstration
+
+        session = _get_session(request, *config)
+        with session.lock:
+            try:
+                path = session.save_demonstration(participant)
+            except ValueError as exc:
+                raise gr.Error(str(exc)) from exc
+            # Release the simulation lock before a network upload. A reset in
+            # another request cannot alter these frozen recording bytes.
+            data = path.read_bytes()
+            generation = session.generation
+        message = "Attempt saved. Download the trajectory below."
+        if collector_url:
+            try:
+                receipt = submit_demonstration(collector_url, lecture_code, data)
+                message = (
+                    f"Submitted {receipt['transitions']} transitions to your instructor. "
+                    f"Receipt: {receipt['episode_id']}"
+                )
+            except Exception:  # noqa: BLE001 - preserve the download for any collector failure.
+                message = (
+                    "Upload was not confirmed. Your recording is saved below. "
+                    "Retry Submit trajectory before resetting, or download a backup."
+                )
+        with session.lock:
+            if not path.exists():
+                with NamedTemporaryFile(prefix="coffee_backup_", suffix=".npz", delete=False) as file:
+                    file.write(data)
+                    path = Path(file.name)
+                session.exported_files.append(path)
+            updates = (
+                [*view(session, "Attempt saved. Reset to start again."), timer_update(session, False)]
+                if session.generation == generation else [gr.skip()] * 5
+            )
+        return *updates, str(path), message
+
     with gr.Blocks(title="KAIST OR Gym — Coffee Pouring") as demo:
         with gr.Column(min_width=0, elem_id="coffee-demo"):
             gr.Markdown(
@@ -472,7 +563,7 @@ def build_app():
                 with gr.Column(scale=1, min_width=180):
                     time_display = gr.Markdown()
                 pause_button = gr.Button(
-                    "Pause time", variant="primary", scale=0, min_width=140, size="md"
+                    "Resume time", variant="primary", scale=0, min_width=140, size="md"
                 )
                 reset_button = gr.Button("Reset + start", scale=0, min_width=140, size="md")
                 stop_button = gr.Button(
@@ -487,8 +578,19 @@ def build_app():
                 container=False,
             )
             status = gr.Markdown()
+            with gr.Accordion("Save your demonstration", open=False):
+                gr.Markdown(
+                    "Saving ends this attempt. Submit before resetting. "
+                    "A download is also available as a backup."
+                )
+                participant = gr.Textbox(label="Participant code (optional)", max_lines=1)
+                save_button = gr.Button("Submit trajectory" if collector_url else "Save trajectory")
+                submission_status = gr.Markdown()
+                trajectory_file = gr.File(label="Download trajectory (.npz)", interactive=False)
 
-        timer = gr.Timer(value=CoffeePouringEnv.DEFAULT_DT, active=True)
+        timer = gr.Timer(
+            value=CoffeePouringEnv.DEFAULT_DT * DEFAULT_STEPS_PER_UPDATE, active=False
+        )
         outputs = [frame, time_display, status, pause_button]
         demo.load(initialize, outputs=outputs, queue=False)
         reset_button.click(reset, outputs=[*outputs, timer], queue=False)
@@ -507,6 +609,11 @@ def build_app():
             queue=False,
             show_progress="hidden",
             trigger_mode="multiple",
+        )
+        save_button.click(
+            save_attempt, inputs=participant,
+            outputs=[*outputs, timer, trajectory_file, submission_status],
+            queue=False, show_progress="minimal",
         )
         demo.unload(cleanup)
     return demo

@@ -211,11 +211,15 @@ arm on the right. They stay outside the canvas so the robots and vessels remain 
 their motion. Each joint has counterclockwise, hold, and clockwise commands; directions latch so
 several joints can rotate together. On narrower screens, the two control groups stack vertically.
 
+Each new demo starts **paused** so students can plan and select joint commands before moving.
 The toolbar above the scene shows the current step and simulated time alongside three controls:
 **Pause time** (which changes to **Resume time** while paused), **Reset + start**, and
 **Stop all motors**. Pausing preserves joint commands; stopping all motors clears them without
 changing whether time is paused. Reset starts a fresh episode with all joints held. The demo uses
-a 700 mL target, normal playback speed, and unlimited practice time.
+a 700 mL target, normal playback speed, and unlimited practice time. Browser updates are batched
+every 0.5 seconds to accommodate Colab tunnel latency. Each batch still records four separate
+0.125-second Gym transitions; the 1/64-second physics integration and training dynamics are unchanged.
+The browser interpolates between keyframes and adapts to modest network jitter.
 
 The environment remains a fast teaching approximation rather than a rigid-body/fluid simulator:
 table, arm-to-arm, vessel, and handle contacts are enforced, while droplet breakup, splashing, and
@@ -224,7 +228,7 @@ surface tension are not modeled.
 [Open the interactive notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/coffee_pouring_colab.ipynb).
 
 For class, distribute `examples/coffee_pouring_colab.ipynb`. Its first cell installs
-`kaist-rl-lab[interactive]==0.1.18` and Gradio 6.26.0 from PyPI; the second code cell launches
+`kaist-rl-lab[interactive]==0.1.19` and Gradio 6.26.0 from PyPI; the second code cell launches
 each student's own demo inside Colab and prints a link for a larger view. Students can use
 **Runtime → Run all** with a standard Python 3 runtime; no GPU or Drive mount is needed.
 The launch cell stays running while the demo is in use. If Colab requests a restart after
@@ -233,6 +237,40 @@ installation, restart the session and run both cells again.
 Colab displays a temporary Gradio share link because the notebook runtime cannot expose its local
 server directly. Anyone with that temporary link can reach the app while the runtime is active, so
 do not use private data in the classroom demo.
+
+### Collect classroom demonstrations in your personal Google Drive
+
+Run `examples/coffee_trajectory_collector_colab.ipynb` in your own Google account. Its setup cell
+connects your Drive and creates `My Drive / KAIST Coffee Trajectories` (or your chosen folder), then
+prints a collector URL and a lecture code. Give those two values to students to enter in their
+`coffee_pouring_colab.ipynb` launch cell. Students run independent demos in their own personal
+accounts; they do not need access to your Drive folder or your Google credentials.
+
+Students open **Save your demonstration**, optionally enter a participant code, and press
+**Submit trajectory** before resetting. Submission ends the attempt and shows a receipt only after
+the collector has saved it. A downloadable `.npz` backup remains available on upload failure;
+retrying the same recording does not create duplicate files. With no collector configured,
+**Save trajectory** provides a download only. New episodes are isolated by UUID.
+
+The instructor notebook includes a live submission monitor and a behavior-cloning data loader.
+The collector exposes only an upload endpoint; directory listings and saved Drive files are not
+Gradio outputs. Keep the instructor runtime connected during class. Disconnecting it ends collection
+but leaves the saved recordings in Drive.
+
+Each `.npz` contains `observations` (N × 16), `actions` (N × 6), `rewards`, `next_observations`,
+`terminated`, `truncated`, and JSON `metadata`. Load with `allow_pickle=False`. Metadata records
+the episode/participant codes, environment and package versions, timing, ordered observation/joint
+names, target, fill, spill, and success. Early submissions mark the final transition truncated.
+The collector validates array shapes, finite values, action bounds, timing, and consecutive
+observations before accepting an attempt.
+
+```python
+from kaist_rl_lab.apps.coffee_demonstrations import load_behavior_cloning_data
+
+data = load_behavior_cloning_data("/content/drive/MyDrive/KAIST Coffee Trajectories")
+observations, actions = data["observations"], data["actions"]
+episode_ids = data["episode_ids"]  # Split whole episodes into training/validation sets.
+```
 
 ---
 

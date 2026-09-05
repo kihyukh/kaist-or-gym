@@ -278,6 +278,8 @@ let segmentStart = performance.now();
 let segmentDuration = 0;
 let lastGeneration = -1;
 let lastRevision = -1;
+let lastStepArrival = null;
+let observedInterval = 0;
 let canvasRef = null;
 let resizeObserver = null;
 let animationHandle = 0;
@@ -523,6 +525,19 @@ function ingestSnapshot() {
   }
 
   const now = performance.now();
+  // Match interpolation to the observed update cadence so modest tunnel
+  // jitter does not leave a frozen gap between otherwise valid keyframes.
+  if (isNewRun || next.paused || (targetState && targetState.paused)) {
+    lastStepArrival = null;
+    observedInterval = next.intervalMs;
+  }
+  if (!targetState || next.step !== targetState.step) {
+    if (lastStepArrival !== null) {
+      const arrivalInterval = clamp(now - lastStepArrival, next.intervalMs / 2, next.intervalMs * 2);
+      observedInterval = 0.7 * observedInterval + 0.3 * arrivalInterval;
+    }
+    lastStepArrival = now;
+  }
   if (isNewRun || !targetState) {
     fromState = next;
     targetState = next;
@@ -565,7 +580,7 @@ function ingestSnapshot() {
       const remaining = sameDecision && speedChanged && !wasPaused ? 1 - amount : 1;
       segmentDuration = prefersReducedMotion
         ? 0
-        : Math.max(0, next.intervalMs * remaining);
+        : Math.max(next.intervalMs, observedInterval) * remaining;
     }
   }
   lastGeneration = next.generation;

@@ -106,8 +106,8 @@ def test_wall_clock_speed_changes_timer_interval_not_environment_dynamics():
     assert slow.advance() and fast.advance()
     np.testing.assert_array_equal(slow.observation, fast.observation)
     assert slow.cumulative_reward == fast.cumulative_reward
-    assert slow.timer_interval == pytest.approx(0.25)
-    assert fast.timer_interval == pytest.approx(0.0625)
+    assert slow.timer_interval == pytest.approx(1.0)
+    assert fast.timer_interval == pytest.approx(0.25)
     assert slow.env.FULL_SCALE_QUARTER_TURN_SECONDS / slow.speed == pytest.approx(20.0)
     assert fast.env.FULL_SCALE_QUARTER_TURN_SECONDS / fast.speed == pytest.approx(5.0)
     slow.close()
@@ -211,7 +211,9 @@ def test_gradio_app_builds_when_interactive_extra_is_installed():
         for component in app.config["components"]
         if component["type"] == "button"
     }
-    assert standalone_motor_buttons == {"Pause time", "Reset + start", "Stop all motors"}
+    assert standalone_motor_buttons == {
+        "Resume time", "Reset + start", "Stop all motors", "Save trajectory"
+    }
     canvas_click_dependencies = [
         dependency
         for dependency in app.config["dependencies"]
@@ -229,17 +231,21 @@ def test_demo_toolbar_keeps_motor_commands_clock_and_pause_label_in_sync():
     handlers = {handler.fn.__name__: handler.fn for handler in app.fns.values()}
     request = gr.Request(session_hash="coffee-toolbar-test")
     try:
-        handlers["initialize"](request)
+        initial = handlers["initialize"](request)
+        assert json.loads(initial[0])["playback"]["paused"]
+        assert initial[3].value == "Resume time"
         command = gr.EventData(None, {"joint_index": 0, "direction": 1})
         handlers["canvas_joint_control"](request, command)
+        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 0
+        handlers["toggle_pause"](request)
         stepped = handlers["tick"](request)
-        assert json.loads(stepped[0])["state"]["step"] == 1
+        assert json.loads(stepped[0])["state"]["step"] == 4
 
         paused = handlers["toggle_pause"](request)
         assert paused[3].value == "Resume time"
         assert not paused[4].active
         frozen = json.loads(handlers["tick"](request)[0])
-        assert frozen["state"]["step"] == 1
+        assert frozen["state"]["step"] == 4
         assert frozen["playback"]["motors"][0] == 1
 
         stopped = handlers["stop_all"](request)
@@ -251,7 +257,7 @@ def test_demo_toolbar_keeps_motor_commands_clock_and_pause_label_in_sync():
         resumed = handlers["toggle_pause"](request)
         assert resumed[3].value == "Pause time"
         assert resumed[4].active
-        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 2
+        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 8
 
         handlers["canvas_joint_control"](request, command)
         handlers["toggle_pause"](request)
