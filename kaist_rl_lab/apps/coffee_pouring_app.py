@@ -8,7 +8,6 @@ RGB renderer for training, tests, and video export.
 
 import json
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from threading import RLock
 from typing import Any
 
@@ -40,6 +39,23 @@ def _configured_horizon(cap_time: bool, max_steps: float) -> int | None:
     if not np.isfinite(value) or value < 1:
         raise ValueError("maximum steps must be a positive number")
     return round(value)
+
+
+def _validated_motor_command(index: Any, direction: Any) -> tuple[int, int]:
+    """Validate the untrusted payload emitted by the HTML joint controls."""
+
+    integer_types = (int, np.integer)
+    if isinstance(index, bool) or not isinstance(index, integer_types):
+        raise TypeError("joint index must be an integer")
+    if isinstance(direction, bool) or not isinstance(direction, integer_types):
+        raise TypeError("motor direction must be an integer")
+    index_value = int(index)
+    direction_value = int(direction)
+    if index_value not in range(6):
+        raise ValueError("joint index must be between 0 and 5")
+    if direction_value not in {-1, 0, 1}:
+        raise ValueError("motor direction must be -1, 0, or 1")
+    return index_value, direction_value
 
 
 class InteractiveSession:
@@ -144,15 +160,14 @@ class InteractiveSession:
         return self.paused
 
     def set_motor(self, index: int, direction: int) -> float:
-        """Latch or toggle one normalized motor command."""
+        """Latch one normalized motor command until explicitly changed."""
 
         value = float(direction)
-        new_value = 0.0 if self.motors[index] == value else value
-        if new_value != self.motors[index]:
-            self.motors[index] = new_value
+        if value != self.motors[index]:
+            self.motors[index] = value
             self.revision += 1
             self.event_kind = "control"
-        return new_value
+        return value
 
     def stop_all_motors(self) -> None:
         if np.any(self.motors):
@@ -171,6 +186,7 @@ class InteractiveSession:
             "speed": float(self.speed),
             "paused": bool(self.paused),
             "running": bool(self.running),
+            "motors": self.motors.astype(float).tolist(),
             "decision_interval_wall_ms": float(1000.0 * self.timer_interval),
         }
         return snapshot
@@ -342,9 +358,8 @@ def _time_display(session: InteractiveSession) -> str:
     else:
         clock = "running"
     return (
-        f"## Step {step_label}\n"
-        f"{session.info['elapsed_time']:.3f} s simulated · **{clock}** · "
-        f"{session.speed:g}× speed"
+        f"**{clock.capitalize()}** · Step {step_label}  \n"
+        f"{session.info['elapsed_time']:.2f} s simulated"
     )
 
 
@@ -354,9 +369,7 @@ def _view(session: InteractiveSession, message: str | None = None):
     return (
         json.dumps(session.animation_snapshot(), separators=(",", ":"), allow_nan=False),
         _time_display(session),
-        _status(session, session.message),
-        _motor_text(session.motors),
-        _metrics(session),
+        session.message,
     )
 
 
@@ -370,327 +383,130 @@ def build_app():
             "The interactive app needs Gradio. Install with: pip install 'kaist-rl-lab[interactive]'"
         ) from exc
 
+    # The demo uses the original defaults: 700 mL, normal speed, unlimited practice.
+    config = (7001, 700.0, 1.0, False, DEFAULT_HORIZON)
+
     def timer_update(session: InteractiveSession, active: bool):
         return gr.Timer(value=session.timer_interval, active=active)
 
-    def initialize(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _create_session(request, seed, target_ml, speed, cap_time, max_steps)
-        return _view(session, "New episode")
-
-    def reset(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _create_session(request, seed, target_ml, speed, cap_time, max_steps)
+    def view(session: InteractiveSession, message: str | None = None):
         return (
-            *_view(session, "Episode reset; the timer has started"),
+            *_view(session, message),
+            gr.Button(
+                "Resume time" if session.paused else "Pause time",
+                interactive=session.running,
+            ),
+        )
+
+    def initialize(request: gr.Request):
+        session = _create_session(request, *config)
+        return view(session, "Choose a joint direction below to begin.")
+
+    def reset(request: gr.Request):
+        session = _create_session(request, *config)
+        return (
+            *view(session, "New episode. All joints held; time is running."),
             timer_update(session, True),
         )
 
-    def tick(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _get_session(request, seed, target_ml, speed, cap_time, max_steps)
+    def tick(request: gr.Request):
+        session = _get_session(request, *config)
         with session.lock:
             if not session.running or session.paused:
-                return (*_view(session), timer_update(session, False))
+                return (*view(session), timer_update(session, False))
             session.advance()
             if not session.running:
-                message = "Success" if session.info["is_success"] else "Episode complete"
-                return (*_view(session, message), timer_update(session, False))
-            # Do not reconfigure the timer on an ordinary tick: an older tick
-            # response must never undo a newer pause or speed change.
-            return (*_view(session), gr.skip())
+                message = "Success! Reset to pour again." if session.info["is_success"] else (
+                    "Episode complete. Reset to try again."
+                )
+                return (*view(session, message), timer_update(session, False))
+            # Ordinary ticks must not undo a more recent pause or button update.
+            return (*_view(session), gr.skip(), gr.skip())
 
-    def set_motor(
-        index: int,
-        direction: int,
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _get_session(request, seed, target_ml, speed, cap_time, max_steps)
-        with session.lock:
-            new_value = session.set_motor(index, direction)
-            label = CoffeePouringEnv.JOINT_NAMES[index].replace("_", " ")
-            words = {-1: "clockwise", 0: "stopped", 1: "counterclockwise"}
-            return _view(session, f"{label.capitalize()} {words[int(new_value)]}")
-
-    def stop_all(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _get_session(request, seed, target_ml, speed, cap_time, max_steps)
+    def stop_all(request: gr.Request):
+        session = _get_session(request, *config)
         with session.lock:
             session.stop_all_motors()
-            return _view(session, "All motors stopped")
+            clock = "Time remains paused." if session.paused else "Time keeps running."
+            if not session.running:
+                clock = "Reset to start again."
+            return view(session, f"All motors stopped. {clock}")
 
-    def toggle_pause(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _get_session(request, seed, target_ml, speed, cap_time, max_steps)
+    def toggle_pause(request: gr.Request):
+        session = _get_session(request, *config)
         with session.lock:
             if not session.running:
-                message = "Episode is already complete; reset to start again"
+                message = "Episode complete. Reset to start again."
             elif session.toggle_pause():
-                message = "Time paused; latched motor commands are preserved"
+                message = "Time paused. Joint commands are preserved for resume."
             else:
-                message = "Time resumed"
+                message = "Time resumed. Selected joint commands are active."
             timer_active = session.running and not session.paused
-            return (*_view(session, message), timer_update(session, timer_active))
+            return (*view(session, message), timer_update(session, timer_active))
 
-    def change_speed(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _get_session(request, seed, target_ml, speed, cap_time, max_steps)
+    def canvas_joint_control(request: gr.Request, event: gr.EventData):
+        try:
+            index, direction = _validated_motor_command(event.joint_index, event.direction)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise gr.Error("Invalid joint control command") from exc
+        session = _get_session(request, *config)
         with session.lock:
-            session.set_speed(speed)
-            timer_active = session.running and not session.paused
-            return (
-                *_view(session, f"Time speed set to {session.speed:g}×"),
-                timer_update(session, timer_active),
-            )
-
-    def finish(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _get_session(request, seed, target_ml, speed, cap_time, max_steps)
-        with session.lock:
-            session.finish()
-            return (
-                *_view(session, "Demonstration finished"),
-                timer_update(session, False),
-            )
-
-    def export_demonstration(
-        seed: float,
-        target_ml: float,
-        speed: float,
-        cap_time: bool,
-        max_steps: float,
-        request: gr.Request,
-    ):
-        session = _get_session(request, seed, target_ml, speed, cap_time, max_steps)
-        with session.lock:
-            if not session.trajectory:
-                return None, _status(session, "No transitions recorded yet")
-            with NamedTemporaryFile(
-                prefix="coffee_demonstration_", suffix=".npz", delete=False
-            ) as handle:
-                path = Path(handle.name)
-            np.savez_compressed(
-                path,
-                observations=np.stack([row["observation"] for row in session.trajectory]),
-                actions=np.stack([row["action"] for row in session.trajectory]),
-                rewards=np.asarray([row["reward"] for row in session.trajectory]),
-                next_observations=np.stack([row["next_observation"] for row in session.trajectory]),
-                terminated=np.asarray([row["terminated"] for row in session.trajectory]),
-                truncated=np.asarray([row["truncated"] for row in session.trajectory]),
-                seed=np.asarray(session.seed),
-                target_fill=np.asarray(session.env.target_fill),
-                manual_finish=np.asarray(session.manual_finish),
-                dt=np.asarray(session.env.dt),
-                horizon=np.asarray(-1 if session.env.horizon is None else session.env.horizon),
-                max_joint_speeds=session.env.max_joint_speeds.copy(),
-                full_scale_quarter_turn_seconds=np.asarray(
-                    session.env.FULL_SCALE_QUARTER_TURN_SECONDS
-                ),
-                cup_capacity_l=np.asarray(session.env.CUP_CAPACITY),
-                pot_capacity_l=np.asarray(session.env.POT_CAPACITY),
-                initial_pot_volume_l=np.asarray(session.env.INITIAL_POT_VOLUME),
-                physics_model=np.asarray("torricelli_ballistic_v3"),
-                joint_names=np.asarray(CoffeePouringEnv.JOINT_NAMES),
-                observation_names=np.asarray(CoffeePouringEnv.OBSERVATION_NAMES),
-            )
-            session.exported_files.append(path)
-            session.message = "Demonstration file ready"
-            return str(path), _status(session, session.message)
-
-    def motor_handler(index: int, direction: int):
-        def handler(
-            seed_value: float,
-            target_value: float,
-            speed_value: float,
-            cap_value: bool,
-            steps_value: float,
-            request: gr.Request,
-        ):
-            return set_motor(
-                index,
-                direction,
-                seed_value,
-                target_value,
-                speed_value,
-                cap_value,
-                steps_value,
-                request,
-            )
-
-        return handler
+            if not session.running:
+                return view(session, "Episode complete. Reset to start again.")
+            new_value = session.set_motor(index, direction)
+            label = CoffeePouringEnv.JOINT_NAMES[index].replace("_", " ").capitalize()
+            words = {-1: "clockwise", 0: "held", 1: "counterclockwise"}
+            suffix = " Time is paused." if session.paused else ""
+            return view(session, f"{label} {words[int(new_value)]}.{suffix}")
 
     def cleanup(request: gr.Request):
         _cleanup_session(request)
 
     with gr.Blocks(title="KAIST OR Gym — Coffee Pouring") as demo:
-        gr.Markdown(
-            "# Fixed-link coffee pouring\n"
-            "Each click latches one joint **counterclockwise**, **stopped**, or "
-            "**clockwise**. Several joints can run together while the timer keeps stepping "
-            "the Gymnasium environment. At full command, a 90° joint rotation takes about "
-            "ten simulated seconds. Motor commands are held between discrete decisions; "
-            "the scene animates smoothly between them. The rigid bodies stop at table or "
-            "robot contact. Coffee follows a gravity-driven "
-            "trajectory, and its flow rate changes with pot tilt and the amount remaining."
-        )
-        with gr.Row():
-            with gr.Column(scale=3):
-                time_display = gr.Markdown()
-                frame = gr.HTML(
-                    value="{}",
-                    html_template=CANVAS_HTML,
-                    css_template=CANVAS_CSS,
-                    js_on_load=CANVAS_JAVASCRIPT,
-                    apply_default_css=False,
-                    container=False,
+        with gr.Column(min_width=0, elem_id="coffee-demo"):
+            gr.Markdown(
+                "Guide the pot toward the cup and tilt to pour. "
+                "Use the joint controls below the scene; several joints can move together."
+            )
+            with gr.Row(equal_height=True, elem_id="coffee-toolbar"):
+                with gr.Column(scale=1, min_width=180):
+                    time_display = gr.Markdown()
+                pause_button = gr.Button(
+                    "Pause time", variant="primary", scale=0, min_width=140, size="md"
                 )
-                status = gr.Markdown()
-                motor_state = gr.Textbox(
-                    label="Latched joint commands",
-                    interactive=False,
-                    elem_classes=["motor-state"],
+                reset_button = gr.Button("Reset + start", scale=0, min_width=140, size="md")
+                stop_button = gr.Button(
+                    "Stop all motors", variant="stop", scale=0, min_width=150, size="md"
                 )
-            with gr.Column(scale=2):
-                with gr.Row():
-                    seed = gr.Number(value=7001, precision=0, label="Seed")
-                    target = gr.Slider(500, 900, value=700, step=10, label="Target (mL)")
-                with gr.Row():
-                    speed = gr.Radio(
-                        choices=[("0.25×", 0.25), ("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0)],
-                        value=1.0,
-                        label="Time speed",
-                    )
-                    pause_button = gr.Button("Pause / resume time")
-                with gr.Row():
-                    cap_time = gr.Checkbox(
-                        value=False,
-                        label="Cap episode on reset",
-                    )
-                    max_steps = gr.Number(
-                        value=DEFAULT_HORIZON,
-                        precision=0,
-                        label="Maximum steps if capped",
-                    )
-                gr.Markdown("Episode-length settings apply when **Reset + start** is pressed.")
-                with gr.Row():
-                    reset_button = gr.Button("Reset + start", variant="primary")
-                    stop_button = gr.Button("Stop all motors")
-                    finish_button = gr.Button("Finish")
-
-                joint_buttons: list[tuple[Any, Any, Any]] = []
-                for joint_name in CoffeePouringEnv.JOINT_NAMES:
-                    with gr.Row(equal_height=True):
-                        gr.Markdown(
-                            joint_name.replace("_", " ").title(),
-                            elem_classes=["joint-name"],
-                        )
-                        ccw = gr.Button("↺", min_width=50)
-                        halt = gr.Button("■", min_width=50)
-                        cw = gr.Button("↻", min_width=50)
-                        joint_buttons.append((ccw, halt, cw))
-
-                metrics = gr.JSON(label="Episode metrics")
-                export_button = gr.Button("Export human demonstration (.npz)")
-                export_file = gr.File(label="Recorded demonstration", interactive=False)
+            frame = gr.HTML(
+                value="{}",
+                html_template=CANVAS_HTML,
+                css_template=CANVAS_CSS,
+                js_on_load=CANVAS_JAVASCRIPT,
+                apply_default_css=False,
+                container=False,
+            )
+            status = gr.Markdown()
 
         timer = gr.Timer(value=CoffeePouringEnv.DEFAULT_DT, active=True)
-        outputs = [frame, time_display, status, motor_state, metrics]
-        config_inputs = [seed, target, speed, cap_time, max_steps]
-        demo.load(initialize, inputs=config_inputs, outputs=outputs, queue=False)
-        reset_button.click(
-            reset,
-            inputs=config_inputs,
-            outputs=[*outputs, timer],
-            queue=False,
-        )
-        pause_button.click(
-            toggle_pause,
-            inputs=config_inputs,
-            outputs=[*outputs, timer],
-            queue=False,
-        )
-        speed.change(
-            change_speed,
-            inputs=config_inputs,
-            outputs=[*outputs, timer],
-            queue=False,
-        )
-        stop_button.click(stop_all, inputs=config_inputs, outputs=outputs, queue=False)
-        finish_button.click(
-            finish,
-            inputs=config_inputs,
-            outputs=[*outputs, timer],
-            queue=False,
-        )
+        outputs = [frame, time_display, status, pause_button]
+        demo.load(initialize, outputs=outputs, queue=False)
+        reset_button.click(reset, outputs=[*outputs, timer], queue=False)
+        pause_button.click(toggle_pause, outputs=[*outputs, timer], queue=False)
+        stop_button.click(stop_all, outputs=outputs, queue=False)
         timer.tick(
             tick,
-            inputs=config_inputs,
             outputs=[*outputs, timer],
             queue=False,
+            show_progress="hidden",
             trigger_mode="once",
         )
-
-        for index, (ccw, halt, cw) in enumerate(joint_buttons):
-            for button, direction in ((ccw, 1), (halt, 0), (cw, -1)):
-                button.click(
-                    motor_handler(index, direction),
-                    inputs=config_inputs,
-                    outputs=outputs,
-                    queue=False,
-                )
-
-        export_button.click(
-            export_demonstration,
-            inputs=config_inputs,
-            outputs=[export_file, status],
+        frame.click(
+            canvas_joint_control,
+            outputs=outputs,
             queue=False,
+            show_progress="hidden",
+            trigger_mode="multiple",
         )
         demo.unload(cleanup)
     return demo

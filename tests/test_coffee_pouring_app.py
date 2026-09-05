@@ -9,6 +9,7 @@ from kaist_rl_lab.apps.coffee_pouring_app import (
     _metrics,
     _motor_text,
     _time_display,
+    _validated_motor_command,
     build_app,
 )
 
@@ -25,6 +26,33 @@ def test_latched_vector_moves_multiple_joints_in_one_environment_step():
     assert "cup shoulder ↺" in _motor_text(session.motors)
     assert "pot shoulder ↻" in _motor_text(session.motors)
     session.close()
+
+
+def test_each_joint_button_sets_an_explicit_latched_command():
+    session = InteractiveSession(seed=7001, target_ml=700)
+    assert session.set_motor(2, 1) == 1
+    assert session.set_motor(2, 1) == 1
+    assert session.motors[2] == 1
+    assert session.set_motor(2, -1) == -1
+    assert session.motors[2] == -1
+    assert session.set_motor(2, 0) == 0
+    assert session.motors[2] == 0
+    session.close()
+
+
+@pytest.mark.parametrize("index", range(6))
+@pytest.mark.parametrize("direction", [-1, 0, 1])
+def test_canvas_motor_command_validation_accepts_all_button_commands(index, direction):
+    assert _validated_motor_command(index, direction) == (index, direction)
+
+
+@pytest.mark.parametrize(
+    ("index", "direction"),
+    [(-1, 0), (6, 0), (0, -2), (0, 2), (True, 0), (0, False), ("0", 0)],
+)
+def test_canvas_motor_command_validation_rejects_malformed_payloads(index, direction):
+    with pytest.raises((TypeError, ValueError)):
+        _validated_motor_command(index, direction)
 
 
 def test_manual_finish_stops_motors_and_marks_last_transition_truncated():
@@ -109,6 +137,7 @@ def test_animation_snapshots_do_not_create_extra_decisions_or_demonstration_rows
     session = InteractiveSession(seed=7001, target_ml=700)
     initial = session.animation_snapshot()
     assert initial["schema_version"] == 4
+    assert initial["playback"]["motors"] == [0.0] * 6
     assert "stream_path_m" in initial["state"]["liquid"]
     assert "spill_path_m" in initial["state"]["liquid"]
     assert "direct_spill_path_m" in initial["state"]["liquid"]
@@ -125,6 +154,7 @@ def test_animation_snapshots_do_not_create_extra_decisions_or_demonstration_rows
     stepped = session.animation_snapshot()
     assert stepped["state"]["step"] == 1
     assert stepped["playback"]["kind"] == "step"
+    assert stepped["playback"]["motors"] == [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     assert len(session.trajectory) == 1
     for _ in range(100):
         session.animation_snapshot()
@@ -159,7 +189,6 @@ def test_gradio_app_builds_when_interactive_extra_is_installed():
     pytest.importorskip("gradio")
     app = build_app()
     assert app.config["title"] == "KAIST OR Gym — Coffee Pouring"
-    assert len(app.config["dependencies"]) >= 20
     canvas = next(
         component
         for component in app.config["components"]
@@ -171,5 +200,69 @@ def test_gradio_app_builds_when_interactive_extra_is_installed():
     assert "raw.schema_version !== 4" in canvas["props"]["js_on_load"]
     assert "direct_spill_path_m" in canvas["props"]["js_on_load"]
     assert "cup_runoff_path_m" in canvas["props"]["js_on_load"]
+    assert canvas["props"]["html_template"].count("coffee-joint-control ") == 6
+    assert canvas["props"]["html_template"].count('class="coffee-joint-button"') == 18
+    assert canvas["props"]["html_template"].count('data-joint-index="') == 6
+    assert 'trigger("click", {joint_index: jointIndex, direction})' in canvas["props"]["js_on_load"]
+    assert "playback.motors" in canvas["props"]["js_on_load"]
     assert canvas["props"].get("min_height") is None
+    standalone_motor_buttons = {
+        component["props"].get("value")
+        for component in app.config["components"]
+        if component["type"] == "button"
+    }
+    assert standalone_motor_buttons == {"Pause time", "Reset + start", "Stop all motors"}
+    canvas_click_dependencies = [
+        dependency
+        for dependency in app.config["dependencies"]
+        if (canvas["id"], "click") in dependency["targets"]
+    ]
+    assert len(canvas_click_dependencies) == 1
+    assert canvas_click_dependencies[0]["collects_event_data"]
+    assert canvas_click_dependencies[0]["trigger_mode"] == "multiple"
     app.close()
+
+
+def test_demo_toolbar_keeps_motor_commands_clock_and_pause_label_in_sync():
+    gr = pytest.importorskip("gradio")
+    app = build_app()
+    handlers = {handler.fn.__name__: handler.fn for handler in app.fns.values()}
+    request = gr.Request(session_hash="coffee-toolbar-test")
+    try:
+        handlers["initialize"](request)
+        command = gr.EventData(None, {"joint_index": 0, "direction": 1})
+        handlers["canvas_joint_control"](request, command)
+        stepped = handlers["tick"](request)
+        assert json.loads(stepped[0])["state"]["step"] == 1
+
+        paused = handlers["toggle_pause"](request)
+        assert paused[3].value == "Resume time"
+        assert not paused[4].active
+        frozen = json.loads(handlers["tick"](request)[0])
+        assert frozen["state"]["step"] == 1
+        assert frozen["playback"]["motors"][0] == 1
+
+        stopped = handlers["stop_all"](request)
+        stopped_snapshot = json.loads(stopped[0])
+        assert stopped_snapshot["playback"]["motors"] == [0.0] * 6
+        assert stopped_snapshot["playback"]["paused"]
+        assert stopped[3].value == "Resume time"
+
+        resumed = handlers["toggle_pause"](request)
+        assert resumed[3].value == "Pause time"
+        assert resumed[4].active
+        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 2
+
+        handlers["canvas_joint_control"](request, command)
+        handlers["toggle_pause"](request)
+        reset = handlers["reset"](request)
+        fresh = json.loads(reset[0])
+        assert fresh["state"]["step"] == 0
+        assert fresh["playback"]["motors"] == [0.0] * 6
+        assert not fresh["playback"]["paused"]
+        assert fresh["playback"]["running"]
+        assert reset[3].value == "Pause time"
+        assert reset[4].active
+    finally:
+        handlers["cleanup"](request)
+        app.close()

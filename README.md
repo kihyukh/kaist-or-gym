@@ -206,19 +206,16 @@ pip install -e ".[interactive]"
 python -m kaist_rl_lab.apps.coffee_pouring_app
 ```
 
-In the app, clockwise/counterclockwise commands latch. This allows several joints to rotate at the
-same time while a timer advances the environment. The timeline above the scene shows the current
-step and simulated time. **Pause / resume time** freezes the environment without clearing those
-commands, while **Time speed** changes only the wall-clock playback rate—not the Gymnasium dynamics.
+The joint controls sit in a fixed dock below the scene, with the cup arm on the left and the pot
+arm on the right. They stay outside the canvas so the robots and vessels remain visible throughout
+their motion. Each joint has counterclockwise, hold, and clockwise commands; directions latch so
+several joints can rotate together. On narrower screens, the two control groups stack vertically.
 
-Human practice is unlimited by default. Turn on **Cap episode on reset** to use a chosen maximum
-number of steps. **Finish** stops the timer and marks the final recorded transition as manually
-truncated. The app exports the resulting human demonstration, including `dt`, joint-speed metadata,
-and the effective horizon, as an `.npz` file suitable for behavior-cloning experiments; an exported
-horizon of `-1` denotes unlimited practice.
-
-The current exports identify the dynamics as `torricelli_ballistic_v3`. Re-record demonstrations
-made with earlier coffee-flow rules before comparing behavior cloning and reward fine-tuning.
+The toolbar above the scene shows the current step and simulated time alongside three controls:
+**Pause time** (which changes to **Resume time** while paused), **Reset + start**, and
+**Stop all motors**. Pausing preserves joint commands; stopping all motors clears them without
+changing whether time is paused. Reset starts a fresh episode with all joints held. The demo uses
+a 700 mL target, normal playback speed, and unlimited practice time.
 
 The environment remains a fast teaching approximation rather than a rigid-body/fluid simulator:
 table, arm-to-arm, vessel, and handle contacts are enforced, while droplet breakup, splashing, and
@@ -229,3 +226,96 @@ surface tension are not modeled.
 Colab displays a temporary Gradio share link because the notebook runtime cannot expose its local
 server directly. Anyone with that temporary link can reach the app while the runtime is active, so
 do not use private data in the classroom demo.
+
+---
+
+# Laundry Folding Environment
+
+## Task
+
+`LaundryFoldingEnv` is a bimanual continuous-control environment in which two spatial robot arms
+must first straighten a randomly posed, wrinkled towel and then fold its far half over its near
+half. The task is deliberately staged: folding reward is unlocked only after both grippers hold
+materially separated regions and keep the towel straight under bimanual tension for several
+decisions. Letting the towel settle, pinching two nearby points, or crumpling it into a small area
+does not satisfy the straightening milestone.
+
+The default towel contains 117 simulated vertices and 192 triangles. Its state is much larger than
+the coffee-pouring state: the default 952-dimensional observation contains robot configuration plus
+the position, velocity, and left/right grasp membership of every cloth vertex. Material coordinates
+remain fixed, allowing the environment to compare corresponding points across the intended fold.
+
+## Robot and actions
+
+Each arm is a mirrored fixed-length spatial 3R chain with a shoulder-yaw joint, elbow-pitch joint,
+and wrist-pitch joint. Two rigid fingers move symmetrically at each wrist. The eight normalized
+velocity commands are:
+
+1. left shoulder, elbow, wrist, and gripper
+2. right shoulder, elbow, wrist, and gripper
+
+Positive gripper commands open the fingers; negative commands close them. A pinch is created only
+when a cloth triangle is physically inside the closing finger prism. The environment attaches the
+small triangular patch rather than magnetically teleporting one remote vertex. Opening the fingers
+releases it.
+
+## Cloth physics
+
+The lightweight NumPy solver follows the position-based dynamics family described in the
+[original PBD paper](https://matthias-research.github.io/pages/publications/posBasedDyn.pdf) and the
+[XPBD formulation](https://mmacklin.com/xpbd.pdf). It uses a checkerboard triangular mesh,
+compliant structural, shear, and bending regularization, gravity, air damping, table friction,
+capsule contacts with the robot, and two-sided vertex/triangle self-contact. Each 0.10-second Gym
+decision is integrated using fixed steps no larger than 1/200 second. Robot motion is interpolated
+through those physics steps, while the agent still chooses only one action per decision epoch.
+
+This is a coarse educational shell model, not a fiber-level textile simulator. It models the
+large-scale behavior needed to demonstrate straightening, grasping, lifting, self-contact, and
+folding; it does not model individual yarns, detailed multilayer friction, air flow, or edge-edge
+contact. Increase `mesh_rows` and `mesh_cols` for offline experiments when more resolution is worth
+the additional computation; `mesh_rows` must remain odd so the target crease is a material row.
+
+## Gymnasium usage
+
+```python
+import gymnasium as gym
+import kaist_rl_lab
+
+env = gym.make("kaist-or/LaundryFoldingEnv-v0", render_mode="rgb_array")
+observation, info = env.reset(seed=17)
+
+for _ in range(500):
+    action = env.action_space.sample()
+    observation, reward, terminated, truncated, info = env.step(action)
+    frame = env.render()
+    if terminated or truncated:
+        break
+
+env.close()
+```
+
+`info` reports straightness, planarity, projected-coverage proxy, material strain, bimanual tension,
+fold-pair alignment, layer separation, support, off-table fraction, cloth speed, grasped patches,
+stage, success, and termination reason. `render_snapshot()` exposes the authoritative triangle mesh,
+arm and finger landmarks, grasps, camera, and metrics as a versioned JSON-safe scene.
+
+## Interactive app and Google Colab
+
+Install the optional interface and launch locally:
+
+```sh
+pip install -e ".[interactive]"
+python -m kaist_rl_lab.apps.laundry_folding_app
+```
+
+Joint and gripper commands latch, so one person can control several motors simultaneously with a
+mouse. The app includes perspective, top, front, and side cameras; a prominent simulated clock;
+pause/resume; wall-clock speed control; optional episode limits; and demonstration export for
+behavior cloning. The 3-D image is always generated from the environment's actual cloth mesh and
+robot geometry. The app advances physics only once per timer decision and never runs a second cloth
+simulation in the browser.
+
+[Open the laundry-folding notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/laundry_folding_colab.ipynb).
+
+The temporary Gradio share URL produced in Colab is reachable by anyone who has the link while the
+runtime is active. Do not use private demonstration data in a publicly shared classroom session.

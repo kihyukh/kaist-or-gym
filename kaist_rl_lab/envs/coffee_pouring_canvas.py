@@ -8,11 +8,102 @@ frame; it never interpolates arm endpoints.
 
 CANVAS_HTML = """
 <div class="coffee-stage">
-  <canvas class="coffee-canvas" role="img"
-    aria-label="Two fixed-link robot arms pouring coffee"></canvas>
+  <div class="coffee-canvas-wrap">
+    <canvas class="coffee-canvas" role="img"
+      aria-label="Two fixed-link robot arms pouring coffee"></canvas>
+  </div>
+  <div class="coffee-control-dock" role="group" aria-label="Robot joint controls">
+    <section class="coffee-arm-controls cup-joint" aria-label="Cup arm">
+      <h3 class="coffee-arm-label">Cup arm <span>Left robot</span></h3>
+      <div class="coffee-arm-joints">
+        <div class="coffee-joint-control cup-joint" data-joint-index="0">
+          <div class="coffee-joint-card">
+            <span class="coffee-joint-label">Shoulder</span>
+            <div class="coffee-joint-buttons" role="group" aria-label="Cup shoulder controls">
+              <button type="button" class="coffee-joint-button" data-direction="1"
+                aria-label="Rotate cup shoulder counter-clockwise" title="Rotate counter-clockwise">↺</button>
+              <button type="button" class="coffee-joint-button" data-direction="0"
+                aria-label="Hold cup shoulder" title="Hold this joint">■</button>
+              <button type="button" class="coffee-joint-button" data-direction="-1"
+                aria-label="Rotate cup shoulder clockwise" title="Rotate clockwise">↻</button>
+            </div>
+          </div>
+        </div>
+        <div class="coffee-joint-control cup-joint" data-joint-index="1">
+          <div class="coffee-joint-card">
+            <span class="coffee-joint-label">Elbow</span>
+            <div class="coffee-joint-buttons" role="group" aria-label="Cup elbow controls">
+              <button type="button" class="coffee-joint-button" data-direction="1"
+                aria-label="Rotate cup elbow counter-clockwise" title="Rotate counter-clockwise">↺</button>
+              <button type="button" class="coffee-joint-button" data-direction="0"
+                aria-label="Hold cup elbow" title="Hold this joint">■</button>
+              <button type="button" class="coffee-joint-button" data-direction="-1"
+                aria-label="Rotate cup elbow clockwise" title="Rotate clockwise">↻</button>
+            </div>
+          </div>
+        </div>
+        <div class="coffee-joint-control cup-joint" data-joint-index="2">
+          <div class="coffee-joint-card">
+            <span class="coffee-joint-label">Wrist</span>
+            <div class="coffee-joint-buttons" role="group" aria-label="Cup wrist controls">
+              <button type="button" class="coffee-joint-button" data-direction="1"
+                aria-label="Rotate cup wrist counter-clockwise" title="Rotate counter-clockwise">↺</button>
+              <button type="button" class="coffee-joint-button" data-direction="0"
+                aria-label="Hold cup wrist" title="Hold this joint">■</button>
+              <button type="button" class="coffee-joint-button" data-direction="-1"
+                aria-label="Rotate cup wrist clockwise" title="Rotate clockwise">↻</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="coffee-arm-controls pot-joint" aria-label="Pot arm">
+      <h3 class="coffee-arm-label">Pot arm <span>Right robot</span></h3>
+      <div class="coffee-arm-joints">
+        <div class="coffee-joint-control pot-joint" data-joint-index="3">
+          <div class="coffee-joint-card">
+            <span class="coffee-joint-label">Shoulder</span>
+            <div class="coffee-joint-buttons" role="group" aria-label="Coffee pot shoulder controls">
+              <button type="button" class="coffee-joint-button" data-direction="1"
+                aria-label="Rotate coffee pot shoulder counter-clockwise" title="Rotate counter-clockwise">↺</button>
+              <button type="button" class="coffee-joint-button" data-direction="0"
+                aria-label="Hold coffee pot shoulder" title="Hold this joint">■</button>
+              <button type="button" class="coffee-joint-button" data-direction="-1"
+                aria-label="Rotate coffee pot shoulder clockwise" title="Rotate clockwise">↻</button>
+            </div>
+          </div>
+        </div>
+        <div class="coffee-joint-control pot-joint" data-joint-index="4">
+          <div class="coffee-joint-card">
+            <span class="coffee-joint-label">Elbow</span>
+            <div class="coffee-joint-buttons" role="group" aria-label="Coffee pot elbow controls">
+              <button type="button" class="coffee-joint-button" data-direction="1"
+                aria-label="Rotate coffee pot elbow counter-clockwise" title="Rotate counter-clockwise">↺</button>
+              <button type="button" class="coffee-joint-button" data-direction="0"
+                aria-label="Hold coffee pot elbow" title="Hold this joint">■</button>
+              <button type="button" class="coffee-joint-button" data-direction="-1"
+                aria-label="Rotate coffee pot elbow clockwise" title="Rotate clockwise">↻</button>
+            </div>
+          </div>
+        </div>
+        <div class="coffee-joint-control pot-joint" data-joint-index="5">
+          <div class="coffee-joint-card">
+            <span class="coffee-joint-label">Wrist</span>
+            <div class="coffee-joint-buttons" role="group" aria-label="Coffee pot wrist controls">
+              <button type="button" class="coffee-joint-button" data-direction="1"
+                aria-label="Rotate coffee pot wrist counter-clockwise" title="Rotate counter-clockwise">↺</button>
+              <button type="button" class="coffee-joint-button" data-direction="0"
+                aria-label="Hold coffee pot wrist" title="Hold this joint">■</button>
+              <button type="button" class="coffee-joint-button" data-direction="-1"
+                aria-label="Rotate coffee pot wrist clockwise" title="Rotate clockwise">↻</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
   <div class="coffee-render-note">
-    <span class="coffee-live-dot"></span>
-    continuous motor display · discrete Gymnasium decisions
+    ↺ Counterclockwise · ■ Hold · ↻ Clockwise. Each command stays active until changed.
   </div>
 </div>
 """
@@ -20,20 +111,131 @@ CANVAS_HTML = """
 CANVAS_CSS = """
 .coffee-stage {
   width: 100%;
+  container-type: inline-size;
   overflow: hidden;
   border: 1px solid #d8e0e3;
   border-radius: 9px;
   background: #f5f7f8;
   box-shadow: 0 1px 2px rgba(29, 43, 58, 0.08);
 }
+.coffee-canvas-wrap {
+  width: 100%;
+}
 .coffee-canvas {
   display: block;
-  width: 100%;
+  width: min(100%, 960px, max(560px, calc((100svh - 330px) * 1.714286)));
+  margin-inline: auto;
   aspect-ratio: 12 / 7;
   background: #f5f7f8;
 }
+.coffee-control-dock {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid #d8e0e3;
+  background: #ffffff;
+}
+.coffee-arm-controls {
+  min-width: 0;
+  padding-top: 9px;
+  border-top: 3px solid #2b7a78;
+}
+.coffee-arm-controls.pot-joint {
+  border-color: #224a67;
+}
+.coffee-arm-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 9px;
+  color: #2b7a78;
+  font: 700 14px/1.2 ui-sans-serif, system-ui, sans-serif;
+}
+.pot-joint .coffee-arm-label {
+  color: #224a67;
+}
+.coffee-arm-label span {
+  color: #52656f;
+  font-size: 11px;
+  font-weight: 500;
+}
+.coffee-arm-joints {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.coffee-joint-control {
+  min-width: 0;
+}
+.coffee-joint-card {
+  padding: 8px;
+  border: 1px solid #d8e0e3;
+  border-radius: 8px;
+  background: #f5f7f8;
+}
+.coffee-joint-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #344b58;
+  font: 600 12px/1.1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.025em;
+  text-align: center;
+  white-space: nowrap;
+}
+.coffee-joint-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-content: center;
+  gap: 4px;
+}
+.coffee-joint-button {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #aab8be;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #344b58;
+  cursor: pointer;
+  font: 800 17px/1 ui-sans-serif, system-ui, sans-serif;
+  touch-action: manipulation;
+  transition: background 90ms ease, border-color 90ms ease, color 90ms ease,
+    box-shadow 90ms ease, transform 70ms ease;
+}
+.coffee-joint-button:hover:not(:disabled) {
+  border-color: #52656f;
+  background: #f0f4f5;
+}
+.coffee-joint-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.coffee-joint-button:focus-visible {
+  outline: 3px solid rgba(189, 139, 41, 0.45);
+  outline-offset: 1px;
+}
+.coffee-joint-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+.cup-joint .coffee-joint-button.is-active {
+  border-color: #2b7a78;
+  background: #2b7a78;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(43, 122, 120, 0.18);
+}
+.pot-joint .coffee-joint-button.is-active {
+  border-color: #224a67;
+  background: #224a67;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(34, 74, 103, 0.18);
+}
 .coffee-render-note {
   display: flex;
+  box-sizing: border-box;
   align-items: center;
   gap: 7px;
   padding: 7px 12px 8px;
@@ -43,12 +245,23 @@ CANVAS_CSS = """
   font: 600 12px/1.2 ui-sans-serif, system-ui, sans-serif;
   letter-spacing: 0.01em;
 }
-.coffee-live-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-radius: 50%;
-  background: #2b7a78;
+@container (max-width: 760px) {
+  .coffee-control-dock {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding: 12px;
+  }
+  .coffee-joint-button {
+    height: 44px;
+  }
+}
+@container (max-width: 420px) {
+  .coffee-joint-card {
+    padding: 7px 4px;
+  }
+  .coffee-arm-joints {
+    gap: 5px;
+  }
 }
 """
 
@@ -68,6 +281,35 @@ let lastRevision = -1;
 let canvasRef = null;
 let resizeObserver = null;
 let animationHandle = 0;
+
+// Delegate from the stable Gradio component root. This remains valid even if
+// Gradio refreshes the HTML template after receiving a new snapshot value.
+element.addEventListener("click", (event) => {
+  const target = event.target;
+  const button = target instanceof Element
+    ? target.closest(".coffee-joint-button")
+    : null;
+  if (!button || !element.contains(button)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const group = button.closest(".coffee-joint-control");
+  const jointIndex = Number(group?.dataset.jointIndex);
+  const direction = Number(button.dataset.direction);
+  if (
+    !Number.isInteger(jointIndex) || jointIndex < 0 || jointIndex >= 6 ||
+    ![-1, 0, 1].includes(direction)
+  ) {
+    return;
+  }
+  group.querySelectorAll(".coffee-joint-button").forEach((candidate) => {
+    const selected = Number(candidate.dataset.direction) === direction;
+    candidate.classList.toggle("is-active", selected);
+    candidate.setAttribute("aria-pressed", String(selected));
+  });
+  trigger("click", {joint_index: jointIndex, direction});
+});
 
 function clamp(value, low, high) {
   return Math.max(low, Math.min(high, value));
@@ -143,6 +385,7 @@ function normalizedSnapshot(snapshot) {
     speed: playback.speed,
     paused: playback.paused,
     running: playback.running,
+    motors: playback.motors.slice(),
     intervalMs: playback.decision_interval_wall_ms,
   };
 }
@@ -229,6 +472,7 @@ function ingestSnapshot() {
     !rawGeometry.arms || !rawGeometry.arms.cup || !rawGeometry.arms.pot ||
     !rawGeometry.tools || !rawGeometry.tools.cup || !rawGeometry.tools.pot ||
     !isFiniteArray(raw.state.joint_angles_rad, 6) ||
+    !isFiniteArray(raw.playback.motors, 6) ||
     !isFiniteArray(rawLiquid.stream_end_m, 2) ||
     !isFinitePointArray(rawLiquid.stream_path_m) ||
     !isFinitePointArray(rawLiquid.spill_path_m) ||
@@ -312,6 +556,7 @@ function ingestSnapshot() {
         revision: next.revision,
         running: next.running,
         paused: next.paused,
+        motors: next.motors.slice(),
       };
     } else {
       fromState = current;
@@ -463,6 +708,18 @@ function roundedRectangle(context, x, y, width, height, radius) {
   context.closePath();
 }
 
+function updateJointControls(state) {
+  element.querySelectorAll(".coffee-joint-control").forEach((control) => {
+    const index = Number(control.dataset.jointIndex);
+    control.querySelectorAll(".coffee-joint-button").forEach((button) => {
+      const selected = Number(button.dataset.direction) === state.motors[index];
+      button.classList.toggle("is-active", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      button.disabled = !state.running;
+    });
+  });
+}
+
 function drawFrame(state) {
   if (!state) {
     return;
@@ -544,6 +801,7 @@ function drawFrame(state) {
   const potArm = geometry.arms.pot;
   const cupJoints = armPoints(cupArm.base_m, state.q[0], state.q[1], cupArm.link_lengths_m);
   const potJoints = armPoints(potArm.base_m, state.q[3], state.q[4], potArm.link_lengths_m);
+  updateJointControls(state);
 
   function drawArm(points, color, label) {
     strokeWorldLine(context, points, xy, "#b5c1c5", 20);
