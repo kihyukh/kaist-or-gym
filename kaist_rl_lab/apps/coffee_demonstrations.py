@@ -46,6 +46,7 @@ def encode_demonstration(session: Any, participant: str = "") -> bytes:
         "participant": participant,
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": session.seed,
+        "initial_joint_angles_rad": session.initial_joint_angles.tolist(),
         "dt": session.env.dt,
         "physics_substep": session.env.LIQUID_SUBSTEP,
         "steps_per_update": session.steps_per_update,

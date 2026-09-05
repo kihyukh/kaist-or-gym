@@ -6,6 +6,8 @@ import json
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession, _validated_motor_command
 
 BROWSER_DT = 1 / 32
+# Upright vessels with more separation: position the arms before pouring.
+INITIAL_LAYOUT = {"cup_center": [-0.28, 0.28], "pot_center": [0.26, 0.62]}
 
 
 class BrowserRuntime:
@@ -14,6 +16,7 @@ class BrowserRuntime:
     def __init__(self):
         self.session = InteractiveSession(
             7001, 700, start_paused=True, dt=BROWSER_DT, steps_per_update=1,
+            reset_options=INITIAL_LAYOUT,
         )
 
     def dispatch(self, encoded: str) -> str:

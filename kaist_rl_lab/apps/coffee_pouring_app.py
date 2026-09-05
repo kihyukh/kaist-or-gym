@@ -7,6 +7,7 @@ RGB renderer for training, tests, and video export.
 """
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import RLock
@@ -69,10 +70,12 @@ class InteractiveSession:
         steps_per_update: int = DEFAULT_STEPS_PER_UPDATE,
         start_paused: bool = False,
         dt: float = CoffeePouringEnv.DEFAULT_DT,
+        reset_options: dict[str, Any] | None = None,
     ) -> None:
         self.lock = RLock()
         self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt)
         self.seed = int(seed)
+        self.reset_options = deepcopy(reset_options or {})
         self.speed = _validated_speed(speed)
         self.motors = np.zeros(6, dtype=np.float32)
         self.trajectory: list[dict[str, Any]] = []
@@ -95,8 +98,10 @@ class InteractiveSession:
         self.event_kind = "reset"
         self.input_sequence = 0
         self.observation, self.info = self.env.reset(
-            seed=self.seed, options={"target_fill": float(target_ml) / 1000.0}
+            seed=self.seed,
+            options={**self.reset_options, "target_fill": float(target_ml) / 1000.0},
         )
+        self.initial_joint_angles = self.env.joint_angles.copy()
         self.exported_files: list[Path] = []
 
     def close(self) -> None:
@@ -136,8 +141,10 @@ class InteractiveSession:
         self.revision += 1
         self.event_kind = "reset"
         self.observation, self.info = self.env.reset(
-            seed=self.seed, options={"target_fill": float(target_ml) / 1000.0}
+            seed=self.seed,
+            options={**self.reset_options, "target_fill": float(target_ml) / 1000.0},
         )
+        self.initial_joint_angles = self.env.joint_angles.copy()
 
     def finish(self) -> None:
         """Stop this run and mark its final recorded transition as truncated."""

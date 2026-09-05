@@ -33,6 +33,8 @@ def test_authoritative_motion_hold_reversal_pause_and_reset():
     try:
         env = runtime.session.env
         initial = env.joint_angles.copy()
+        np.testing.assert_allclose(env.tool_positions()["cup_center"], [-0.28, 0.28])
+        np.testing.assert_allclose(env.tool_positions()["pot_center"], [0.26, 0.62])
         control(runtime, 1, [1, 0, 0, 0, 0, 0], paused=True)
         call(runtime, "tick")
         np.testing.assert_array_equal(env.joint_angles, initial)
@@ -63,6 +65,7 @@ def test_authoritative_motion_hold_reversal_pause_and_reset():
         control(runtime, 7, [0] * 6, kind="reset")
         assert runtime.session.env.dt == BROWSER_DT
         assert runtime.session.env.elapsed_steps == 0
+        np.testing.assert_array_equal(runtime.session.env.joint_angles, initial)
         assert runtime.session.generation == 2
         assert not runtime.session.paused
         control(runtime, 8, [1] * 6, generation=1)
@@ -74,7 +77,6 @@ def test_authoritative_motion_hold_reversal_pause_and_reset():
 def test_recording_replays_the_displayed_python_physics_exactly():
     runtime = BrowserRuntime()
     reference = CoffeePouringEnv(dt=BROWSER_DT, horizon=None)
-    reference.reset(seed=7001, options={"target_fill": 0.7})
     rng = np.random.default_rng(88)
     rendered = []
     try:
@@ -86,6 +88,10 @@ def test_recording_replays_the_displayed_python_physics_exactly():
                 rendered.append(snapshot["state"]["joint_angles_rad"])
         saved = call(runtime, "save", participant="replay-check")
         arrays, metadata = read_demonstration(base64.b64decode(saved["archive"]))
+        reference.reset(seed=metadata["seed"], options={
+            "target_fill": metadata["target_fill_l"],
+            "joint_angles": metadata["initial_joint_angles_rad"],
+        })
         assert metadata["dt"] == BROWSER_DT
         assert metadata["physics_substep"] == 1/64
         assert len(arrays["actions"]) == len(rendered) == 160

@@ -212,6 +212,8 @@ their motion. Each joint has counterclockwise, hold, and clockwise commands; dir
 several joints can rotate together. On narrower screens, the two control groups stack vertically.
 
 Each new demo starts **paused** so students can plan and select joint commands before moving.
+The cup starts farther left and the pot lower and farther right, requiring arm positioning before pouring.
+Reset returns to this same classroom layout.
 The toolbar above the scene shows the current step and simulated time alongside three controls:
 **Pause time** (which changes to **Resume time** while paused), **Reset + start**, and
 **Stop all motors**. Pausing preserves joint commands; stopping all motors clears them without
@@ -224,7 +226,9 @@ Controls respond on the next local physics frame; changing tabs pauses the simul
 The first launch downloads the browser Python runtime and NumPy and can take several seconds.
 Keep this tab open until you save or submit your attempt. Reset clears the current attempt.
 The standalone Gym environment retains its default `dt=0.125`; for replay or policy evaluation,
-construct it with the trajectory's `metadata["dt"]`.
+construct it with the trajectory's `metadata["dt"]`. New recordings also store
+`initial_joint_angles_rad`; pass those as `options["joint_angles"]` to `reset`, together
+with `target_fill`, to reproduce the recorded starting pose exactly.
 
 The environment remains a fast teaching approximation rather than a rigid-body/fluid simulator:
 table, arm-to-arm, vessel, and handle contacts are enforced, while droplet breakup, splashing, and
@@ -233,7 +237,7 @@ surface tension are not modeled.
 [Open the interactive notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/coffee_pouring_colab.ipynb).
 
 For class, distribute `examples/coffee_pouring_colab.ipynb`. Its first cell installs
-`kaist-rl-lab[interactive]==0.1.21` and Gradio 6.26.0 from PyPI; the second code cell launches
+`kaist-rl-lab[interactive]==0.1.22` and Gradio 6.26.0 from PyPI; the second code cell launches
 each student's own demo inside Colab and prints a link for a larger view. Students can use
 **Runtime → Run all** with a standard Python 3 runtime; no GPU or Drive mount is needed.
 The launch cell stays running while the demo is in use. If Colab requests a restart after
