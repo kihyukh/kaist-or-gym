@@ -185,97 +185,21 @@ def test_restart_generation_and_revision_reject_stale_animation_payloads():
     session.close()
 
 
-def test_gradio_app_builds_when_interactive_extra_is_installed():
+def test_gradio_app_builds_with_browser_owned_physics():
     pytest.importorskip("gradio")
     app = build_app()
     assert app.config["title"] == "KAIST OR Gym — Coffee Pouring"
-    canvas = next(
-        component
-        for component in app.config["components"]
-        if component["type"] == "html"
-        and "coffee-stage" in component["props"].get("html_template", "")
-    )
-    assert "requestAnimationFrame" in canvas["props"]["js_on_load"]
-    assert "joint_angles_rad" in canvas["props"]["js_on_load"]
-    assert "raw.schema_version !== 4" in canvas["props"]["js_on_load"]
-    assert "direct_spill_path_m" in canvas["props"]["js_on_load"]
-    assert "cup_runoff_path_m" in canvas["props"]["js_on_load"]
-    assert canvas["props"]["html_template"].count("coffee-joint-control ") == 6
-    assert canvas["props"]["html_template"].count('class="coffee-joint-button"') == 18
-    assert canvas["props"]["html_template"].count('data-joint-index="') == 6
-    assert 'sequence: inputSequence' in canvas["props"]["js_on_load"]
-    assert "playback.motors" in canvas["props"]["js_on_load"]
-    assert canvas["props"].get("min_height") is None
-    for c in app.config["components"]:
-        if c["type"] == "button" and c["props"].get("value") in {
-            "Resume time", "Reset + start", "Stop all motors"
-        }:
-            assert not c["props"]["interactive"]
-    standalone_motor_buttons = {
-        component["props"].get("value")
-        for component in app.config["components"]
-        if component["type"] == "button"
-    }
-    assert standalone_motor_buttons == {
-        "Resume time", "Reset + start", "Stop all motors", "Save trajectory"
-    }
-    canvas_click_dependencies = [
-        dependency
-        for dependency in app.config["dependencies"]
-        if (canvas["id"], "click") in dependency["targets"]
-    ]
-    assert len(canvas_click_dependencies) == 1
-    assert canvas_click_dependencies[0]["collects_event_data"]
-    assert canvas_click_dependencies[0]["trigger_mode"] == "multiple"
+    canvas = next(c for c in app.config["components"] if c["type"] == "html")
+    props = canvas["props"]
+    assert "new Worker" in props["js_on_load"]
+    assert "predictPose" not in props["js_on_load"]
+    assert "blendedState" not in props["js_on_load"]
+    assert "joint_angles_rad" in props["js_on_load"]
+    assert props["html_template"].count('data-joint-index="') == 6
+    assert props["html_template"].count('class="coffee-joint-button"') == 18
+    assert 'disabled data-command="pause"' in props["html_template"]
+    assert 'disabled data-command="reset"' in props["html_template"]
+    assert 'disabled data-command="stop"' in props["html_template"]
+    assert not any(c["type"] == "timer" for c in app.config["components"])
+    assert not json.loads(props["value"])["collecting"]
     app.close()
-
-
-def test_ordered_controls_keep_pause_motors_and_trajectory_in_sync():
-    gr = pytest.importorskip("gradio")
-    app = build_app()
-    handlers = {h.fn.__name__: h.fn for h in app.fns.values() if h.fn}
-    request = gr.Request(session_hash="coffee-ordered-controls")
-
-    def control(sequence, kind="motor", motors=None, paused=False, generation=1):
-        event = gr.EventData(None, {
-            "sequence": sequence, "generation": generation, "kind": kind,
-            "motors": motors or [0] * 6, "paused": paused,
-        })
-        return handlers["canvas_joint_control"](request, event)
-
-    try:
-        initial = handlers["initialize"](request)
-        assert json.loads(initial[0])["playback"]["paused"]
-        assert initial[3].value == "Resume time"
-        control(1, motors=[1, 0, 0, 0, 0, 0], paused=True)
-        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 0
-        control(2, kind="pause", motors=[1, 0, 0, 0, 0, 0])
-        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 4
-
-        # Requests can arrive in reverse order. The complete desired vector and
-        # clock state from the newest request must win, including after Stop.
-        control(5, motors=[-1, 0, 1, 0, 0, 0], paused=True)
-        assert control(4, motors=[1, 0, 0, 0, 0, 0]) == ({"__type__": "update"},) * 5
-        state = json.loads(handlers["tick"](request)[0])
-        assert state["state"]["step"] == 4
-        assert state["playback"]["motors"] == [-1, 0, 1, 0, 0, 0]
-        assert state["playback"]["input_sequence"] == 5
-        stopped = control(6, kind="stop", paused=True)
-        assert stopped[3].value == "Resume time" and stopped[4] == {"__type__": "update"}
-        control(5, motors=[1, 0, 0, 0, 0, 0])
-        assert json.loads(handlers["tick"](request)[0])["playback"]["motors"] == [0] * 6
-
-        resumed = control(7, kind="pause")
-        assert resumed[3].value == "Pause time" and resumed[4].active
-        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 8
-        reset = control(8, kind="reset")
-        fresh = json.loads(reset[0])
-        assert fresh["state"]["step"] == 0
-        assert fresh["playback"]["generation"] == 2
-        assert fresh["playback"]["motors"] == [0] * 6
-        assert not fresh["playback"]["paused"] and reset[4].active
-        control(9, motors=[1] * 6, generation=1)
-        assert json.loads(handlers["tick"](request)[0])["playback"]["motors"] == [0] * 6
-    finally:
-        handlers["cleanup"](request)
-        app.close()

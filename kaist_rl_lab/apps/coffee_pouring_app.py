@@ -16,11 +16,6 @@ from uuid import uuid4
 import numpy as np
 
 from kaist_rl_lab.envs import CoffeePouringEnv
-from kaist_rl_lab.envs.coffee_pouring_canvas import (
-    CANVAS_CSS,
-    CANVAS_HTML,
-    CANVAS_JAVASCRIPT,
-)
 
 DEFAULT_HORIZON = CoffeePouringEnv.DEFAULT_HORIZON
 DEFAULT_STEPS_PER_UPDATE = 4
@@ -73,9 +68,10 @@ class InteractiveSession:
         horizon: int | None = None,
         steps_per_update: int = DEFAULT_STEPS_PER_UPDATE,
         start_paused: bool = False,
+        dt: float = CoffeePouringEnv.DEFAULT_DT,
     ) -> None:
         self.lock = RLock()
-        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon)
+        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt)
         self.seed = int(seed)
         self.speed = _validated_speed(speed)
         self.motors = np.zeros(6, dtype=np.float32)
@@ -122,8 +118,9 @@ class InteractiveSession:
     ) -> None:
         """Start a fresh episode without replacing this session object."""
 
+        dt = self.env.dt
         self.close()
-        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon)
+        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt)
         self.seed = int(seed)
         self.speed = _validated_speed(speed)
         self.motors = np.zeros(6, dtype=np.float32)
@@ -425,221 +422,10 @@ def _view(session: InteractiveSession, message: str | None = None):
 
 
 def build_app(*, collector_url: str | None = None, lecture_code: str | None = None):
-    """Build and return the Colab-compatible Gradio application."""
+    """Launch the browser-owned Python simulation and Colab upload bridge."""
+    from kaist_rl_lab.apps.coffee_browser import build_browser_app
 
-    try:
-        import gradio as gr
-    except ImportError as exc:
-        raise RuntimeError(
-            "The interactive app needs Gradio. Install with: pip install 'kaist-rl-lab[interactive]'"
-        ) from exc
-
-    # The demo uses the original defaults: 700 mL, normal speed, unlimited practice.
-    if bool(collector_url) != bool(lecture_code):
-        raise ValueError("Provide both the collector URL and lecture code, or leave both empty.")
-    config = (7001, 700.0, 1.0, False, DEFAULT_HORIZON)
-
-    def timer_update(session: InteractiveSession, active: bool):
-        return gr.Timer(value=session.timer_interval, active=active)
-
-    def view(session: InteractiveSession, message: str | None = None):
-        return (
-            *_view(session, message),
-            gr.Button(
-                "Resume time" if session.paused else "Pause time",
-                interactive=session.running,
-            ),
-        )
-
-    def initialize(request: gr.Request):
-        session = _create_session(request, *config)
-        session.paused = True
-        return (
-            *view(session, "Time is paused. Set your joint commands, then resume when ready."),
-            gr.Button(interactive=True), gr.Button(interactive=True),
-        )
-
-    def tick(request: gr.Request):
-        session = _get_session(request, *config)
-        with session.lock:
-            if not session.running or session.paused:
-                return (*view(session), gr.skip())
-            session.advance_batch()
-            if not session.running:
-                message = "Success! Reset to pour again." if session.info["is_success"] else (
-                    "Episode complete. Reset to try again."
-                )
-                return (*view(session, message), gr.skip())
-            # Refresh metadata after late network responses; the canvas itself
-            # rejects stale revisions and preserves pending local controls.
-            return (*view(session), gr.skip())
-
-    def canvas_joint_control(request: gr.Request, event: gr.EventData):
-        # One ordered channel carries the complete desired controls. A delayed
-        # request cannot undo a newer reversal, Hold, pause, or reset.
-        try:
-            sequence, generation = event.sequence, event.generation
-            kind, motors, paused = event.kind, event.motors, event.paused
-            if (
-                type(sequence) is not int or sequence < 1
-                or type(generation) is not int or generation < 1
-                or kind not in {"motor", "pause", "stop", "reset"}
-                or type(paused) is not bool
-                or not isinstance(motors, list) or len(motors) != 6
-            ):
-                raise ValueError("Invalid controls")
-            for index, motor in enumerate(motors):
-                _validated_motor_command(index, motor)
-        except (AttributeError, TypeError, ValueError) as exc:
-            raise gr.Error("Invalid control command") from exc
-        session = _get_session(request, *config)
-        with session.lock:
-            if generation != session.generation or sequence <= session.input_sequence:
-                return (gr.skip(),) * 5
-            if kind == "reset":
-                session.restart(
-                    seed=config[0], target_ml=config[1], speed=config[2],
-                    horizon=_configured_horizon(config[3], config[4]),
-                )
-                motors, paused = [0] * 6, False
-            elif not session.running:
-                return (*view(session), gr.skip())
-            for index, motor in enumerate(motors):
-                session.set_motor(index, motor)
-            if session.paused != paused:
-                session.toggle_pause()
-            session.input_sequence = sequence
-            # A repeated desired state still acknowledges its input sequence.
-            session.revision += 1
-            messages = {
-                "motor": "Joint commands selected." + (" Time is paused." if paused else ""),
-                "pause": "Time paused." if paused else "Time resumed.",
-                "stop": "All motors stopped." + (" Time remains paused." if paused else ""),
-                "reset": "New episode. All joints held; time is running.",
-            }
-            return (
-                *view(session, messages[kind]),
-                # Once started, the lightweight poll keeps UI metadata current
-                # even while paused. Late replies cannot switch off its timer.
-                timer_update(session, True) if not session.paused else gr.skip(),
-            )
-
-    def cleanup(request: gr.Request):
-        _cleanup_session(request)
-
-    def save_attempt(participant: str, request: gr.Request):
-        from kaist_rl_lab.apps.coffee_demonstrations import submit_demonstration
-
-        session = _get_session(request, *config)
-        with session.lock:
-            try:
-                path = session.save_demonstration(participant)
-            except ValueError as exc:
-                raise gr.Error(str(exc)) from exc
-            # Release the simulation lock before a network upload. A reset in
-            # another request cannot alter these frozen recording bytes.
-            data = path.read_bytes()
-            generation = session.generation
-        message = "Attempt saved. Download the trajectory below."
-        if collector_url:
-            try:
-                receipt = submit_demonstration(collector_url, lecture_code, data)
-                message = (
-                    f"Submitted {receipt['transitions']} transitions to your instructor. "
-                    f"Receipt: {receipt['episode_id']}"
-                )
-            except Exception:  # noqa: BLE001 - preserve the download for any collector failure.
-                message = (
-                    "Upload was not confirmed. Your recording is saved below. "
-                    "Retry Submit trajectory before resetting, or download a backup."
-                )
-        with session.lock:
-            if not path.exists():
-                with NamedTemporaryFile(prefix="coffee_backup_", suffix=".npz", delete=False) as file:
-                    file.write(data)
-                    path = Path(file.name)
-                session.exported_files.append(path)
-            updates = (
-                [*view(session, "Attempt saved. Reset to start again."), gr.skip()]
-                if session.generation == generation else [gr.skip()] * 5
-            )
-        return *updates, str(path), message
-
-    with gr.Blocks(title="KAIST OR Gym — Coffee Pouring") as demo:
-        with gr.Column(min_width=0, elem_id="coffee-demo"):
-            gr.Markdown(
-                "Guide the pot toward the cup and tilt to pour. "
-                "Use the joint controls below the scene; several joints can move together."
-            )
-            with gr.Row(equal_height=True, elem_id="coffee-toolbar"):
-                with gr.Column(scale=1, min_width=180):
-                    time_display = gr.Markdown()
-                pause_button = gr.Button(
-                    "Resume time", variant="primary", scale=0, min_width=140, size="md",
-                    interactive=False,
-                )
-                reset_button = gr.Button(
-                    "Reset + start", scale=0, min_width=140, size="md", interactive=False
-                )
-                stop_button = gr.Button(
-                    "Stop all motors", variant="stop", scale=0, min_width=150, size="md",
-                    interactive=False,
-                )
-            frame = gr.HTML(
-                value="{}",
-                html_template=CANVAS_HTML,
-                css_template=CANVAS_CSS,
-                js_on_load=CANVAS_JAVASCRIPT,
-                apply_default_css=False,
-                container=False,
-            )
-            status = gr.Markdown()
-            with gr.Accordion("Save your demonstration", open=False):
-                gr.Markdown(
-                    "Saving ends this attempt. Submit before resetting. "
-                    "A download is also available as a backup."
-                )
-                participant = gr.Textbox(label="Participant code (optional)", max_lines=1)
-                save_button = gr.Button("Submit trajectory" if collector_url else "Save trajectory")
-                submission_status = gr.Markdown()
-                trajectory_file = gr.File(label="Download trajectory (.npz)", interactive=False)
-
-        timer = gr.Timer(
-            value=CoffeePouringEnv.DEFAULT_DT * DEFAULT_STEPS_PER_UPDATE, active=False
-        )
-        outputs = [frame, time_display, status, pause_button]
-        demo.load(initialize, outputs=[*outputs, reset_button, stop_button], queue=False)
-        # Dispatch into the canvas immediately; its single ordered event channel
-        # sends the request to Python without waiting to update the display.
-        for button, kind in ((reset_button, "reset"), (pause_button, "pause"), (stop_button, "stop")):
-            button.click(
-                fn=None,
-                js="() => { document.querySelector('#coffee-demo .coffee-stage')"
-                ".dispatchEvent(new CustomEvent('coffee-control', {bubbles: true, "
-                f"detail: {{kind: '{kind}'}}" + "})); }",
-                queue=False,
-            )
-        timer.tick(
-            tick,
-            outputs=[*outputs, timer],
-            queue=False,
-            show_progress="hidden",
-            trigger_mode="once",
-        )
-        frame.click(
-            canvas_joint_control,
-            outputs=[*outputs, timer],
-            queue=False,
-            show_progress="hidden",
-            trigger_mode="multiple",
-        )
-        save_button.click(
-            save_attempt, inputs=participant,
-            outputs=[*outputs, timer, trajectory_file, submission_status],
-            queue=False, show_progress="minimal",
-        )
-        demo.unload(cleanup)
-    return demo
+    return build_browser_app(collector_url=collector_url, lecture_code=lecture_code)
 
 
 def main() -> None:

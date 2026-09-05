@@ -216,14 +216,15 @@ The toolbar above the scene shows the current step and simulated time alongside 
 **Pause time** (which changes to **Resume time** while paused), **Reset + start**, and
 **Stop all motors**. Pausing preserves joint commands; stopping all motors clears them without
 changing whether time is paused. Reset starts a fresh episode with all joints held. The demo uses
-a 700 mL target, normal playback speed, and unlimited practice time. Browser updates are batched
-every 0.5 seconds to accommodate Colab tunnel latency. Each batch still records four separate
-0.125-second Gym transitions; the 1/64-second physics integration and training dynamics are unchanged.
-The browser interpolates between keyframes and adapts to modest network jitter. Joint commands,
-Hold, pause, and resume also update the display immediately, using a bounded, collision-checked
-pose preview while awaiting Python. The preview is reconciled with authoritative snapshots and
-is never stored as training data. Ordered control messages prevent late replies from undoing
-newer commands.
+a 700 mL target and normal playback speed. The browser runs the installed Python environment
+in a Pyodide worker at 32 steps per second (`dt=1/32`), with the existing 1/64-second physics
+substeps. Every displayed pose comes from an actual physics step and every step is recorded.
+There is no speculative pose preview, network reconciliation, or simulation running ahead on Colab.
+Controls respond on the next local physics frame; changing tabs pauses the simulation automatically.
+The first launch downloads the browser Python runtime and NumPy and can take several seconds.
+Keep this tab open until you save or submit your attempt. Reset clears the current attempt.
+The standalone Gym environment retains its default `dt=0.125`; for replay or policy evaluation,
+construct it with the trajectory's `metadata["dt"]`.
 
 The environment remains a fast teaching approximation rather than a rigid-body/fluid simulator:
 table, arm-to-arm, vessel, and handle contacts are enforced, while droplet breakup, splashing, and
@@ -232,7 +233,7 @@ surface tension are not modeled.
 [Open the interactive notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/coffee_pouring_colab.ipynb).
 
 For class, distribute `examples/coffee_pouring_colab.ipynb`. Its first cell installs
-`kaist-rl-lab[interactive]==0.1.20` and Gradio 6.26.0 from PyPI; the second code cell launches
+`kaist-rl-lab[interactive]==0.1.21` and Gradio 6.26.0 from PyPI; the second code cell launches
 each student's own demo inside Colab and prints a link for a larger view. Students can use
 **Runtime → Run all** with a standard Python 3 runtime; no GPU or Drive mount is needed.
 The launch cell stays running while the demo is in use. If Colab requests a restart after
@@ -255,6 +256,10 @@ Students open **Save your demonstration**, optionally enter a participant code, 
 the collector has saved it. A downloadable `.npz` backup remains available on upload failure;
 retrying the same recording does not create duplicate files. With no collector configured,
 **Save trajectory** provides a download only. New episodes are isolated by UUID.
+
+Use version **0.1.21 or later for both notebooks**: older collectors reject the new 1/32-second
+recording interval. The updated collector also accepts previous 0.125-second recordings.
+The data loader returns a per-transition `dt` array alongside observations, actions, and episode IDs.
 
 The instructor notebook includes a live submission monitor and a behavior-cloning data loader.
 The collector exposes only an upload endpoint; directory listings and saved Drive files are not

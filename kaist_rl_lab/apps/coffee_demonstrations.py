@@ -104,7 +104,7 @@ def read_demonstration(data: bytes) -> tuple[dict[str, np.ndarray], dict[str, An
     if len(str(metadata.get("participant", ""))) > 64:
         raise ValueError("Participant code is too long.")
     if (
-        metadata.get("dt") != CoffeePouringEnv.DEFAULT_DT
+        metadata.get("dt") not in (CoffeePouringEnv.DEFAULT_DT, 1 / 32)
         or metadata.get("physics_substep") != CoffeePouringEnv.LIQUID_SUBSTEP
         or metadata.get("physics_model") != "torricelli_ballistic_v3"
         or metadata.get("joint_names") != list(CoffeePouringEnv.JOINT_NAMES)
@@ -250,16 +250,18 @@ def submit_demonstration(url: str, lecture_code: str, data: bytes) -> dict[str, 
 
 def load_behavior_cloning_data(directory: str | Path) -> dict[str, np.ndarray]:
     """Load validated attempts, keeping episode IDs available for train/test splits."""
-    observations, actions, episodes = [], [], []
+    observations, actions, episodes, intervals = [], [], [], []
     for path in sorted(Path(directory).glob("coffee_*.npz")):
         arrays, metadata = read_demonstration(path.read_bytes())
         observations.append(arrays["observations"])
         actions.append(arrays["actions"])
         episodes.append(np.full(len(arrays["actions"]), metadata["episode_id"]))
+        intervals.append(np.full(len(arrays["actions"]), metadata["dt"], dtype=np.float32))
     if not observations:
         raise ValueError("No submitted trajectories found in this directory.")
     return {
         "observations": np.concatenate(observations),
         "actions": np.concatenate(actions),
         "episode_ids": np.concatenate(episodes),
+        "dt": np.concatenate(intervals),
     }
