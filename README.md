@@ -223,6 +223,13 @@ surface tension are not modeled.
 
 [Open the interactive notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/coffee_pouring_colab.ipynb).
 
+For class, distribute `examples/coffee_pouring_colab.ipynb`. Its first cell installs
+`kaist-rl-lab[interactive]==0.1.18` and Gradio 6.26.0 from PyPI; the second code cell launches
+each student's own demo inside Colab and prints a link for a larger view. Students can use
+**Runtime → Run all** with a standard Python 3 runtime; no GPU or Drive mount is needed.
+The launch cell stays running while the demo is in use. If Colab requests a restart after
+installation, restart the session and run both cells again.
+
 Colab displays a temporary Gradio share link because the notebook runtime cannot expose its local
 server directly. Anyone with that temporary link can reach the app while the runtime is active, so
 do not use private data in the classroom demo.
