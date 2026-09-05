@@ -203,7 +203,7 @@ def test_gradio_app_builds_when_interactive_extra_is_installed():
     assert canvas["props"]["html_template"].count("coffee-joint-control ") == 6
     assert canvas["props"]["html_template"].count('class="coffee-joint-button"') == 18
     assert canvas["props"]["html_template"].count('data-joint-index="') == 6
-    assert 'trigger("click", {joint_index: jointIndex, direction})' in canvas["props"]["js_on_load"]
+    assert 'sequence: inputSequence' in canvas["props"]["js_on_load"]
     assert "playback.motors" in canvas["props"]["js_on_load"]
     assert canvas["props"].get("min_height") is None
     standalone_motor_buttons = {
@@ -225,50 +225,52 @@ def test_gradio_app_builds_when_interactive_extra_is_installed():
     app.close()
 
 
-def test_demo_toolbar_keeps_motor_commands_clock_and_pause_label_in_sync():
+def test_ordered_controls_keep_pause_motors_and_trajectory_in_sync():
     gr = pytest.importorskip("gradio")
     app = build_app()
-    handlers = {handler.fn.__name__: handler.fn for handler in app.fns.values()}
-    request = gr.Request(session_hash="coffee-toolbar-test")
+    handlers = {h.fn.__name__: h.fn for h in app.fns.values() if h.fn}
+    request = gr.Request(session_hash="coffee-ordered-controls")
+
+    def control(sequence, kind="motor", motors=None, paused=False, generation=1):
+        event = gr.EventData(None, {
+            "sequence": sequence, "generation": generation, "kind": kind,
+            "motors": motors or [0] * 6, "paused": paused,
+        })
+        return handlers["canvas_joint_control"](request, event)
+
     try:
         initial = handlers["initialize"](request)
         assert json.loads(initial[0])["playback"]["paused"]
         assert initial[3].value == "Resume time"
-        command = gr.EventData(None, {"joint_index": 0, "direction": 1})
-        handlers["canvas_joint_control"](request, command)
+        control(1, motors=[1, 0, 0, 0, 0, 0], paused=True)
         assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 0
-        handlers["toggle_pause"](request)
-        stepped = handlers["tick"](request)
-        assert json.loads(stepped[0])["state"]["step"] == 4
+        control(2, kind="pause", motors=[1, 0, 0, 0, 0, 0])
+        assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 4
 
-        paused = handlers["toggle_pause"](request)
-        assert paused[3].value == "Resume time"
-        assert not paused[4].active
-        frozen = json.loads(handlers["tick"](request)[0])
-        assert frozen["state"]["step"] == 4
-        assert frozen["playback"]["motors"][0] == 1
+        # Requests can arrive in reverse order. The complete desired vector and
+        # clock state from the newest request must win, including after Stop.
+        control(5, motors=[-1, 0, 1, 0, 0, 0], paused=True)
+        assert control(4, motors=[1, 0, 0, 0, 0, 0]) == ({"__type__": "update"},) * 5
+        state = json.loads(handlers["tick"](request)[0])
+        assert state["state"]["step"] == 4
+        assert state["playback"]["motors"] == [-1, 0, 1, 0, 0, 0]
+        assert state["playback"]["input_sequence"] == 5
+        stopped = control(6, kind="stop", paused=True)
+        assert stopped[3].value == "Resume time" and stopped[4] == {"__type__": "update"}
+        control(5, motors=[1, 0, 0, 0, 0, 0])
+        assert json.loads(handlers["tick"](request)[0])["playback"]["motors"] == [0] * 6
 
-        stopped = handlers["stop_all"](request)
-        stopped_snapshot = json.loads(stopped[0])
-        assert stopped_snapshot["playback"]["motors"] == [0.0] * 6
-        assert stopped_snapshot["playback"]["paused"]
-        assert stopped[3].value == "Resume time"
-
-        resumed = handlers["toggle_pause"](request)
-        assert resumed[3].value == "Pause time"
-        assert resumed[4].active
+        resumed = control(7, kind="pause")
+        assert resumed[3].value == "Pause time" and resumed[4].active
         assert json.loads(handlers["tick"](request)[0])["state"]["step"] == 8
-
-        handlers["canvas_joint_control"](request, command)
-        handlers["toggle_pause"](request)
-        reset = handlers["reset"](request)
+        reset = control(8, kind="reset")
         fresh = json.loads(reset[0])
         assert fresh["state"]["step"] == 0
-        assert fresh["playback"]["motors"] == [0.0] * 6
-        assert not fresh["playback"]["paused"]
-        assert fresh["playback"]["running"]
-        assert reset[3].value == "Pause time"
-        assert reset[4].active
+        assert fresh["playback"]["generation"] == 2
+        assert fresh["playback"]["motors"] == [0] * 6
+        assert not fresh["playback"]["paused"] and reset[4].active
+        control(9, motors=[1] * 6, generation=1)
+        assert json.loads(handlers["tick"](request)[0])["playback"]["motors"] == [0] * 6
     finally:
         handlers["cleanup"](request)
         app.close()

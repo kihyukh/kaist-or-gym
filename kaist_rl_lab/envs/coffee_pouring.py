@@ -1837,6 +1837,13 @@ class CoffeePouringEnv(gym.Env):
                     "high": self.joint_high.tolist(),
                 },
                 "max_joint_speeds_rad_s": self.max_joint_speeds.tolist(),
+                "collision": {
+                    "link_radius_m": self.LINK_COLLISION_RADIUS,
+                    "body_margin_m": self.BODY_COLLISION_MARGIN,
+                    "cup_handle_radius_m": self.CUP_HANDLE_COLLISION_RADIUS,
+                    "pot_handle_radius_m": self.POT_HANDLE_COLLISION_RADIUS,
+                    "table_margin_m": self.TABLE_CONTACT_MARGIN,
+                },
                 "arms": {
                     "cup": {
                         "base_m": list(g.cup_base),

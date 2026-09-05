@@ -219,7 +219,11 @@ changing whether time is paused. Reset starts a fresh episode with all joints he
 a 700 mL target, normal playback speed, and unlimited practice time. Browser updates are batched
 every 0.5 seconds to accommodate Colab tunnel latency. Each batch still records four separate
 0.125-second Gym transitions; the 1/64-second physics integration and training dynamics are unchanged.
-The browser interpolates between keyframes and adapts to modest network jitter.
+The browser interpolates between keyframes and adapts to modest network jitter. Joint commands,
+Hold, pause, and resume also update the display immediately, using a bounded, collision-checked
+pose preview while awaiting Python. The preview is reconciled with authoritative snapshots and
+is never stored as training data. Ordered control messages prevent late replies from undoing
+newer commands.
 
 The environment remains a fast teaching approximation rather than a rigid-body/fluid simulator:
 table, arm-to-arm, vessel, and handle contacts are enforced, while droplet breakup, splashing, and
@@ -228,7 +232,7 @@ surface tension are not modeled.
 [Open the interactive notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/coffee_pouring_colab.ipynb).
 
 For class, distribute `examples/coffee_pouring_colab.ipynb`. Its first cell installs
-`kaist-rl-lab[interactive]==0.1.19` and Gradio 6.26.0 from PyPI; the second code cell launches
+`kaist-rl-lab[interactive]==0.1.20` and Gradio 6.26.0 from PyPI; the second code cell launches
 each student's own demo inside Colab and prints a link for a larger view. Students can use
 **Runtime → Run all** with a standard Python 3 runtime; no GPU or Drive mount is needed.
 The launch cell stays running while the demo is in use. If Colab requests a restart after

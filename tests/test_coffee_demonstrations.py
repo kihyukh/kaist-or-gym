@@ -126,16 +126,19 @@ def test_upload_failure_keeps_download_and_can_be_retried(monkeypatch):
 
     monkeypatch.setattr(coffee_demonstrations, "submit_demonstration", upload)
     app = build_app(collector_url="https://example.gradio.live", lecture_code="lecture-code-123")
-    handlers = {h.fn.__name__: h.fn for h in app.fns.values()}
+    handlers = {h.fn.__name__: h.fn for h in app.fns.values() if h.fn}
     request = gr.Request(session_hash="submission-retry-test")
     try:
         handlers["initialize"](request)
-        handlers["toggle_pause"](request)
+        handlers["canvas_joint_control"](request, gr.EventData(None, {
+            "sequence": 1, "generation": 1, "kind": "pause",
+            "motors": [0] * 6, "paused": False,
+        }))
         handlers["tick"](request)
         failed = handlers["save_attempt"]("student-2", request)
         assert "not confirmed" in failed[-1]
         assert failed[-2].endswith(".npz")
-        assert not failed[4].active
+        assert failed[4] == {"__type__": "update"}
         assert not json.loads(failed[0])["playback"]["running"]
         retried = handlers["save_attempt"]("student-2", request)
         assert "Submitted 4 transitions" in retried[-1]

@@ -6,6 +6,8 @@ interpolates joint angles and reruns rigid forward kinematics on every display
 frame; it never interpolates arm endpoints.
 """
 
+from kaist_rl_lab.envs.coffee_pouring_prediction import PREDICTION_JAVASCRIPT
+
 CANVAS_HTML = """
 <div class="coffee-stage">
   <div class="coffee-canvas-wrap">
@@ -265,7 +267,7 @@ CANVAS_CSS = """
 }
 """
 
-CANVAS_JAVASCRIPT = r"""
+CANVAS_JAVASCRIPT = PREDICTION_JAVASCRIPT + r"""
 const LOGICAL_WIDTH = 960;
 const LOGICAL_HEIGHT = 560;
 const prefersReducedMotion = window.matchMedia(
@@ -283,6 +285,40 @@ let observedInterval = 0;
 let canvasRef = null;
 let resizeObserver = null;
 let animationHandle = 0;
+let inputSequence = 0;
+let preview = null;
+let initialState = null;
+const PREVIEW_LIMIT_MS = 1000;
+const RECONCILE_MS = 100;
+
+function sendControl(kind, jointIndex, direction) {
+  const now = performance.now(), current = stateAt(now);
+  if (!current || (!current.running && kind !== "reset")) return;
+  if (preview?.kind === "reset" && kind !== "reset") return;
+  const motors = current.motors.slice();
+  let paused = current.paused;
+  if (kind === "motor") motors[jointIndex] = direction;
+  if (kind === "stop" || kind === "reset") motors.fill(0);
+  if (kind === "pause") paused = !paused;
+  if (kind === "reset") paused = false;
+  inputSequence += 1;
+  preview = {
+    state: {...current, q: (kind === "reset" ? initialState.q : current.q).slice(),
+      motors, paused, running: true},
+    sequence: inputSequence, generation: targetState.generation,
+    step: targetState.step, start: now, time: now, kind,
+  };
+  drawFrame(stateAt(now));
+  scheduleAnimation();
+  trigger("click", {kind, motors, paused, sequence: inputSequence,
+    generation: targetState.generation});
+}
+
+element.addEventListener("coffee-control", event => {
+  if (["pause", "stop", "reset"].includes(event.detail?.kind)) {
+    sendControl(event.detail.kind);
+  }
+});
 
 // Delegate from the stable Gradio component root. This remains valid even if
 // Gradio refreshes the HTML template after receiving a new snapshot value.
@@ -305,12 +341,7 @@ element.addEventListener("click", (event) => {
   ) {
     return;
   }
-  group.querySelectorAll(".coffee-joint-button").forEach((candidate) => {
-    const selected = Number(candidate.dataset.direction) === direction;
-    candidate.classList.toggle("is-active", selected);
-    candidate.setAttribute("aria-pressed", String(selected));
-  });
-  trigger("click", {joint_index: jointIndex, direction});
+  sendControl("motor", jointIndex, direction);
 });
 
 function clamp(value, low, high) {
@@ -384,6 +415,7 @@ function normalizedSnapshot(snapshot) {
     terminationReason: state.termination_reason,
     generation: playback.generation,
     revision: playback.revision,
+    inputSequence: playback.input_sequence || 0,
     speed: playback.speed,
     paused: playback.paused,
     running: playback.running,
@@ -449,6 +481,22 @@ function progressAt(now) {
 function stateAt(now) {
   if (!fromState || !targetState) {
     return null;
+  }
+  if (preview) {
+    if (now - preview.start <= PREVIEW_LIMIT_MS) {
+      const state = preview.state;
+      if (!state.paused && state.running && preview.kind !== "reset") {
+        state.q = predictPose(state.q, state.motors,
+          Math.max(0, Math.min(now - preview.time, 50)) * state.speed / 1000, state.geometry);
+      }
+      preview.time = now;
+      return {...state, transitioning: !state.paused};
+    }
+    // A lost connection never leaves the robot moving indefinitely.
+    fromState = preview.state;
+    preview = null;
+    segmentStart = now;
+    segmentDuration = RECONCILE_MS;
   }
   const amount = progressAt(now);
   return {
@@ -525,6 +573,10 @@ function ingestSnapshot() {
   }
 
   const now = performance.now();
+  const previewCurrent = preview ? stateAt(now) : null;
+  const acknowledgedPreview = preview && next.inputSequence >= preview.sequence;
+  const completePreview = acknowledgedPreview &&
+    (next.step > preview.step || next.paused || !next.running || isNewRun);
   // Match interpolation to the observed update cadence so modest tunnel
   // jitter does not leave a frozen gap between otherwise valid keyframes.
   if (isNewRun || next.paused || (targetState && targetState.paused)) {
@@ -539,10 +591,22 @@ function ingestSnapshot() {
     lastStepArrival = now;
   }
   if (isNewRun || !targetState) {
+    preview = null;
+    initialState = next;
     fromState = next;
     targetState = next;
     segmentStart = now;
     segmentDuration = 0;
+  } else if (completePreview) {
+    const stopped = next.motors.map(motor => motor === 0);
+    preview = null;
+    fromState = previewCurrent;
+    // A Hold must not spend another interpolation interval coasting toward an
+    // old endpoint. Reconcile a stopped joint once, when Python confirms it.
+    fromState.q = fromState.q.map((q, i) => stopped[i] ? next.q[i] : q);
+    targetState = next;
+    segmentStart = now;
+    segmentDuration = next.paused || !next.running ? 0 : Math.max(next.intervalMs, observedInterval);
   } else {
     const amount = progressAt(now);
     const current = stateAt(now);
@@ -585,6 +649,7 @@ function ingestSnapshot() {
   }
   lastGeneration = next.generation;
   lastRevision = next.revision;
+  inputSequence = Math.max(inputSequence, next.inputSequence);
   drawFrame(stateAt(now));
   scheduleAnimation();
 }
@@ -730,7 +795,7 @@ function updateJointControls(state) {
       const selected = Number(button.dataset.direction) === state.motors[index];
       button.classList.toggle("is-active", selected);
       button.setAttribute("aria-pressed", String(selected));
-      button.disabled = !state.running;
+      button.disabled = !state.running || preview?.kind === "reset";
     });
   });
 }
@@ -1066,7 +1131,7 @@ function animationLoop(now) {
     return;
   }
   drawFrame(stateAt(now));
-  if (progressAt(now) < 1) {
+  if (preview || progressAt(now) < 1) {
     scheduleAnimation();
   }
 }

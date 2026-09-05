@@ -97,6 +97,7 @@ class InteractiveSession:
         self.generation = 1
         self.revision = 0
         self.event_kind = "reset"
+        self.input_sequence = 0
         self.observation, self.info = self.env.reset(
             seed=self.seed, options={"target_fill": float(target_ml) / 1000.0}
         )
@@ -198,6 +199,7 @@ class InteractiveSession:
         snapshot["playback"] = {
             "generation": int(self.generation),
             "revision": int(self.revision),
+            "input_sequence": int(self.input_sequence),
             "kind": self.event_kind,
             "speed": float(self.speed),
             "paused": bool(self.paused),
@@ -454,63 +456,70 @@ def build_app(*, collector_url: str | None = None, lecture_code: str | None = No
         session.paused = True
         return view(session, "Time is paused. Set your joint commands, then resume when ready.")
 
-    def reset(request: gr.Request):
-        session = _create_session(request, *config)
-        session.paused = False
-        return (
-            *view(session, "New episode. All joints held; time is running."),
-            timer_update(session, True),
-        )
-
     def tick(request: gr.Request):
         session = _get_session(request, *config)
         with session.lock:
             if not session.running or session.paused:
-                return (*view(session), timer_update(session, False))
+                return (*view(session), gr.skip())
             session.advance_batch()
             if not session.running:
                 message = "Success! Reset to pour again." if session.info["is_success"] else (
                     "Episode complete. Reset to try again."
                 )
-                return (*view(session, message), timer_update(session, False))
-            # Ordinary ticks must not undo a more recent pause or button update.
-            return (*_view(session), gr.skip(), gr.skip())
-
-    def stop_all(request: gr.Request):
-        session = _get_session(request, *config)
-        with session.lock:
-            session.stop_all_motors()
-            clock = "Time remains paused." if session.paused else "Time keeps running."
-            if not session.running:
-                clock = "Reset to start again."
-            return view(session, f"All motors stopped. {clock}")
-
-    def toggle_pause(request: gr.Request):
-        session = _get_session(request, *config)
-        with session.lock:
-            if not session.running:
-                message = "Episode complete. Reset to start again."
-            elif session.toggle_pause():
-                message = "Time paused. Joint commands are preserved for resume."
-            else:
-                message = "Time resumed. Selected joint commands are active."
-            timer_active = session.running and not session.paused
-            return (*view(session, message), timer_update(session, timer_active))
+                return (*view(session, message), gr.skip())
+            # Refresh metadata after late network responses; the canvas itself
+            # rejects stale revisions and preserves pending local controls.
+            return (*view(session), gr.skip())
 
     def canvas_joint_control(request: gr.Request, event: gr.EventData):
+        # One ordered channel carries the complete desired controls. A delayed
+        # request cannot undo a newer reversal, Hold, pause, or reset.
         try:
-            index, direction = _validated_motor_command(event.joint_index, event.direction)
+            sequence, generation = event.sequence, event.generation
+            kind, motors, paused = event.kind, event.motors, event.paused
+            if (
+                type(sequence) is not int or sequence < 1
+                or type(generation) is not int or generation < 1
+                or kind not in {"motor", "pause", "stop", "reset"}
+                or type(paused) is not bool
+                or not isinstance(motors, list) or len(motors) != 6
+            ):
+                raise ValueError("Invalid controls")
+            for index, motor in enumerate(motors):
+                _validated_motor_command(index, motor)
         except (AttributeError, TypeError, ValueError) as exc:
-            raise gr.Error("Invalid joint control command") from exc
+            raise gr.Error("Invalid control command") from exc
         session = _get_session(request, *config)
         with session.lock:
-            if not session.running:
-                return view(session, "Episode complete. Reset to start again.")
-            new_value = session.set_motor(index, direction)
-            label = CoffeePouringEnv.JOINT_NAMES[index].replace("_", " ").capitalize()
-            words = {-1: "clockwise", 0: "held", 1: "counterclockwise"}
-            suffix = " Time is paused." if session.paused else ""
-            return view(session, f"{label} {words[int(new_value)]}.{suffix}")
+            if generation != session.generation or sequence <= session.input_sequence:
+                return (gr.skip(),) * 5
+            if kind == "reset":
+                session.restart(
+                    seed=config[0], target_ml=config[1], speed=config[2],
+                    horizon=_configured_horizon(config[3], config[4]),
+                )
+                motors, paused = [0] * 6, False
+            elif not session.running:
+                return (*view(session), gr.skip())
+            for index, motor in enumerate(motors):
+                session.set_motor(index, motor)
+            if session.paused != paused:
+                session.toggle_pause()
+            session.input_sequence = sequence
+            # A repeated desired state still acknowledges its input sequence.
+            session.revision += 1
+            messages = {
+                "motor": "Joint commands selected." + (" Time is paused." if paused else ""),
+                "pause": "Time paused." if paused else "Time resumed.",
+                "stop": "All motors stopped." + (" Time remains paused." if paused else ""),
+                "reset": "New episode. All joints held; time is running.",
+            }
+            return (
+                *view(session, messages[kind]),
+                # Once started, the lightweight poll keeps UI metadata current
+                # even while paused. Late replies cannot switch off its timer.
+                timer_update(session, True) if not session.paused else gr.skip(),
+            )
 
     def cleanup(request: gr.Request):
         _cleanup_session(request)
@@ -548,7 +557,7 @@ def build_app(*, collector_url: str | None = None, lecture_code: str | None = No
                     path = Path(file.name)
                 session.exported_files.append(path)
             updates = (
-                [*view(session, "Attempt saved. Reset to start again."), timer_update(session, False)]
+                [*view(session, "Attempt saved. Reset to start again."), gr.skip()]
                 if session.generation == generation else [gr.skip()] * 5
             )
         return *updates, str(path), message
@@ -593,9 +602,16 @@ def build_app(*, collector_url: str | None = None, lecture_code: str | None = No
         )
         outputs = [frame, time_display, status, pause_button]
         demo.load(initialize, outputs=outputs, queue=False)
-        reset_button.click(reset, outputs=[*outputs, timer], queue=False)
-        pause_button.click(toggle_pause, outputs=[*outputs, timer], queue=False)
-        stop_button.click(stop_all, outputs=outputs, queue=False)
+        # Dispatch into the canvas immediately; its single ordered event channel
+        # sends the request to Python without waiting to update the display.
+        for button, kind in ((reset_button, "reset"), (pause_button, "pause"), (stop_button, "stop")):
+            button.click(
+                fn=None,
+                js="() => { document.querySelector('#coffee-demo .coffee-stage')"
+                ".dispatchEvent(new CustomEvent('coffee-control', {bubbles: true, "
+                f"detail: {{kind: '{kind}'}}" + "})); }",
+                queue=False,
+            )
         timer.tick(
             tick,
             outputs=[*outputs, timer],
@@ -605,7 +621,7 @@ def build_app(*, collector_url: str | None = None, lecture_code: str | None = No
         )
         frame.click(
             canvas_joint_control,
-            outputs=outputs,
+            outputs=[*outputs, timer],
             queue=False,
             show_progress="hidden",
             trigger_mode="multiple",
