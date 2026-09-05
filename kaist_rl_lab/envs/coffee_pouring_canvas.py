@@ -302,8 +302,9 @@ function sendControl(kind, jointIndex, direction) {
   if (kind === "pause") paused = !paused;
   if (kind === "reset") paused = false;
   inputSequence += 1;
+  const previewState = kind === "reset" ? initialState : current;
   preview = {
-    state: {...current, q: (kind === "reset" ? initialState.q : current.q).slice(),
+    state: {...previewState, q: previewState.q.slice(),
       motors, paused, running: true},
     sequence: inputSequence, generation: targetState.generation,
     step: targetState.step, start: now, time: now, kind,
