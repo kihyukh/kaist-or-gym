@@ -130,15 +130,23 @@ def test_upload_failure_keeps_download_and_can_be_retried(monkeypatch):
     session = InteractiveSession(seed=7001, target_ml=700, dt=1/32)
     session.advance_batch()
     encoded = base64.b64encode(session.save_demonstration("student-2").read_bytes()).decode()
-    event = gr.EventData(None, {"archive": encoded})
+    event = gr.EventData(None, {"archive": encoded, "request_id": 1})
     try:
         failed = json.loads(handlers["upload"](event))
         assert "not confirmed" in failed["submission"]
         assert not failed["confirmed"]
-        retried = json.loads(handlers["upload"](event))
+        retried = json.loads(handlers["upload"](gr.EventData(None, {
+            "archive": encoded, "request_id": 2,
+        })))
         assert "Submitted 4 transitions" in retried["submission"]
         assert retried["confirmed"]
+        assert retried["request_id"] == 2
         assert attempts[0] == attempts[1]
+        duplicate = json.loads(handlers["upload"](gr.EventData(None, {
+            "archive": encoded, "request_id": 3,
+        })))
+        assert duplicate != retried
+        assert duplicate["submission"] == retried["submission"]
     finally:
         session.close()
         app.close()

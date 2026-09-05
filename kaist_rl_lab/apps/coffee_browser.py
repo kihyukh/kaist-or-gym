@@ -99,7 +99,7 @@ function clamp(value, low, high) { return Math.max(low, Math.min(high,value)); }
 let canvasRef=null, resizeObserver=null, displayState=null;
 let sequence=0, desiredMotors=Array(6).fill(0), desiredPaused=true;
 let ready=false, resetting=false, saving=false, dirty=false;
-let episodeId=null, archive=null, downloadUrl=null, uploadTimer=null;
+let episodeId=null, archive=null, downloadUrl=null, uploadTimer=null, uploadSequence=0;
 const $ = selector => element.querySelector(selector);
 const status = message => { $('.coffee-status').textContent=message; };
 const config = typeof props.value==='string' ? JSON.parse(props.value) : props.value;
@@ -138,13 +138,14 @@ function submitArchive() {
   uploadTimer=setTimeout(()=>{
     $('.coffee-submission').textContent='Upload was not confirmed. Retry Submit trajectory or download your backup.';
   },65000);
-  trigger('click', {archive, episode_id:episodeId});
+  uploadSequence++;
+  trigger('click', {archive, episode_id:episodeId, request_id:uploadSequence});
 }
 function receiveUpload() {
   let value;
   try { value=typeof props.value==='string' ? JSON.parse(props.value) : props.value; }
   catch { return; }
-  if (!value?.submission || value.episode_id!==episodeId) return;
+  if (!value?.submission || value.episode_id!==episodeId || value.request_id!==uploadSequence) return;
   clearTimeout(uploadTimer);
   $('.coffee-submission').textContent=value.submission;
   if (value.confirmed) dirty=false;
@@ -251,7 +252,13 @@ def build_browser_app(*, collector_url=None, lecture_code=None):
             _, metadata = read_demonstration(data)
         except (ValueError, KeyError, TypeError) as exc:
             raise gr.Error("Invalid trajectory archive.") from exc
-        result = {"episode_id": metadata["episode_id"], "confirmed": False}
+        request_id = getattr(event, "request_id", None)
+        if type(request_id) is not int or request_id < 1:
+            raise gr.Error("Invalid submission request.")
+        # Distinct retries must produce a value change even for identical receipts,
+        # otherwise Gradio's value watcher leaves the UI at 'Submitting…'.
+        result = {"episode_id": metadata["episode_id"], "confirmed": False,
+                  "request_id": request_id}
         try:
             receipt = submit_demonstration(collector_url, lecture_code, data)
             result.update(confirmed=True, submission=(
