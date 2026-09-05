@@ -22,11 +22,11 @@ CANVAS_HTML = """
           <div class="coffee-joint-card">
             <span class="coffee-joint-label">Shoulder</span>
             <div class="coffee-joint-buttons" role="group" aria-label="Cup shoulder controls">
-              <button type="button" class="coffee-joint-button" data-direction="1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="1"
                 aria-label="Rotate cup shoulder counter-clockwise" title="Rotate counter-clockwise">↺</button>
-              <button type="button" class="coffee-joint-button" data-direction="0"
+              <button type="button" disabled class="coffee-joint-button" data-direction="0"
                 aria-label="Hold cup shoulder" title="Hold this joint">■</button>
-              <button type="button" class="coffee-joint-button" data-direction="-1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="-1"
                 aria-label="Rotate cup shoulder clockwise" title="Rotate clockwise">↻</button>
             </div>
           </div>
@@ -35,11 +35,11 @@ CANVAS_HTML = """
           <div class="coffee-joint-card">
             <span class="coffee-joint-label">Elbow</span>
             <div class="coffee-joint-buttons" role="group" aria-label="Cup elbow controls">
-              <button type="button" class="coffee-joint-button" data-direction="1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="1"
                 aria-label="Rotate cup elbow counter-clockwise" title="Rotate counter-clockwise">↺</button>
-              <button type="button" class="coffee-joint-button" data-direction="0"
+              <button type="button" disabled class="coffee-joint-button" data-direction="0"
                 aria-label="Hold cup elbow" title="Hold this joint">■</button>
-              <button type="button" class="coffee-joint-button" data-direction="-1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="-1"
                 aria-label="Rotate cup elbow clockwise" title="Rotate clockwise">↻</button>
             </div>
           </div>
@@ -48,11 +48,11 @@ CANVAS_HTML = """
           <div class="coffee-joint-card">
             <span class="coffee-joint-label">Wrist</span>
             <div class="coffee-joint-buttons" role="group" aria-label="Cup wrist controls">
-              <button type="button" class="coffee-joint-button" data-direction="1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="1"
                 aria-label="Rotate cup wrist counter-clockwise" title="Rotate counter-clockwise">↺</button>
-              <button type="button" class="coffee-joint-button" data-direction="0"
+              <button type="button" disabled class="coffee-joint-button" data-direction="0"
                 aria-label="Hold cup wrist" title="Hold this joint">■</button>
-              <button type="button" class="coffee-joint-button" data-direction="-1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="-1"
                 aria-label="Rotate cup wrist clockwise" title="Rotate clockwise">↻</button>
             </div>
           </div>
@@ -66,11 +66,11 @@ CANVAS_HTML = """
           <div class="coffee-joint-card">
             <span class="coffee-joint-label">Shoulder</span>
             <div class="coffee-joint-buttons" role="group" aria-label="Coffee pot shoulder controls">
-              <button type="button" class="coffee-joint-button" data-direction="1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="1"
                 aria-label="Rotate coffee pot shoulder counter-clockwise" title="Rotate counter-clockwise">↺</button>
-              <button type="button" class="coffee-joint-button" data-direction="0"
+              <button type="button" disabled class="coffee-joint-button" data-direction="0"
                 aria-label="Hold coffee pot shoulder" title="Hold this joint">■</button>
-              <button type="button" class="coffee-joint-button" data-direction="-1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="-1"
                 aria-label="Rotate coffee pot shoulder clockwise" title="Rotate clockwise">↻</button>
             </div>
           </div>
@@ -79,11 +79,11 @@ CANVAS_HTML = """
           <div class="coffee-joint-card">
             <span class="coffee-joint-label">Elbow</span>
             <div class="coffee-joint-buttons" role="group" aria-label="Coffee pot elbow controls">
-              <button type="button" class="coffee-joint-button" data-direction="1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="1"
                 aria-label="Rotate coffee pot elbow counter-clockwise" title="Rotate counter-clockwise">↺</button>
-              <button type="button" class="coffee-joint-button" data-direction="0"
+              <button type="button" disabled class="coffee-joint-button" data-direction="0"
                 aria-label="Hold coffee pot elbow" title="Hold this joint">■</button>
-              <button type="button" class="coffee-joint-button" data-direction="-1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="-1"
                 aria-label="Rotate coffee pot elbow clockwise" title="Rotate clockwise">↻</button>
             </div>
           </div>
@@ -92,11 +92,11 @@ CANVAS_HTML = """
           <div class="coffee-joint-card">
             <span class="coffee-joint-label">Wrist</span>
             <div class="coffee-joint-buttons" role="group" aria-label="Coffee pot wrist controls">
-              <button type="button" class="coffee-joint-button" data-direction="1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="1"
                 aria-label="Rotate coffee pot wrist counter-clockwise" title="Rotate counter-clockwise">↺</button>
-              <button type="button" class="coffee-joint-button" data-direction="0"
+              <button type="button" disabled class="coffee-joint-button" data-direction="0"
                 aria-label="Hold coffee pot wrist" title="Hold this joint">■</button>
-              <button type="button" class="coffee-joint-button" data-direction="-1"
+              <button type="button" disabled class="coffee-joint-button" data-direction="-1"
                 aria-label="Rotate coffee pot wrist clockwise" title="Rotate clockwise">↻</button>
             </div>
           </div>

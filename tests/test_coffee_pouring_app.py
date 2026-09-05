@@ -206,6 +206,11 @@ def test_gradio_app_builds_when_interactive_extra_is_installed():
     assert 'sequence: inputSequence' in canvas["props"]["js_on_load"]
     assert "playback.motors" in canvas["props"]["js_on_load"]
     assert canvas["props"].get("min_height") is None
+    for c in app.config["components"]:
+        if c["type"] == "button" and c["props"].get("value") in {
+            "Resume time", "Reset + start", "Stop all motors"
+        }:
+            assert not c["props"]["interactive"]
     standalone_motor_buttons = {
         component["props"].get("value")
         for component in app.config["components"]

@@ -454,7 +454,10 @@ def build_app(*, collector_url: str | None = None, lecture_code: str | None = No
     def initialize(request: gr.Request):
         session = _create_session(request, *config)
         session.paused = True
-        return view(session, "Time is paused. Set your joint commands, then resume when ready.")
+        return (
+            *view(session, "Time is paused. Set your joint commands, then resume when ready."),
+            gr.Button(interactive=True), gr.Button(interactive=True),
+        )
 
     def tick(request: gr.Request):
         session = _get_session(request, *config)
@@ -572,11 +575,15 @@ def build_app(*, collector_url: str | None = None, lecture_code: str | None = No
                 with gr.Column(scale=1, min_width=180):
                     time_display = gr.Markdown()
                 pause_button = gr.Button(
-                    "Resume time", variant="primary", scale=0, min_width=140, size="md"
+                    "Resume time", variant="primary", scale=0, min_width=140, size="md",
+                    interactive=False,
                 )
-                reset_button = gr.Button("Reset + start", scale=0, min_width=140, size="md")
+                reset_button = gr.Button(
+                    "Reset + start", scale=0, min_width=140, size="md", interactive=False
+                )
                 stop_button = gr.Button(
-                    "Stop all motors", variant="stop", scale=0, min_width=150, size="md"
+                    "Stop all motors", variant="stop", scale=0, min_width=150, size="md",
+                    interactive=False,
                 )
             frame = gr.HTML(
                 value="{}",
@@ -601,7 +608,7 @@ def build_app(*, collector_url: str | None = None, lecture_code: str | None = No
             value=CoffeePouringEnv.DEFAULT_DT * DEFAULT_STEPS_PER_UPDATE, active=False
         )
         outputs = [frame, time_display, status, pause_button]
-        demo.load(initialize, outputs=outputs, queue=False)
+        demo.load(initialize, outputs=[*outputs, reset_button, stop_button], queue=False)
         # Dispatch into the canvas immediately; its single ordered event channel
         # sends the request to Python without waiting to update the display.
         for button, kind in ((reset_button, "reset"), (pause_button, "pause"), (stop_button, "stop")):
