@@ -5,6 +5,11 @@ CANVAS_HTML = """
   <div class="coffee-canvas-wrap">
     <canvas class="coffee-canvas" role="img"
       aria-label="Two fixed-link robot arms pouring coffee"></canvas>
+    <div class="coffee-scene-stats" aria-label="Coffee amounts" aria-live="off">
+      <span><span class="coffee-stat-label">Cup / target</span><strong data-coffee-stat="fill">—</strong></span>
+      <span><span class="coffee-stat-label">Spilled</span><strong data-coffee-stat="spill">—</strong></span>
+      <span><span class="coffee-stat-label">In the pot</span><strong data-coffee-stat="remaining">—</strong></span>
+    </div>
   </div>
   <div class="coffee-control-dock" role="group" aria-label="Robot joint controls">
     <section class="coffee-arm-controls cup-joint" aria-label="Cup arm">
@@ -97,14 +102,18 @@ CANVAS_HTML = """
     </section>
   </div>
   <div class="coffee-render-note">
-    ↺ Counterclockwise · ■ Hold · ↻ Clockwise. Each command stays active until changed.
+    Tap ↺ or ↻ to turn; tap ■ to hold. Commands stay active until changed.
   </div>
 </div>
 """
 
 CANVAS_CSS = """
+.coffee-stage, .coffee-stage * {
+  box-sizing: border-box;
+}
 .coffee-stage {
   width: 100%;
+  min-width: 0;
   container-type: inline-size;
   overflow: hidden;
   border: 1px solid #d8e0e3;
@@ -114,6 +123,7 @@ CANVAS_CSS = """
 }
 .coffee-canvas-wrap {
   width: 100%;
+  min-width: 0;
 }
 .coffee-canvas {
   display: block;
@@ -122,17 +132,41 @@ CANVAS_CSS = """
   aspect-ratio: 12 / 7;
   background: #f5f7f8;
 }
+.coffee-scene-stats {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr;
+  gap: 6px;
+  padding: 7px 12px;
+  border-top: 1px solid #e1e7e9;
+  background: #ffffff;
+  color: #344b58;
+  font: 600 14px/1.3 ui-sans-serif, system-ui, sans-serif;
+  text-align: center;
+}
+.coffee-scene-stats > span {
+  min-width: 0;
+}
+.coffee-stat-label {
+  display: block;
+  color: #52656f;
+  font-size: 11px;
+  font-weight: 500;
+}
+.coffee-scene-stats strong {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .coffee-control-dock {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 10px 12px;
   border-top: 1px solid #d8e0e3;
   background: #ffffff;
 }
 .coffee-arm-controls {
   min-width: 0;
-  padding-top: 9px;
+  padding-top: 6px;
   border-top: 3px solid #2b7a78;
 }
 .coffee-arm-controls.pot-joint {
@@ -143,7 +177,7 @@ CANVAS_CSS = """
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
-  margin: 0 0 9px;
+  margin: 0 0 6px;
   color: #2b7a78;
   font: 700 14px/1.2 ui-sans-serif, system-ui, sans-serif;
 }
@@ -157,21 +191,25 @@ CANVAS_CSS = """
 }
 .coffee-arm-joints {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
 }
 .coffee-joint-control {
   min-width: 0;
 }
 .coffee-joint-card {
-  padding: 8px;
+  display: grid;
+  grid-template-columns: minmax(62px, 1fr) minmax(140px, 1.5fr);
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
   border: 1px solid #d8e0e3;
   border-radius: 8px;
   background: #f5f7f8;
 }
 .coffee-joint-label {
   display: block;
-  margin-bottom: 7px;
+  margin: 0;
   color: #344b58;
   font: 600 12px/1.1 ui-sans-serif, system-ui, sans-serif;
   letter-spacing: 0.025em;
@@ -186,8 +224,9 @@ CANVAS_CSS = """
 }
 .coffee-joint-button {
   width: 100%;
-  min-width: 0;
-  height: 36px;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border: 1px solid #aab8be;
@@ -197,6 +236,9 @@ CANVAS_CSS = """
   cursor: pointer;
   font: 800 17px/1 ui-sans-serif, system-ui, sans-serif;
   touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transition: background 90ms ease, border-color 90ms ease, color 90ms ease,
     box-shadow 90ms ease, transform 70ms ease;
 }
@@ -236,25 +278,88 @@ CANVAS_CSS = """
   border-top: 1px solid #e1e7e9;
   background: #ffffff;
   color: #52656f;
-  font: 600 12px/1.2 ui-sans-serif, system-ui, sans-serif;
+  font: 500 12px/1.35 ui-sans-serif, system-ui, sans-serif;
   letter-spacing: 0.01em;
 }
-@container (max-width: 760px) {
-  .coffee-control-dock {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
-    padding: 12px;
+@container (min-width: 1020px) {
+  .coffee-arm-joints {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .coffee-joint-button {
-    height: 44px;
+  .coffee-joint-card {
+    display: block;
+  }
+  .coffee-joint-label {
+    margin-bottom: 5px;
   }
 }
-@container (max-width: 420px) {
-  .coffee-joint-card {
-    padding: 7px 4px;
+@container (max-width: 560px) {
+  .coffee-canvas {
+    aspect-ratio: 960 / 434;
   }
-  .coffee-arm-joints {
-    gap: 5px;
+  .coffee-control-dock {
+    gap: 8px;
+    padding: 8px;
+  }
+  .coffee-arm-label span {
+    display: none;
+  }
+  .coffee-joint-card {
+    display: block;
+    padding: 3px;
+  }
+  .coffee-joint-label {
+    margin-bottom: 3px;
+    font-size: 11px;
+  }
+  .coffee-joint-buttons {
+    gap: 3px;
+  }
+  .coffee-render-note {
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    font-size: 11px;
+  }
+}
+@container (max-width: 330px) {
+  .coffee-control-dock {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .coffee-joint-card {
+    display: grid;
+  }
+}
+@media (orientation: landscape) and (max-height: 540px) and (min-width: 680px) {
+  .coffee-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
+    align-items: center;
+  }
+  .coffee-control-dock {
+    align-self: stretch;
+    padding: 6px;
+    gap: 6px;
+    border-top: 0;
+    border-left: 1px solid #d8e0e3;
+  }
+  .coffee-canvas {
+    aspect-ratio: 960 / 434;
+  }
+  .coffee-arm-label span {
+    display: none;
+  }
+  .coffee-joint-card {
+    display: block;
+    padding: 3px;
+  }
+  .coffee-joint-label {
+    margin-bottom: 3px;
+    font-size: 11px;
+  }
+  .coffee-joint-buttons {
+    gap: 3px;
+  }
+  .coffee-render-note {
+    grid-column: 1 / -1;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
   }
 }
 """
@@ -380,10 +485,16 @@ function canvasContext() {
     resizeObserver = new ResizeObserver(() => drawFrame(displayState));
     resizeObserver.observe(canvas);
   }
-  const width = Math.max(320, canvas.clientWidth || LOGICAL_WIDTH);
+  const width = Math.max(1, canvas.clientWidth || LOGICAL_WIDTH);
+  // On phones, devote the canvas to the robot scene. The readable HTML
+  // amounts below it replace the tiny raster header and footer.
+  const compact = width <= 560;
+  const headerCrop = compact ? 76 : 0;
+  const logicalHeight = compact ? LOGICAL_HEIGHT - 76 - 50 : LOGICAL_HEIGHT;
+  canvas.style.aspectRatio = LOGICAL_WIDTH + ' / ' + logicalHeight;
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
   const pixelWidth = Math.round(width * ratio);
-  const pixelHeight = Math.round(width * LOGICAL_HEIGHT / LOGICAL_WIDTH * ratio);
+  const pixelHeight = Math.round(width * logicalHeight / LOGICAL_WIDTH * ratio);
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
     canvas.width = pixelWidth;
     canvas.height = pixelHeight;
@@ -393,9 +504,9 @@ function canvasContext() {
     pixelWidth / LOGICAL_WIDTH,
     0,
     0,
-    pixelHeight / LOGICAL_HEIGHT,
+    pixelHeight / logicalHeight,
     0,
-    0
+    -headerCrop * pixelHeight / logicalHeight
   );
   return context;
 }
@@ -446,6 +557,14 @@ function roundedRectangle(context, x, y, width, height, radius) {
 }
 
 function updateJointControls(state) {
+  const amounts = {
+    fill: Math.round(state.fill * 1000) + ' / ' + Math.round(state.targetFill * 1000) + ' mL',
+    spill: Math.round(state.spill * 1000) + ' mL',
+    remaining: Math.round(state.sourceRemaining * 1000) + ' mL',
+  };
+  element.querySelectorAll('[data-coffee-stat]').forEach((stat) => {
+    stat.textContent = amounts[stat.dataset.coffeeStat];
+  });
   element.querySelectorAll(".coffee-joint-control").forEach((control) => {
     const index = Number(control.dataset.jointIndex);
     control.querySelectorAll(".coffee-joint-button").forEach((button) => {

@@ -209,7 +209,8 @@ python -m kaist_rl_lab.apps.coffee_pouring_app
 The joint controls sit in a fixed dock below the scene, with the cup arm on the left and the pot
 arm on the right. They stay outside the canvas so the robots and vessels remain visible throughout
 their motion. Each joint has counterclockwise, hold, and clockwise commands; directions latch so
-several joints can rotate together. On narrower screens, the two control groups stack vertically.
+several joints can rotate together. Phones use two arm columns with at least 44-pixel touch
+targets, readable fill/spill amounts, and a compact landscape layout.
 
 Each new demo starts **paused** so students can plan and select joint commands before moving.
 The cup starts farther left and the pot lower and farther right, requiring arm positioning before pouring.
@@ -222,7 +223,8 @@ a 700 mL target and normal playback speed. The browser runs the installed Python
 in a Pyodide worker at 32 steps per second (`dt=1/32`), with the existing 1/64-second physics
 substeps. Every displayed pose comes from an actual physics step and every step is recorded.
 There is no speculative pose preview, network reconciliation, or simulation running ahead on Colab.
-Controls respond on the next local physics frame; changing tabs pauses the simulation automatically.
+Controls respond on the next local physics frame; changing tabs or switching apps pauses the
+simulation and clears motor commands automatically.
 The first launch downloads the browser Python runtime and NumPy and can take several seconds.
 Keep this tab open until you save or submit your attempt. Reset clears the current attempt.
 The standalone Gym environment retains its default `dt=0.125`; for replay or policy evaluation,
@@ -234,9 +236,33 @@ The environment remains a fast teaching approximation rather than a rigid-body/f
 table, arm-to-arm, vessel, and handle contacts are enforced, while droplet breakup, splashing, and
 surface tension are not modeled.
 
+### Classroom website: scan, play, submit
+
+The standalone website is the recommended classroom workflow. Students scan a class QR,
+open the simulation on their phone, enter their student ID, and tap **Submit trajectory**.
+No notebook, account, package installation, or code execution is required from students.
+Python and the simulation libraries download automatically on the first visit.
+
+The instructor signs in at `/instructor`, creates a class, and displays its QR code. The
+private dashboard groups submissions by class and shows participant, received time,
+fill/spill, success, and duration. Replay runs the recorded actions through the same
+physics model; each recording can also be downloaded as `.npz` for later learning experiments.
+Student IDs are required by default; the instructor can choose optional participant codes.
+
+Submissions use private persistent storage and return a receipt only after saving. Failed
+uploads can be retried from the same tab without duplicates; a download remains available
+as a backup. Closing a class stops new submissions. The public student link cannot list,
+replay, or download anyone's submissions. A link without a class opens practice mode.
+
+See [website setup and deployment](deploy/coffee-web/README.md) for the instructor-only
+setup, HTTPS hosting, persistent volume, and password configuration. Run one server
+worker; simulation runs independently on each phone, not on the web server.
+
+### Optional Colab workflow
+
 [Open the interactive notebook in Google Colab](https://colab.research.google.com/github/kihyukh/kaist-or-gym/blob/main/examples/coffee_pouring_colab.ipynb).
 
-For class, distribute `examples/coffee_pouring_colab.ipynb`. Its first cell installs
+For notebook-based demonstrations, use `examples/coffee_pouring_colab.ipynb`. Its first cell installs
 `kaist-rl-lab[interactive]==0.1.22` and Gradio 6.26.0 from PyPI; the second code cell launches
 each student's own demo inside Colab and prints a link for a larger view. Students can use
 **Runtime → Run all** with a standard Python 3 runtime; no GPU or Drive mount is needed.

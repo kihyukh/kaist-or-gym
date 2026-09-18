@@ -1,0 +1,26 @@
+# Select the deployment branch when creating the Blueprint; it is inherited here.
+services:
+  - type: web
+    name: kaist-coffee-classroom
+    runtime: docker
+    plan: 0.5c-512mb
+    region: singapore
+    numInstances: 1
+    autoDeployTrigger: "off"
+    dockerfilePath: ./deploy/coffee-web/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 180
+    disk:
+      name: coffee-trajectories
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: COFFEE_DATA_DIR
+        value: /data
+      - key: COFFEE_INSTRUCTOR_PASSWORD
+        sync: false
+      - key: COFFEE_SESSION_SECRET
+        generateValue: true

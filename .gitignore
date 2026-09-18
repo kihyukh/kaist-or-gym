@@ -96,3 +96,6 @@ venv.bak/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Private local website storage (classes, login sessions, and demonstrations)
+/data/coffee-web/

@@ -24,10 +24,13 @@ examples = ["gradio>=6.26,<7"]
 interactive = ["gradio>=6.26,<7"]
 human = ["pygame>=2.5,<3"]
 test = ["pytest>=7", "gymnasium[other]>=0.29"]
+web = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1", "qrcode>=8,<9"]
+web-test = ["pytest>=7", "httpx>=0.27,<1"]
 
 [project.scripts]
 coffee-pouring-app = "kaist_rl_lab.apps.coffee_pouring_app:main"
 laundry-folding-app = "kaist_rl_lab.apps.laundry_folding_app:main"
+coffee-pouring-web = "kaist_rl_lab.apps.coffee_web:main"
 
 [tool.setuptools.packages.find]
 include = ["kaist_rl_lab*"]

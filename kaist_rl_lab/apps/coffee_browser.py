@@ -1,4 +1,4 @@
-"""Colab hosts the page/upload bridge; one browser worker owns Python physics."""
+"""Shared browser simulation for notebook and standalone website frontends."""
 
 import base64
 import json
@@ -41,6 +41,17 @@ BROWSER_CSS = CANVAS_CSS + """
 .coffee-save label {display:block; margin:10px 0;}
 .coffee-save input {display:block; border:1px solid #ccd5dd; border-radius:6px; padding:8px;}
 .coffee-download {margin-left:12px; text-decoration:underline; color:#224a67;}
+.coffee-toolbar button, .coffee-save button, .coffee-save input {min-height:44px; box-sizing:border-box;}
+.coffee-save input {font-size:16px; width:100%; max-width:360px;}
+.coffee-toolbar button {touch-action:manipulation;}
+@media(max-width:600px) {
+  .coffee-toolbar {gap:6px; margin-bottom:6px;}
+  .coffee-time {flex-basis:100%; font-size:12px;}
+  .coffee-toolbar button {flex:1; padding:8px 6px; font-size:12px;}
+  .coffee-save {padding:12px;}
+  .coffee-download {display:block; margin:12px 0 0;}
+  .coffee-download[hidden] {display:none;}
+}
 """
 
 WORKER_JAVASCRIPT = r"""
@@ -71,11 +82,19 @@ function schedule() {
 self.onmessage = async ({data}) => {
   try {
     if (data.kind === 'init') {
+      postMessage({loading:'Loading the Python runtime…'});
       const {loadPyodide} = await import('https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.mjs');
       python = await loadPyodide();
+      postMessage({loading:'Loading simulation libraries…'});
       await python.loadPackage(['numpy', 'micropip']);
       await python.runPythonAsync('import micropip\nawait micropip.install("gymnasium==1.2.3")');
-      const bytes = Uint8Array.from(atob(data.bundle), c=>c.charCodeAt(0));
+      postMessage({loading:'Preparing your coffee station…'});
+      let bytes;
+      if (data.bundle_url) {
+        const response=await fetch(data.bundle_url);
+        if (!response.ok) throw new Error('Could not load the simulation source.');
+        bytes=new Uint8Array(await response.arrayBuffer());
+      } else bytes=Uint8Array.from(atob(data.bundle), c=>c.charCodeAt(0));
       python.unpackArchive(bytes, 'zip', {extractDir:'/home/pyodide'});
       python.runPython('from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime\ncoffee_runtime = BrowserRuntime()');
       dispatch({kind:'snapshot'});
@@ -103,22 +122,23 @@ let episodeId=null, archive=null, downloadUrl=null, uploadTimer=null, uploadSequ
 const $ = selector => element.querySelector(selector);
 const status = message => { $('.coffee-status').textContent=message; };
 const config = typeof props.value==='string' ? JSON.parse(props.value) : props.value;
-const workerUrl=URL.createObjectURL(new Blob([config.worker], {type:'text/javascript'}));
+const workerUrl=config.worker_url || URL.createObjectURL(new Blob([config.worker], {type:'text/javascript'}));
 const worker=new Worker(workerUrl, {type:'module'});
-URL.revokeObjectURL(workerUrl);
+if (!config.worker_url) URL.revokeObjectURL(workerUrl);
 const saveButton=$('[data-command="save"]');
 saveButton.textContent=config.collecting ? 'Submit trajectory' : 'Save trajectory';
+let uploading=false;
 function controls() {
   if (!displayState) return;
   updateJointControls({...displayState, motors:desiredMotors, running:ready && !resetting && !saving && displayState.running});
   $('[data-command="pause"]').textContent=desiredPaused ? 'Resume time' : 'Pause time';
   element.querySelectorAll('[data-command]').forEach(button=>{
-    button.disabled=!ready || resetting || saving ||
+    button.disabled=!ready || resetting || saving || uploading ||
       (!displayState.running && !['reset','save'].includes(button.dataset.command));
   });
 }
 function sendControl(kind, index, direction) {
-  if (!ready || resetting || saving || (!displayState.running && kind!=='reset')) return;
+  if (!ready || resetting || saving || uploading || (!displayState.running && kind!=='reset')) return;
   if (kind==='motor') desiredMotors[index]=direction;
   if (kind==='stop' || kind==='reset') desiredMotors.fill(0);
   if (kind==='pause') desiredPaused=!desiredPaused;
@@ -128,12 +148,36 @@ function sendControl(kind, index, direction) {
   worker.postMessage({kind, motors:desiredMotors.slice(), paused:desiredPaused,
     sequence, generation:displayState.generation});
 }
-function submitArchive() {
+async function submitArchive() {
   if (!config.collecting) {
     $('.coffee-submission').textContent='Attempt saved. Download the trajectory below.';
     return;
   }
   $('.coffee-submission').textContent='Submitting your saved trajectory…';
+  if (config.upload_url) {
+    if (uploading) return;
+    uploading=true; controls();
+    const thisEpisode=episodeId, thisArchive=archive;
+    const abort=new AbortController();
+    const timeout=setTimeout(()=>abort.abort(),60000);
+    try {
+      const response=await fetch(config.upload_url, {method:'POST',
+        headers:{'Content-Type':'application/octet-stream'},
+        body:Uint8Array.from(atob(thisArchive),c=>c.charCodeAt(0)), signal:abort.signal});
+      const result=await response.json();
+      if (!response.ok) throw new Error(typeof result.detail==='string' ? result.detail : 'Upload was not accepted.');
+      if (episodeId!==thisEpisode || result.episode_id!==thisEpisode || result.status!=='saved')
+        throw new Error('The server receipt did not match this attempt.');
+      dirty=false;
+      $('.coffee-submission').textContent='Submitted to your instructor. Receipt: '+result.receipt;
+      saveButton.textContent='Submitted ✓';
+    } catch(error) {
+      $('.coffee-submission').textContent=(error.name==='AbortError' ? 'Upload timed out.' : error.message)+
+        ' Your attempt is kept in this tab. Tap Submit trajectory to retry, or download a backup.';
+      saveButton.textContent='Submit trajectory';
+    } finally {clearTimeout(timeout); uploading=false; controls();}
+    return;
+  }
   clearTimeout(uploadTimer);
   uploadTimer=setTimeout(()=>{
     $('.coffee-submission').textContent='Upload was not confirmed. Retry Submit trajectory or download your backup.';
@@ -151,8 +195,10 @@ function receiveUpload() {
   if (value.confirmed) dirty=false;
 }
 worker.onmessage=({data})=>{
+  if (data.loading) {status(data.loading+' The first visit can take a little longer.');return;}
   if (data.error) {
     saving=false;
+    if(data.command==='save') $('.coffee-participant').disabled=false;
     status(data.command==='save' ? 'No recording saved: '+data.error :
       'Simulation stopped. Please reload the demo. '+data.error);
     if (data.command!=='save') { ready=false; worker.terminate(); }
@@ -171,6 +217,8 @@ worker.onmessage=({data})=>{
     archive=null; dirty=false; $('.coffee-download').hidden=true;
     $('.coffee-submission').textContent=''; clearTimeout(uploadTimer);
     if(downloadUrl) URL.revokeObjectURL(downloadUrl);
+    saveButton.textContent=config.collecting ? 'Submit trajectory' : 'Save trajectory';
+    $('.coffee-participant').disabled=false;
   }
   episodeId=data.episode_id; displayState=next; ready=true; resetting=false;
   desiredMotors=next.motors.slice(); desiredPaused=next.paused;
@@ -199,25 +247,48 @@ element.addEventListener('click',event=>{
     sendControl('motor',Number(button.closest('[data-joint-index]').dataset.jointIndex),Number(button.dataset.direction));
   } else if(button.dataset.command==='save') {
     if(archive) {submitArchive();return;}
+    const participant=$('.coffee-participant');
+    if(config.participant_required && !participant.value.trim()) {
+      participant.setCustomValidity('Enter your student ID before submitting.');
+      participant.reportValidity(); participant.focus(); return;
+    }
+    participant.setCustomValidity?.('');
     saving=true; controls();
-    worker.postMessage({kind:'save',participant:$('.coffee-participant').value});
-  } else if(button.dataset.command) sendControl(button.dataset.command);
+    participant.disabled=true;
+    worker.postMessage({kind:'save',participant:participant.value.trim()});
+  } else if(button.dataset.command) {
+    if (button.dataset.command==='reset' && dirty &&
+        !window.confirm('This attempt has not been submitted or downloaded. Discard it and start again?')) return;
+    sendControl(button.dataset.command);
+  }
 });
+$('.coffee-participant').addEventListener('input',()=>$('.coffee-participant').setCustomValidity?.(''));
 $('.coffee-download').addEventListener('click',()=>{dirty=false;});
-function visibility() { if(document.hidden && ready && !desiredPaused && displayState.running) sendControl('pause'); }
+function pauseSafely() {
+  if (!ready || resetting || saving || uploading || !displayState.running) return;
+  desiredMotors.fill(0); desiredPaused=true; sequence++; controls();
+  worker.postMessage({kind:'pause',motors:desiredMotors.slice(),paused:true,
+    sequence,generation:displayState.generation});
+}
+function visibility() { if(document.hidden) pauseSafely(); }
+$('.coffee-participant').addEventListener('focus',pauseSafely);
 function beforeUnload(event) { if(dirty) {event.preventDefault();event.returnValue='';} }
 document.addEventListener('visibilitychange',visibility);
 window.addEventListener('beforeunload',beforeUnload);
+window.addEventListener('blur',pauseSafely);
+window.addEventListener('pagehide',pauseSafely);
 const cleanup=new MutationObserver(()=>{
   if(element.isConnected)return;
   worker.terminate(); cleanup.disconnect(); resizeObserver?.disconnect();
   document.removeEventListener('visibilitychange',visibility);
   window.removeEventListener('beforeunload',beforeUnload);
+  window.removeEventListener('blur',pauseSafely);
+  window.removeEventListener('pagehide',pauseSafely);
   clearTimeout(uploadTimer); if(downloadUrl)URL.revokeObjectURL(downloadUrl);
 });
 cleanup.observe(document.body,{childList:true,subtree:true});
 watch('value',receiveUpload);
-worker.postMessage({kind:'init',bundle:config.bundle});
+worker.postMessage({kind:'init',bundle:config.bundle,bundle_url:config.bundle_url});
 """
 
 
