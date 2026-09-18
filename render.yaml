@@ -10,7 +10,6 @@ services:
     dockerfilePath: ./deploy/coffee-web/Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    maxShutdownDelaySeconds: 180
     disk:
       name: coffee-trajectories
       mountPath: /data
