@@ -98,6 +98,8 @@ self.onmessage = async ({data}) => {
       python.unpackArchive(bytes, 'zip', {extractDir:'/home/pyodide'});
       python.runPython(data.mode === 'random'
         ? 'from kaist_rl_lab.apps.coffee_random_runtime import RandomAgentRuntime\ncoffee_runtime = RandomAgentRuntime()'
+        : data.mode === 'cloning'
+        ? 'from kaist_rl_lab.apps.coffee_cloning_runtime import CloningAgentRuntime\ncoffee_runtime = CloningAgentRuntime()'
         : 'from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime\ncoffee_runtime = BrowserRuntime()');
       dispatch({kind:'snapshot'});
       return;
@@ -105,7 +107,7 @@ self.onmessage = async ({data}) => {
     if (!python) return;
     const wasPaused = paused;
     dispatch(data);
-    const restarting = ['reset','random-start','random-reset'].includes(data.kind);
+    const restarting = ['reset','random-start','random-reset','cloning-load','cloning-start','cloning-reset'].includes(data.kind);
     if (paused || !running || restarting) {
       clearTimeout(timer); timer = null;
     }

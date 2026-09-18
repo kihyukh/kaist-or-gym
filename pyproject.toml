@@ -35,6 +35,9 @@ coffee-pouring-web = "kaist_rl_lab.apps.coffee_web:main"
 [tool.setuptools.packages.find]
 include = ["kaist_rl_lab*"]
 
+[tool.setuptools.package-data]
+"kaist_rl_lab.apps" = ["coffee_examples/*.npz"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

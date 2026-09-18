@@ -451,6 +451,9 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
     def instructor_page():
         return FileResponse(assets / "instructor.html")
 
+    from kaist_rl_lab.apps.coffee_cloning_api import register_cloning_routes
+    register_cloning_routes(app, store, instructor, small_json, rate_limit)
+
     # These pages contain no credentials or submitted data. Every instructor data
     # endpoint performs authentication independently; hiding a URL is not access control.
     app.mount("/", StaticFiles(directory=assets, html=True), name="website")
