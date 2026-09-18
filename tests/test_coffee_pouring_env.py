@@ -773,6 +773,22 @@ def test_substep_spill_keeps_its_causal_path_when_endpoint_capture_is_clean():
     env.close()
 
 
+@pytest.mark.parametrize("flow_rate", [0.0, 1e-13])
+def test_negligible_jet_cross_section_remains_finite(flow_rate):
+    env = CoffeePouringEnv()
+    cup_center = np.array([-0.05, 0.27])
+    cup_mouth = cup_center + np.asarray(env.geometry.cup_mouth)
+    joints = _joints_for_geometry(
+        env, cup_center, 0.0, cup_mouth + np.array([0.10, 0.20]), 1.05
+    )
+    env.reset(options={"joint_angles": joints})
+    path, capture, spill_path = env._ballistic_stream(env.tool_positions(), flow_rate, 0.1)
+    assert np.isfinite(path).all()
+    assert np.isfinite(spill_path).all()
+    assert capture == 0.0
+    env.close()
+
+
 def test_aligned_tilted_pot_fills_cup_and_misaligned_pot_spills():
     cup_center = np.array([-0.05, 0.27])
     pot_angle = 1.05

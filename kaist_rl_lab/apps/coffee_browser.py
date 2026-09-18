@@ -55,11 +55,12 @@ BROWSER_CSS = CANVAS_CSS + """
 """
 
 WORKER_JAVASCRIPT = r"""
-let python, timer = null, deadline = 0, paused = true, running = true;
+let python, timer = null, deadline = 0, paused = true, running = true, training = false;
 const interval = 1000 / 32;
 function emit(result) {
   const data = JSON.parse(result), p = data.snapshot.playback;
   paused = p.paused; running = p.running;
+  training = !!data.finetuning?.training_running;
   postMessage(data);
 }
 function dispatch(command) {
@@ -67,17 +68,20 @@ function dispatch(command) {
   emit(python.runPython('coffee_runtime.dispatch(_coffee_command)'));
 }
 function schedule() {
-  if (timer !== null || paused || !running) return;
+  if (timer !== null || (!training && (paused || !running))) return;
   timer = setTimeout(() => {
     timer = null;
     try {
-      dispatch({kind:'tick'});
-      deadline += interval;
-      // A slow/background tab never queues a burst of catch-up steps.
-      if (deadline < performance.now() - interval) deadline = performance.now() + interval;
+      const wasTraining = training;
+      dispatch({kind:wasTraining ? 'ft-step' : 'tick'});
+      if (!wasTraining) {
+        deadline += interval;
+        // A slow/background tab never queues a burst of catch-up steps.
+        if (deadline < performance.now() - interval) deadline = performance.now() + interval;
+      }
       schedule();
-    } catch (error) { paused=true; postMessage({error:String(error)}); }
-  }, Math.max(0, deadline - performance.now()));
+    } catch (error) { paused=true; training=false; postMessage({error:String(error)}); }
+  }, training ? 0 : Math.max(0, deadline - performance.now()));
 }
 self.onmessage = async ({data}) => {
   try {
@@ -100,6 +104,8 @@ self.onmessage = async ({data}) => {
         ? 'from kaist_rl_lab.apps.coffee_random_runtime import RandomAgentRuntime\ncoffee_runtime = RandomAgentRuntime()'
         : data.mode === 'cloning'
         ? 'from kaist_rl_lab.apps.coffee_cloning_runtime import CloningAgentRuntime\ncoffee_runtime = CloningAgentRuntime()'
+        : data.mode === 'finetuning'
+        ? 'from kaist_rl_lab.apps.coffee_finetuning_runtime import FineTuningRuntime\ncoffee_runtime = FineTuningRuntime()'
         : 'from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime\ncoffee_runtime = BrowserRuntime()');
       dispatch({kind:'snapshot'});
       return;
@@ -107,8 +113,9 @@ self.onmessage = async ({data}) => {
     if (!python) return;
     const wasPaused = paused;
     dispatch(data);
-    const restarting = ['reset','random-start','random-reset','cloning-load','cloning-start','cloning-reset'].includes(data.kind);
-    if (paused || !running || restarting) {
+    const restarting = ['reset','random-start','random-reset','cloning-load','cloning-start','cloning-reset',
+      'ft-load','ft-train','ft-run','ft-reset','ft-stop'].includes(data.kind);
+    if ((!training && (paused || !running)) || restarting) {
       clearTimeout(timer); timer = null;
     }
     if ((wasPaused && !paused) || restarting) deadline = performance.now();

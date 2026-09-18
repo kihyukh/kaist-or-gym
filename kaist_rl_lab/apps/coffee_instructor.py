@@ -5,6 +5,11 @@ from kaist_rl_lab.apps.coffee_cloning_demo import (
     CLONING_DEMO_HTML,
     CLONING_DEMO_JAVASCRIPT,
 )
+from kaist_rl_lab.apps.coffee_finetuning_demo import (
+    FINETUNING_CSS,
+    FINETUNING_HTML,
+    FINETUNING_JAVASCRIPT,
+)
 from kaist_rl_lab.apps.coffee_random_demo import (
     RANDOM_DEMO_CSS,
     RANDOM_DEMO_HTML,
@@ -72,6 +77,7 @@ INSTRUCTOR_HTML = """<!doctype html>
         </section>
       </div>
       __CLONING_DEMO__
+      __FINETUNING__
       <section id="submissions-panel" class="panel" hidden>
         <div class="heading-row">
           <div><h2>Submitted demonstrations</h2><p id="submission-count" class="hint"></p></div>
@@ -113,7 +119,7 @@ INSTRUCTOR_HTML = """<!doctype html>
   </main>
 </body>
 </html>
-""".replace("__RANDOM_DEMO__", RANDOM_DEMO_HTML).replace("__CLONING_DEMO__", CLONING_DEMO_HTML)
+""".replace("__RANDOM_DEMO__", RANDOM_DEMO_HTML).replace("__CLONING_DEMO__", CLONING_DEMO_HTML).replace("__FINETUNING__", FINETUNING_HTML)
 
 INSTRUCTOR_CSS = CANVAS_CSS + """
 :root {color-scheme:light;--ink:#1d2b3a;--muted:#52656f;--navy:#224a67;--teal:#2b7a78;--line:#d8e0e3;}
@@ -191,7 +197,7 @@ footer {font-size:12px;color:var(--muted);text-align:center;margin-top:20px;}
 @media(max-width:1150px) {.class-grid {grid-template-columns:1fr 1.7fr;}.share-panel {gap:16px;}.share-panel img {width:145px;height:145px;}.share-copy .heading-row {display:block;}.share-copy h2 {margin-bottom:6px;}}
 @media(max-width:900px) {.class-grid {display:block;}.share-panel img {width:200px;height:200px;}.share-copy .heading-row {display:flex;}h1 {font-size:26px;}}
 @media(max-width:580px) {#instructor {padding:20px 12px;}.panel {padding:16px;}.share-panel {display:block;}.share-panel img {margin:16px auto 0;width:220px;height:220px;}h1 span {display:block;margin:6px 0 0;}.heading-row {align-items:start;flex-wrap:wrap;}.heading-row h2 {margin-bottom:4px;}.playback-controls {gap:8px;}.playback-controls label {margin-left:0;}#replay-download {width:100%;}.field-row button {padding-inline:10px;}}
-""" + RANDOM_DEMO_CSS + CLONING_DEMO_CSS
+""" + RANDOM_DEMO_CSS + CLONING_DEMO_CSS + FINETUNING_CSS
 
 INSTRUCTOR_JAVASCRIPT = r"""
 'use strict';
@@ -201,7 +207,11 @@ const clamp=(value,low,high)=>Math.max(low,Math.min(high,value));
 let canvasRef=null, resizeObserver=null, displayState=null;
 const $=selector=>element.querySelector(selector);
 const randomDemo=createRandomDemo($('#random-panel'));
-const cloningDemo=createCloningDemo($('#cloning-panel'),post,()=>{randomDemo.pause();stopPlayback();});
+const fineTuningDemo=createFineTuningDemo($('#finetuning-panel'),
+  ()=>{randomDemo.pause();cloningDemo.pause();stopPlayback();});
+const cloningDemo=createCloningDemo($('#cloning-panel'),post,
+  ()=>{randomDemo.pause();fineTuningDemo.pause();stopPlayback();},
+  model=>fineTuningDemo.setModel(model));
 let sessions=[], activeSession=null, submissions=[], authenticated=false, authEpoch=0;
 let listRequest=0, replayRequest=0, refreshBusy=false, replayFrames=[];
 let frameIndex=0, playing=false, playStarted=0, playOrigin=0, animation=null;
@@ -228,6 +238,7 @@ function post(path,body={}) {return api(path,{method:'POST',body:JSON.stringify(
 function showLogin() {
   randomDemo.setEnabled(false);
   cloningDemo.setEnabled(false);
+  fineTuningDemo.setEnabled(false);
   authenticated=false;authEpoch++;listRequest++;replayRequest++;stopPlayback();
   $('#dashboard').hidden=true;$('#logout').hidden=true;$('#login-panel').hidden=false;
   sessions=[];submissions=[];activeSession=null;replayFrames=[];displayState=null;
@@ -241,6 +252,7 @@ function showLogin() {
 function showDashboard() {
   randomDemo.setEnabled(true);
   cloningDemo.setEnabled(true);
+  fineTuningDemo.setEnabled(true);
   authenticated=true;$('#login-panel').hidden=true;$('#dashboard').hidden=false;$('#logout').hidden=false;
 }
 function idPath(value) {return encodeURIComponent(String(value));}
@@ -357,6 +369,7 @@ function startPlayback() {
   if(!replayFrames.length)return;
   randomDemo.pause();
   cloningDemo.pause();
+  fineTuningDemo.pause();
   if(frameIndex===replayFrames.length-1)renderReplayFrame(0);
   playing=true;playStarted=performance.now();playOrigin=replayFrames[frameIndex].time;
   $('#play-replay').textContent='Pause';animation=requestAnimationFrame(tickPlayback);
@@ -364,6 +377,7 @@ function startPlayback() {
 async function openReplay(item) {
   randomDemo.pause();
   cloningDemo.pause();
+  fineTuningDemo.pause();
   stopPlayback();const request=++replayRequest;
   replayFrames=[];frameIndex=0;displayState=null;
   $('#replay-panel').hidden=false;$('#replay-title').textContent='Replay · '+(item.participant||'Anonymous');
@@ -424,8 +438,8 @@ $('#refresh').addEventListener('click',async()=>{
   try{await loadSessions();}catch(error){setStatus(error.message,true);}finally{$('#refresh').disabled=false;}
 });
 $('#participant-filter').addEventListener('input',renderSubmissions);
-$('#random-start').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();});
-$('#random-pause').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();});
+$('#random-start').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();fineTuningDemo.pause();});
+$('#random-pause').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();fineTuningDemo.pause();});
 $('#play-replay').addEventListener('click',()=>playing?stopPlayback():startPlayback());
 $('#replay-position').addEventListener('input',event=>{stopPlayback();renderReplayFrame(Number(event.target.value));});
 $('#playback-speed').addEventListener('change',()=>{if(playing){stopPlayback();startPlayback();}});
@@ -442,4 +456,4 @@ loadSessions().catch(error=>setStatus(error.status===401?'Sign in to manage clas
     'element.querySelector(', 'element.querySelector("#replay-panel " + '
 ).replace(
     'element.querySelectorAll(', 'element.querySelectorAll("#replay-panel " + '
-) + RANDOM_DEMO_JAVASCRIPT + CLONING_DEMO_JAVASCRIPT
+) + RANDOM_DEMO_JAVASCRIPT + CLONING_DEMO_JAVASCRIPT + FINETUNING_JAVASCRIPT

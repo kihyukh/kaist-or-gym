@@ -1342,8 +1342,10 @@ class CoffeePouringEnv(gym.Env):
                     min(along_opening + impact_radius, inner_half_width)
                     - max(along_opening - impact_radius, -inner_half_width),
                 )
-                candidate_capture = float(
-                    np.clip(opening_overlap / (2.0 * impact_radius), 0.0, 1.0)
+                # Near-zero flow has no finite jet cross-section to divide by.
+                candidate_capture = (
+                    float(np.clip(opening_overlap / (2.0 * impact_radius), 0.0, 1.0))
+                    if impact_radius > 0.0 else 0.0
                 )
                 vessel_overlap = max(
                     0.0,

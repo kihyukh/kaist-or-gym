@@ -63,7 +63,7 @@ CLONING_DEMO_CSS = """
 """
 
 CLONING_DEMO_JAVASCRIPT = r"""
-function createCloningDemo(element,post,beforeRun) {
+function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
   const $=selector=>element.querySelector(selector);
   const LOGICAL_WIDTH=960, LOGICAL_HEIGHT=560;
   const clamp=(value,low,high)=>Math.max(low,Math.min(high,value));
@@ -99,7 +99,7 @@ function createCloningDemo(element,post,beforeRun) {
     state=null;displayState=null;$('#cloning-scene').hidden=true;
   }
   function clearPolicy() {
-    epoch++;training=false;model=null;stopWorker();
+    epoch++;training=false;model=null;stopWorker();onModel(null);
     $('#cloning-training-result').hidden=true;
     $('#cloning-training-summary').textContent='';$('#cloning-validation').textContent='';$('#cloning-selection').textContent='';
     status('Train a policy, then watch it try to pour 700 mL.');controls();
@@ -137,6 +137,7 @@ function createCloningDemo(element,post,beforeRun) {
         'Action agreement is not a pouring success rate.':
         'No held-out action check: at least two demonstrations are needed. Test the policy in the simulation below.';
       status('Policy trained. Click Run cloned policy to test it in the simulation.');
+      onModel(model);
     } catch(error) {if(enabled&&request===epoch){
       model=null;$('#cloning-training-result').hidden=true;status(error.message,true);
     }}

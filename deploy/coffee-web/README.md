@@ -59,6 +59,53 @@ trajectory before fitting the final policy on all selected examples. This error
 is not task success. A successful live rollout uses the classroom starting pose
 and does not establish generalization to other starting poses.
 
+## Fine-tuning with reward
+
+After training a cloned policy, use **Fine-tune with actor–critic** underneath it.
+Choose 4, 8 (default), or 12 exploratory trials and click **Start fine-tuning**.
+The browser first evaluates the original clone, then alternates exploratory trials,
+actor–critic updates, and deterministic evaluations. The comparison reports actual
+environment return, fill, spill, duration, and success; the expandable history
+separates noisy training returns from evaluations without noise. **Watch original
+clone** and **Watch best policy** run fresh deterministic trials at normal speed.
+
+This is a deliberately small PPO actor–critic experiment. A five-feature linear
+actor adjusts the frozen clone's speed, and a linear critic fits observed returns
+to estimate advantages (GAE, lambda 0.95). The action is
+`clip(BC(state) * (1 + 0.15 * tanh(z)), -1, 1)`, with Gaussian latent speed noise
+of standard deviation 0.30 held for eight physics steps (0.25 simulated seconds)
+during exploration. Evaluation recomputes the actor mean at every physics step.
+Zero commands remain zero and motion directions remain those of the clone.
+This bounds each motor change relative to BC at the **current state**, not the
+distance between complete trajectories. It is speed refinement, not unrestricted
+learning of six new joint commands.
+
+Each update uses four clipped PPO epochs (ratio 0.8–1.2), Gaussian KL backtracking
+with a 0.01 limit on sampled states, and a global latent-mean change bound of 0.10
+per update. The KL check supplements PPO clipping; clipping alone does not enforce
+a hard trust region. Training uses the environment's original reward and an
+undiscounted finite 60-second task, including its timeout terminal penalty.
+It does not call the demonstration-generating controller or add expert corrections.
+
+The highest-return completed evaluation is retained, including the unchanged
+clone. Improvement is not guaranteed. With the five bundled examples, eight trials
+and default seed 2026 gave native return **27.951240 → 27.964141**, fill
+**701.80 → 699.46 mL**, and time **29.34 → 28.91 seconds**, with negligible spill.
+This is a modest improvement on an already successful clone from the same starting
+pose, not evidence of generalization. A second seed (2027) retained its first update
+at return 28.028606; later updates were worse, illustrating why evaluations matter.
+Exact results can vary slightly across numerical runtimes.
+
+Training runs in the instructor browser in bounded chunks so pause and stop remain
+responsive. Backgrounding the page pauses it. Stop retains only fully evaluated
+checkpoints. Changing class, demonstration source, cloning policy, or reloading
+clears the experiment; no RL trials are submitted as student data. Computation
+requires no additional server/GPU service. Browser training speed depends on the
+device and number of demonstration samples; larger student datasets can take longer.
+
+Method references: [PPO](https://spinningup.openai.com/en/latest/algorithms/ppo.html)
+and [finite horizons and time limits](https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/).
+
 ## Run locally
 
 From the repository root, install once for the operator:
