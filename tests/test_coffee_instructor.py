@@ -27,6 +27,7 @@ class Node {
   setAttribute(key,value){this[key]=value;}
   removeAttribute(key){delete this[key];}
   getContext(){return {clearRect(){}};}
+  querySelector(selector){return get(selector);}
 }
 const nodes=new Map();
 const get=selector=>{if(!nodes.has(selector))nodes.set(selector,new Node());return nodes.get(selector);};

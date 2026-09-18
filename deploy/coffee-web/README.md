@@ -10,6 +10,16 @@ QR code. Each class has its own random student link. The dashboard lists submitt
 attempts, replays recorded physics, and downloads the original training data.
 Closing a class stops new submissions but permits retries of already saved attempts.
 
+The instructor dashboard also includes **Random agent · no learning**. Click
+**Start random trial** to load the browser simulator and run the same coffee physics.
+All six joint commands are independently uniform over clockwise, hold, and
+counter-clockwise; each vector is held for a uniformly random 1–32 simulation steps
+(up to one second). Trials stop at 30 simulated seconds or the environment's terminal
+condition. Pause/resume, new trials, and a local table of the last ten completed
+trials support the lecture. Backgrounding the page pauses the experiment. These
+trials never upload as student submissions and do not change the policy: the demo
+illustrates that experience without a feedback-driven update is not learning.
+
 ## Run locally
 
 From the repository root, install once for the operator:

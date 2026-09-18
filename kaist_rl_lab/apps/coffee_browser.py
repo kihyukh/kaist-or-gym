@@ -96,17 +96,20 @@ self.onmessage = async ({data}) => {
         bytes=new Uint8Array(await response.arrayBuffer());
       } else bytes=Uint8Array.from(atob(data.bundle), c=>c.charCodeAt(0));
       python.unpackArchive(bytes, 'zip', {extractDir:'/home/pyodide'});
-      python.runPython('from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime\ncoffee_runtime = BrowserRuntime()');
+      python.runPython(data.mode === 'random'
+        ? 'from kaist_rl_lab.apps.coffee_random_runtime import RandomAgentRuntime\ncoffee_runtime = RandomAgentRuntime()'
+        : 'from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime\ncoffee_runtime = BrowserRuntime()');
       dispatch({kind:'snapshot'});
       return;
     }
     if (!python) return;
     const wasPaused = paused;
     dispatch(data);
-    if (paused || !running || data.kind === 'reset') {
+    const restarting = ['reset','random-start','random-reset'].includes(data.kind);
+    if (paused || !running || restarting) {
       clearTimeout(timer); timer = null;
     }
-    if ((wasPaused && !paused) || data.kind === 'reset') deadline = performance.now();
+    if ((wasPaused && !paused) || restarting) deadline = performance.now();
     schedule();
   } catch (error) { postMessage({error:String(error), command:data.kind}); }
 };
