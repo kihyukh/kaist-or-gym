@@ -78,10 +78,10 @@ INSTRUCTOR_HTML = """<!doctype html>
       </div>
       <section id="examples-panel" class="panel" aria-labelledby="examples-title">
         <div class="heading-row">
-          <div><p class="eyebrow">INSPECT DEMONSTRATIONS</p><h2 id="examples-title">Generated successful examples</h2><p id="example-count" class="hint"></p></div>
+          <div><p class="eyebrow">INSPECT DEMONSTRATIONS</p><h2 id="examples-title">Generated practice demonstrations</h2><p id="example-count" class="hint"></p></div>
           <button id="refresh-examples" type="button">Refresh examples</button>
         </div>
-        <p class="hint">These are the same prepared recordings available for behavior cloning. Choose Replay to inspect a trajectory before training.</p>
+        <p class="hint">These generated recordings reach the goal but deliberately use slow approaches and begin returning the pot a little early, finishing around 672–686 mL. They meet the existing success tolerance, but leave room to improve accuracy and efficiency. Choose Replay to inspect them before training.</p>
         <p id="examples-status" role="status" class="hint">Loading generated examples…</p>
         <div class="table-scroll"><table>
           <thead><tr><th>Example</th><th>Total reward</th><th>Cup / spill</th><th>Result</th><th>Duration</th><th>Trajectory</th></tr></thead>
@@ -477,7 +477,7 @@ async function openReplay(item,source='students') {
   replayComplete=false;replayDuration=Number(item.duration_seconds)||0;replayExpectedFrames=0;
   $('#play-replay').textContent='Play';
   const label=source==='examples'?item.label:(item.participant||'Anonymous');
-  const provenance=source==='examples'?'Generated example':'Student submission · '+localTime(item.received_at);
+  const provenance=source==='examples'?'Generated practice demonstration':'Student submission · '+localTime(item.received_at);
   const summary=provenance+' · '+number(item.steps)+' recorded steps · '+duration(item.duration_seconds);
   $('#replay-panel').hidden=false;$('#replay-title').textContent='Replay · '+label;
   $('#replay-summary').textContent=summary+' · total reward '+number(item.total_reward,3);

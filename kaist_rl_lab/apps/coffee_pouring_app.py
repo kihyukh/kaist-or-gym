@@ -72,11 +72,14 @@ class InteractiveSession:
         dt: float = CoffeePouringEnv.DEFAULT_DT,
         reset_options: dict[str, Any] | None = None,
         include_render_info: bool = True,
+        arm_base_distance: float = CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE,
     ) -> None:
         self.lock = RLock()
         self.include_render_info = include_render_info
         self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt,
-                                    include_render_info=include_render_info)
+                                    include_render_info=include_render_info,
+                                    arm_base_distance=arm_base_distance)
+        self.arm_base_distance = self.env.arm_base_distance
         self.seed = int(seed)
         self.reset_options = deepcopy(reset_options or {})
         self.speed = _validated_speed(speed)
@@ -129,7 +132,8 @@ class InteractiveSession:
         dt = self.env.dt
         self.close()
         self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt,
-                                    include_render_info=self.include_render_info)
+                                    include_render_info=self.include_render_info,
+                                    arm_base_distance=self.arm_base_distance)
         self.seed = int(seed)
         self.speed = _validated_speed(speed)
         self.motors = np.zeros(6, dtype=np.float32)

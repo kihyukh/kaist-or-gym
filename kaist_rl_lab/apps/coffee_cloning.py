@@ -11,7 +11,10 @@ from typing import Any
 
 import numpy as np
 
-SCHEMA_VERSION = 1
+from kaist_rl_lab.envs.coffee_pouring import CoffeePouringEnv
+
+SCHEMA_VERSION = 2
+LEGACY_SCHEMA_VERSION = 1
 MAX_MODEL_SAMPLES = 50_000
 MAX_DEMONSTRATIONS = 100
 MAX_DEMONSTRATION_STEPS = 30_000
@@ -23,6 +26,15 @@ FEATURE_INDICES = tuple(range(15))
 # feature. Time is excluded: student recordings have no time-limit fraction.
 FEATURE_SCALES = (1.0,) * 6 + (0.5,) * 4 + (0.5, 0.5, 1.0, 1.0, 1.0)
 ALGORITHM = "nearest_neighbor"
+
+
+def _arm_base_distance(metadata: dict[str, Any]) -> float:
+    try:
+        return CoffeePouringEnv.validate_arm_base_distance(
+            metadata.get("arm_base_distance_m", CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE),
+        )
+    except (TypeError, ValueError):
+        raise ValueError("Invalid behavior-cloning arm spacing.") from None
 
 
 def _matrix(value: Any, width: int, maximum: int, label: str) -> np.ndarray:
@@ -97,7 +109,12 @@ def train_behavior_cloning(
     if type(max_samples) is not int or not len(demonstrations) <= max_samples <= MAX_MODEL_SAMPLES:
         raise ValueError(f"Training sample limit must be between the demo count and {MAX_MODEL_SAMPLES}.")
     prepared = []
+    arm_base_distance = None
     for arrays, metadata in demonstrations:
+        distance = _arm_base_distance(metadata)
+        if arm_base_distance is not None and distance != arm_base_distance:
+            raise ValueError("Behavior cloning requires trajectories with the same arm spacing.")
+        arm_base_distance = distance
         if metadata.get("dt") != 1 / 32:
             raise ValueError("Behavior cloning requires browser recordings made at 32 steps/second.")
         target = metadata.get("target_fill_l")
@@ -143,8 +160,14 @@ def train_behavior_cloning(
     states, actions = _fit_pairs(prepared, max_samples)
     metrics["training_samples"] = len(states)
     return {
-        "schema_version": SCHEMA_VERSION,
+        # A worker from before configurable spacing must reject a wider model,
+        # including tabs left open while the server deploys a new classroom.
+        "schema_version": (
+            LEGACY_SCHEMA_VERSION
+            if arm_base_distance == CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE else SCHEMA_VERSION
+        ),
         "algorithm": ALGORITHM,
+        "arm_base_distance_m": arm_base_distance,
         "feature_indices": list(FEATURE_INDICES),
         "feature_scales": list(FEATURE_SCALES),
         "states": states.tolist(),
@@ -158,12 +181,16 @@ class NearestNeighborPolicy:
 
     def __init__(self, model: dict[str, Any]):
         if not isinstance(model, dict) or (
-            model.get("schema_version") != SCHEMA_VERSION
+            type(model.get("schema_version")) is not int
+            or model["schema_version"] not in (LEGACY_SCHEMA_VERSION, SCHEMA_VERSION)
             or model.get("algorithm") != ALGORITHM
             or model.get("feature_indices") != list(FEATURE_INDICES)
             or model.get("feature_scales") != list(FEATURE_SCALES)
         ):
             raise ValueError("Unsupported behavior-cloning model.")
+        if model["schema_version"] == SCHEMA_VERSION and "arm_base_distance_m" not in model:
+            raise ValueError("Behavior-cloning model schema 2 requires arm_base_distance_m.")
+        self.arm_base_distance = _arm_base_distance(model)
         self.states = _matrix(model.get("states"), len(FEATURE_INDICES), MAX_MODEL_SAMPLES, "states")
         self.actions = _matrix(model.get("actions"), 6, MAX_MODEL_SAMPLES, "actions")
         if len(self.states) != len(self.actions) or np.any(np.abs(self.actions) > 1):

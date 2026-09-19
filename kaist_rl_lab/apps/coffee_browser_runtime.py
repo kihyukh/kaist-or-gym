@@ -4,6 +4,7 @@ import base64
 import json
 
 from kaist_rl_lab.apps.coffee_classroom import (
+    ARM_BASE_DISTANCE_M,
     INITIAL_LAYOUT,
     classroom_layout,
     fresh_classroom_seed,
@@ -21,7 +22,7 @@ class BrowserRuntime:
     def __init__(self, *, seed=None):
         seed = fresh_classroom_seed() if seed is None else seed
         self.session = InteractiveSession(
-            seed, 700, start_paused=True, dt=BROWSER_DT, steps_per_update=1,
+            seed, 700, arm_base_distance=ARM_BASE_DISTANCE_M, start_paused=True, dt=BROWSER_DT, steps_per_update=1,
             reset_options=classroom_layout(seed),
         )
 

@@ -5,6 +5,7 @@ import pytest
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
 from kaist_rl_lab.apps.coffee_classroom import (
+    ARM_BASE_DISTANCE_M,
     CUP_POSITION_JITTER,
     POT_POSITION_JITTER,
     classroom_layout,
@@ -12,6 +13,7 @@ from kaist_rl_lab.apps.coffee_classroom import (
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.apps.coffee_expert import (
     EXAMPLE_COUNT,
+    EXAMPLE_FILL_TOLERANCE,
     MAX_EXAMPLE_STEPS,
     generate_example,
     load_examples,
@@ -22,14 +24,14 @@ from kaist_rl_lab.envs import CoffeePouringEnv
 @pytest.mark.parametrize("index", range(EXAMPLE_COUNT))
 def test_packaged_example_replays_to_success_from_the_unmodified_student_start(index):
     arrays, metadata = read_demonstration(load_examples()[index])
-    assert metadata["participant"] == f"Generated example {index + 1}"
+    assert metadata["participant"] == f"Generated cautious practice {index + 1}"
     assert metadata["dt"] == BROWSER_DT
     assert metadata["target_fill_l"] == 0.700
     assert metadata["success"] is True
     assert metadata["manual_finish"] is False
     assert arrays["terminated"][-1]
     assert not arrays["truncated"].any()
-    env = CoffeePouringEnv(horizon=None, dt=BROWSER_DT)
+    env = CoffeePouringEnv(arm_base_distance=ARM_BASE_DISTANCE_M, horizon=None, dt=BROWSER_DT)
     observation, info = env.reset(
         seed=metadata["seed"],
         options={**classroom_layout(metadata["seed"]), "target_fill": 0.700},
@@ -45,7 +47,7 @@ def test_packaged_example_replays_to_success_from_the_unmodified_student_start(i
             assert terminated == arrays["terminated"][step]
             assert truncated == arrays["truncated"][step]
         assert info["is_success"]
-        assert env.fill == pytest.approx(0.700, abs=0.005)
+        assert env.fill == pytest.approx(0.700, abs=EXAMPLE_FILL_TOLERANCE)
         assert env.spill < 0.001
         assert env.fill == metadata["fill_l"]
         assert env.spill == metadata["spill_l"]

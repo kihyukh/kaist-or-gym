@@ -12,6 +12,7 @@ from kaist_rl_lab.apps import coffee_finetuning as trainer_module
 from kaist_rl_lab.apps import coffee_finetuning_runtime as finetuning_module
 from kaist_rl_lab.apps import coffee_random_runtime as random_module
 from kaist_rl_lab.apps.coffee_classroom import (
+    ARM_BASE_DISTANCE_M,
     POLICY_START_SEED,
     classroom_layout,
     fixed_policy_layout,
@@ -28,12 +29,14 @@ def call(runtime, kind, **kwargs):
 def model():
     return {
         "schema_version": 1, "algorithm": "nearest_neighbor",
+        "arm_base_distance_m": ARM_BASE_DISTANCE_M,
         "feature_indices": list(FEATURE_INDICES), "feature_scales": list(FEATURE_SCALES),
         "states": [[0.0] * 15], "actions": [[0.0] * 6],
     }
 
 
 def assert_classroom_pose(session, *, fixed=False):
+    assert session.env.arm_base_distance == ARM_BASE_DISTANCE_M
     layout = fixed_policy_layout() if fixed else classroom_layout(session.seed)
     tools = session.env.tool_positions()
     for vessel in ("cup", "pot"):
@@ -218,3 +221,29 @@ def test_finetuning_watch_and_reset_preserve_pose_while_experiments_refresh_nois
         np.testing.assert_array_equal(runtime.session.observation, original_pose)
     finally:
         runtime.close()
+
+
+@pytest.mark.parametrize('runtime_class,command', [
+    (cloning_module.CloningAgentRuntime, 'cloning-load'),
+    (finetuning_module.FineTuningRuntime, 'ft-load'),
+])
+def test_policy_from_older_arm_spacing_is_rejected_without_replacing_scene(model, runtime_class, command):
+    runtime = runtime_class()
+    try:
+        call(runtime, command, model=model)
+        session = runtime.session
+        observation = session.observation.copy()
+        legacy = {key: value for key, value in model.items() if key != 'arm_base_distance_m'}
+        with pytest.raises(ValueError, match='different arm spacing'):
+            call(runtime, command, model=legacy)
+        assert runtime.session is session
+        np.testing.assert_array_equal(runtime.session.observation, observation)
+        assert runtime.session.env.arm_base_distance == ARM_BASE_DISTANCE_M
+    finally:
+        runtime.session.close()
+
+
+def test_trainer_rejects_model_for_another_arm_spacing(model):
+    legacy = {key: value for key, value in model.items() if key != 'arm_base_distance_m'}
+    with pytest.raises(ValueError, match='different arm spacing'):
+        trainer_module.FineTuningTrainer(legacy, episodes=1)

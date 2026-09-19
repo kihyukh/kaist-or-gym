@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from kaist_rl_lab.apps import coffee_cloning_api
 from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.apps.coffee_web import create_app
 
@@ -48,11 +49,16 @@ def archive():
     finally:
         runtime.session.close()
 
-    def create(*, success=False, dt=1 / 32, target=0.7):
+    def create(*, success=False, dt=1 / 32, target=0.7, arm_base_distance=ARM_BASE_DISTANCE_M):
         arrays, metadata = read_demonstration(original)
         # Boundary tests vary the metadata accepted by the existing collector;
         # physics correctness and successful examples have their own rollout tests.
         metadata.update(episode_id=str(uuid4()), success=success, dt=dt, target_fill_l=target)
+        if arm_base_distance is None:
+            metadata.pop("arm_base_distance_m", None)
+            metadata["schema_version"] = 1
+        else:
+            metadata["arm_base_distance_m"] = arm_base_distance
         arrays["observations"][:, 14] = target
         arrays["next_observations"][:, 14] = target
         output = BytesIO()
@@ -107,7 +113,9 @@ def test_authentication_origin_and_examples_do_not_create_student_data(client, a
     assert result["selection"]["used_trajectories"] == 1
     assert len(received) == 1
     assert set(received[0][0][0]) == {"observations", "actions"}
-    assert received[0][0][1] == {"dt": 1 / 32, "target_fill_l": 0.7}
+    assert received[0][0][1] == {
+        "dt": 1 / 32, "target_fill_l": 0.7, "arm_base_distance_m": ARM_BASE_DISTANCE_M,
+    }
     assert "private-student-code" not in response.text
     assert client.get("/api/instructor/sessions").json() == []
     with client.app.state.store.connect() as db:
@@ -254,3 +262,27 @@ def test_prepared_examples_train_through_real_endpoint(client):
     assert model["metrics"]["demonstrations"] == EXAMPLE_COUNT
     assert model["metrics"]["validation_trajectories"] == 1
     assert len(model["states"]) == len(model["actions"]) > 4000
+
+
+def test_legacy_and_different_geometry_recordings_are_skipped_without_losing_current_data(
+    client, archive, monkeypatch,
+):
+    sign_in(client)
+    identifier, token = make_class(client)
+    upload(client, token, archive(success=True, arm_base_distance=None))
+    upload(client, token, archive(success=True, arm_base_distance=1.16))
+    received = mock_training(monkeypatch)
+    body = {"source": "students", "session_id": identifier}
+    incompatible = client.post(ENDPOINT, json=body)
+    assert incompatible.status_code == 409
+    assert f"{ARM_BASE_DISTANCE_M:g} m arm spacing" in incompatible.json()["detail"]
+    assert received == []
+    upload(client, token, archive(success=True))
+    trained = client.post(ENDPOINT, json=body)
+    assert trained.status_code == 200, trained.text
+    selection = trained.json()["selection"]
+    assert selection["used_trajectories"] == 1
+    assert selection["skipped_incompatible"] == 2
+    assert received[0][0][1]["arm_base_distance_m"] == ARM_BASE_DISTANCE_M
+    with client.app.state.store.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM submissions WHERE session_id=?", (identifier,)).fetchone()[0] == 3

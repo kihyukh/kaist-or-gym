@@ -14,7 +14,7 @@ from kaist_rl_lab.apps.coffee_browser import (
     browser_bundle,
 )
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, BrowserRuntime
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M, classroom_layout
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.envs import CoffeePouringEnv
 from kaist_rl_lab.envs.coffee_pouring_canvas import CANVAS_JAVASCRIPT
@@ -79,7 +79,7 @@ def test_authoritative_motion_hold_reversal_pause_and_reset():
 
 def test_recording_replays_the_displayed_python_physics_exactly():
     runtime = BrowserRuntime()
-    reference = CoffeePouringEnv(dt=BROWSER_DT, horizon=None)
+    reference = CoffeePouringEnv(arm_base_distance=ARM_BASE_DISTANCE_M, dt=BROWSER_DT, horizon=None)
     rng = np.random.default_rng(88)
     rendered = []
     try:

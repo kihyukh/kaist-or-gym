@@ -1,4 +1,4 @@
-"""Reproducible, clearly labelled examples for the classroom cloning demo.
+"""Reproducible, intentionally imperfect practice for the classroom cloning demo.
 
 The geometry-based expert is used only to record these examples offline. It
 starts in the student's normal empty-cup layout and controls the same six
@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M, classroom_layout
 from kaist_rl_lab.apps.coffee_demonstrations import encode_demonstration, read_demonstration
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 from kaist_rl_lab.envs import CoffeePouringEnv
@@ -27,11 +27,16 @@ from kaist_rl_lab.envs import CoffeePouringEnv
 EXAMPLE_COUNT = 15
 # Different approach and pouring speeds give separate demonstrations of the
 # same safe maneuver. These are generated examples, never student submissions.
-EXAMPLE_SPEEDS = ((1.0, 0.070), (0.92, 0.066), (0.84, 0.074), (0.96, 0.068), (0.88, 0.072))
+EXAMPLE_SPEEDS = ((0.72, 0.055), (0.68, 0.053), (0.64, 0.057), (0.70, 0.054), (0.66, 0.056))
+# Practice is deliberately cautious: approach slowly and begin returning the pot
+# 15–30 mL early. All labels and outcomes still come from the actual physics.
+# The task continues to reward accuracy against 700 mL; this is not a new target.
+EXAMPLE_RETURN_MARGINS = (0.015, 0.020, 0.025, 0.030, 0.018)
+EXAMPLE_FILL_TOLERANCE = 0.035
 # One seed lies near the canonical pose; the others spread across the four
 # independent position coordinates. All are distinct from held-out test seeds.
 EXAMPLE_SEEDS = (16262, 17212, 18021, 19055, 17020, 18094, 21808, 18143, 18986, 21234, 21142, 17660, 17573, 16742, 20628)
-MAX_EXAMPLE_STEPS = round(45 / BROWSER_DT)
+MAX_EXAMPLE_STEPS = round(60 / BROWSER_DT)
 
 
 def _reference_action(
@@ -113,10 +118,12 @@ def generate_example(index: int = 0) -> bytes:
     if type(index) is not int or not 0 <= index < EXAMPLE_COUNT:
         raise ValueError(f"Example index must be between 0 and {EXAMPLE_COUNT - 1}.")
     motor_limit, tilt_rate = EXAMPLE_SPEEDS[index % len(EXAMPLE_SPEEDS)]
+    return_margin = EXAMPLE_RETURN_MARGINS[index % len(EXAMPLE_RETURN_MARGINS)]
     seed = EXAMPLE_SEEDS[index]
     session = InteractiveSession(
         seed,
         700,
+        arm_base_distance=ARM_BASE_DISTANCE_M,
         dt=BROWSER_DT,
         steps_per_update=1,
         reset_options=classroom_layout(seed),
@@ -130,7 +137,7 @@ def generate_example(index: int = 0) -> bytes:
                 phase = "pour"
             if phase == "pour":
                 residual = _return_volume(session.env, angle, tilt_rate)
-                if session.env.target_fill - session.env.fill <= residual + 0.002 or angle >= 1.05:
+                if session.env.target_fill - session.env.fill <= residual + return_margin or angle >= 1.05:
                     phase = "return"
                 else:
                     angle = min(1.05, angle + tilt_rate * BROWSER_DT)
@@ -145,9 +152,9 @@ def generate_example(index: int = 0) -> bytes:
                 break
         if session.running or not session.info["is_success"]:
             raise RuntimeError(f"Example {index + 1} did not achieve the environment's goal.")
-        if abs(session.env.fill - 0.700) > 0.005 or session.env.spill > 0.001:
-            raise RuntimeError(f"Example {index + 1} missed the stricter demonstration target.")
-        return encode_demonstration(session, f"Generated example {index + 1}")
+        if abs(session.env.fill - 0.700) > EXAMPLE_FILL_TOLERANCE or session.env.spill > 0.001:
+            raise RuntimeError(f"Example {index + 1} exceeded the practice-data accuracy or spill limit.")
+        return encode_demonstration(session, f"Generated cautious practice {index + 1}")
     finally:
         session.close()
 

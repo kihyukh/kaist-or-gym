@@ -204,12 +204,13 @@ def test_generated_examples_list_download_and_replay_without_student_records(set
     for index, (row, data) in enumerate(zip(rows, packaged, strict=True), start=1):
         arrays, metadata = read_demonstration(data)
         assert row["example_id"] == f"example-{index}"
-        assert row["label"] == f"Generated example {index}"
+        assert row["label"] == f"Practice demonstration {index}"
         assert row["episode_id"] == metadata["episode_id"]
         assert row["steps"] == len(arrays["actions"])
         assert row["total_reward"] == np.sum(arrays["rewards"], dtype=np.float64)
         assert row["success"] is True
-        assert 695 <= row["fill_ml"] <= 705
+        assert 665 <= row["fill_ml"] < 700
+        assert row["fill_ml"] == pytest.approx(metadata["fill_l"] * 1000)
         assert row["spill_ml"] < 1
         download = client.get(f"/api/instructor/examples/example-{index}/download")
         assert download.status_code == 200 and download.content == data

@@ -17,7 +17,11 @@ from typing import Any
 import numpy as np
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import POLICY_START_SEED, fixed_policy_layout
+from kaist_rl_lab.apps.coffee_classroom import (
+    ARM_BASE_DISTANCE_M,
+    POLICY_START_SEED,
+    fixed_policy_layout,
+)
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
@@ -172,6 +176,8 @@ class FineTuningTrainer:
         if type(episodes) is not int or not 1 <= episodes <= MAX_EPISODES:
             raise ValueError(f"Choose between 1 and {MAX_EPISODES} training episodes.")
         self.base = NearestNeighborPolicy(model)
+        if self.base.arm_base_distance != ARM_BASE_DISTANCE_M:
+            raise ValueError("This policy uses different arm spacing. Retrain behavior cloning for this classroom.")
         # Defensive copies prevent training or callers from changing the BC labels.
         self.base.states = self.base.states.copy()
         self.base.actions = self.base.actions.copy()
@@ -197,7 +203,7 @@ class FineTuningTrainer:
         self.critic_rhs = np.zeros(10)
         self.update = {"mean_kl": 0.0, "mean_change_bound": 0.0, "actor_change": 0.0}
         self.session = InteractiveSession(
-            self.evaluation_seed, 700, dt=BROWSER_DT, steps_per_update=1, horizon=TRIAL_STEPS,
+            self.evaluation_seed, 700, arm_base_distance=ARM_BASE_DISTANCE_M, dt=BROWSER_DT, steps_per_update=1, horizon=TRIAL_STEPS,
             reset_options=fixed_policy_layout(), include_render_info=False,
         )
         self._reset_rollout()
@@ -352,6 +358,7 @@ class FineTuningTrainer:
             "episode_steps": self.session.env.elapsed_steps,
             "seed": self.seed,
             "evaluation_seed": self.evaluation_seed,
+            "arm_base_distance_m": ARM_BASE_DISTANCE_M,
             "speed_bound": SPEED_BOUND,
             "latent_std": LATENT_STD,
             "max_latent_mean": MAX_LATENT_MEAN,

@@ -9,7 +9,7 @@ import pytest
 
 from kaist_rl_lab.apps import coffee_finetuning_runtime as module
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import fixed_policy_layout
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M, fixed_policy_layout
 from kaist_rl_lab.apps.coffee_cloning import FEATURE_INDICES, FEATURE_SCALES, NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_finetuning_runtime import FineTuningRuntime
 
@@ -21,6 +21,7 @@ def call(runtime, kind, **kwargs):
 @pytest.fixture
 def model():
     return {
+        "arm_base_distance_m": ARM_BASE_DISTANCE_M,
         "schema_version": 1,
         "algorithm": "nearest_neighbor",
         "feature_indices": list(FEATURE_INDICES),

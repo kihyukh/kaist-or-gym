@@ -10,7 +10,7 @@ import pytest
 
 from kaist_rl_lab.apps.coffee_browser import browser_bundle
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M, classroom_layout
 from kaist_rl_lab.apps.coffee_random_runtime import TRIAL_STEPS, RandomAgentRuntime
 from kaist_rl_lab.envs import CoffeePouringEnv
 
@@ -129,7 +129,7 @@ def test_trial_ends_after_30_simulated_seconds(runtime):
 
 
 def test_random_rollout_matches_the_actual_student_environment(runtime):
-    reference = CoffeePouringEnv(dt=BROWSER_DT, horizon=TRIAL_STEPS)
+    reference = CoffeePouringEnv(arm_base_distance=ARM_BASE_DISTANCE_M, dt=BROWSER_DT, horizon=TRIAL_STEPS)
     try:
         call(runtime, "random-start", seed=191)
         reference.reset(seed=191, options={**classroom_layout(191), "target_fill": 0.7})

@@ -27,8 +27,8 @@ def assert_feedback_equal(full, lightweight):
 
 def test_lightweight_info_preserves_every_transition_reward_and_rendered_scene():
     arrays, metadata = read_demonstration(load_examples()[0])
-    full = CoffeePouringEnv(dt=metadata["dt"], horizon=None)
-    fast = CoffeePouringEnv(dt=metadata["dt"], horizon=None, include_render_info=False)
+    full = CoffeePouringEnv(arm_base_distance=metadata.get("arm_base_distance_m", 1.16), dt=metadata["dt"], horizon=None)
+    fast = CoffeePouringEnv(arm_base_distance=metadata.get("arm_base_distance_m", 1.16), dt=metadata["dt"], horizon=None, include_render_info=False)
     # The reference performs all original link-distance checks without the
     # new conservative bounding-box rejection.
     full._segments_within_distance = lambda a, b, c, d, distance: (

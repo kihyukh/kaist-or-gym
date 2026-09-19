@@ -8,6 +8,8 @@ import numpy as np
 # Student demonstrations vary each vessel's horizontal and vertical position
 # independently. Policy comparisons use the unchanged canonical pose instead.
 INITIAL_LAYOUT = {"cup_center": [-0.28, 0.28], "pot_center": [0.26, 0.62]}
+# Classroom arms are farther apart than the original 1.16 m environment.
+ARM_BASE_DISTANCE_M = 1.28
 POLICY_START_SEED = 7001
 CUP_POSITION_JITTER = (0.09, 0.05)
 POT_POSITION_JITTER = (0.11, 0.07)

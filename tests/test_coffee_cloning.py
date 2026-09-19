@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M
 from kaist_rl_lab.apps.coffee_cloning import (
     MAX_MODEL_SAMPLES,
     NearestNeighborPolicy,
@@ -21,7 +22,9 @@ def demonstration(actions, *, positions=None):
     observations[:, 0] = positions if positions is not None else np.arange(len(actions)) * 0.01
     observations[:, 14] = 0.7
     observations[:, 15] = -1
-    return {"observations": observations, "actions": actions}, {"dt": BROWSER_DT, "target_fill_l": 0.7}
+    return {"observations": observations, "actions": actions}, {
+        "dt": BROWSER_DT, "target_fill_l": 0.7, "arm_base_distance_m": ARM_BASE_DISTANCE_M,
+    }
 
 
 def call(runtime, kind, **kwargs):
@@ -167,7 +170,11 @@ def test_runtime_queries_current_observation_for_every_action(runtime):
 def test_varied_generated_examples_train_a_successful_policy_at_the_canonical_pose(runtime):
     from kaist_rl_lab.apps.coffee_classroom import POLICY_START_SEED
     from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
-    from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, load_examples
+    from kaist_rl_lab.apps.coffee_expert import (
+        EXAMPLE_COUNT,
+        EXAMPLE_FILL_TOLERANCE,
+        load_examples,
+    )
 
     demonstrations = [read_demonstration(data) for data in load_examples()]
     model = train_behavior_cloning(demonstrations)
@@ -181,8 +188,89 @@ def test_varied_generated_examples_train_a_successful_policy_at_the_canonical_po
             break
     assert final["cloning_agent"]["outcome"] == "success"
     assert runtime.session.info["is_success"]
-    assert abs(runtime.session.info["fill"] - 0.7) < 0.01
+    assert abs(runtime.session.info["fill"] - 0.7) < EXAMPLE_FILL_TOLERANCE
     assert runtime.session.info["spill"] < 0.01
     assert final["snapshot"]["playback"]["paused"]
     assert call(runtime, "tick") == final
     assert call(runtime, "cloning-pause", paused=False) == final
+
+
+def test_fitted_models_record_geometry_and_legacy_models_default_to_original_spacing():
+    pair = demonstration(np.zeros((2, 6)))
+    model = train_behavior_cloning([pair])
+    assert model["schema_version"] == 2
+    assert model["arm_base_distance_m"] == ARM_BASE_DISTANCE_M
+    assert NearestNeighborPolicy(model).arm_base_distance == ARM_BASE_DISTANCE_M
+    legacy = copy.deepcopy(pair)
+    legacy[1].pop("arm_base_distance_m")
+    legacy_model = train_behavior_cloning([legacy])
+    assert legacy_model["schema_version"] == 1
+    assert legacy_model["arm_base_distance_m"] == 1.16
+    legacy_model.pop("arm_base_distance_m")
+    assert NearestNeighborPolicy(legacy_model).arm_base_distance == 1.16
+
+
+def test_new_model_schema_requires_spacing_but_legacy_explicit_spacing_is_supported():
+    model = train_behavior_cloning([demonstration(np.zeros((2, 6)))])
+    missing_spacing = copy.deepcopy(model)
+    missing_spacing.pop("arm_base_distance_m")
+    with pytest.raises(ValueError, match="schema 2 requires arm_base_distance_m"):
+        NearestNeighborPolicy(missing_spacing)
+    model["schema_version"] = 1
+    assert NearestNeighborPolicy(model).arm_base_distance == ARM_BASE_DISTANCE_M
+
+
+@pytest.mark.parametrize("version", [None, True, 0, 3, "2"])
+def test_model_schema_rejects_invalid_or_unknown_versions(version):
+    model = train_behavior_cloning([demonstration(np.zeros((2, 6)))])
+    model["schema_version"] = version
+    with pytest.raises(ValueError, match="Unsupported behavior-cloning model"):
+        NearestNeighborPolicy(model)
+
+
+def test_behavior_cloning_rejects_mixed_arm_spacing_including_legacy_archives():
+    original = demonstration(np.zeros((2, 6)))
+    original[1].pop("arm_base_distance_m")
+    wider = demonstration(np.ones((2, 6)))
+    wider[1]["arm_base_distance_m"] = 1.28
+    with pytest.raises(ValueError, match="same arm spacing"):
+        train_behavior_cloning([original, wider])
+    original[1]["arm_base_distance_m"] = 1.28
+    model = train_behavior_cloning([original, wider])
+    assert model["arm_base_distance_m"] == 1.28
+
+
+@pytest.mark.parametrize("distance", [None, True, "1.28", float("nan"), float("inf"), .7, 1.5])
+def test_model_and_training_reject_invalid_arm_spacing(distance):
+    pair = demonstration(np.zeros((2, 6)))
+    model = train_behavior_cloning([pair])
+    pair[1]["arm_base_distance_m"] = distance
+    model["arm_base_distance_m"] = distance
+    with pytest.raises(ValueError, match="arm spacing"):
+        train_behavior_cloning([pair])
+    with pytest.raises(ValueError, match="arm spacing"):
+        NearestNeighborPolicy(model)
+
+
+def test_loading_a_model_from_another_arm_spacing_keeps_the_current_model(runtime):
+    pair = demonstration(np.zeros((2, 6)))
+    call(runtime, "cloning-load", model=train_behavior_cloning([pair]))
+    call(runtime, "cloning-start")
+    before = call(runtime, "snapshot")
+    pair[1]["arm_base_distance_m"] = 1.16
+    other = train_behavior_cloning([pair])
+    with pytest.raises(ValueError, match="arm spacing"):
+        call(runtime, "cloning-load", model=other)
+    assert call(runtime, "snapshot") == before
+
+
+def test_model_missing_required_spacing_keeps_the_running_policy(runtime):
+    model = train_behavior_cloning([demonstration(np.zeros((2, 6)))])
+    call(runtime, "cloning-load", model=model)
+    call(runtime, "cloning-start")
+    call(runtime, "tick")
+    before = call(runtime, "snapshot")
+    model.pop("arm_base_distance_m")
+    with pytest.raises(ValueError, match="schema 2 requires arm_base_distance_m"):
+        call(runtime, "cloning-load", model=model)
+    assert call(runtime, "snapshot") == before

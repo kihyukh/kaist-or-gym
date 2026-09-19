@@ -229,7 +229,12 @@ def _replay_events(data: bytes):
     """Yield verified frames immediately, keeping the original renderer/physics."""
     arrays, metadata = _validated_archive(data)
     total_reward, cumulative_rewards = _recorded_rewards(arrays)
-    env = CoffeePouringEnv(dt=metadata["dt"], horizon=None)
+    env = CoffeePouringEnv(
+        dt=metadata["dt"], horizon=None,
+        arm_base_distance=metadata.get(
+            "arm_base_distance_m", CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE,
+        ),
+    )
     count = len(arrays["actions"])
     selected = set(np.linspace(0, count, min(count + 1, 400), dtype=int).tolist())
     def frame(step, motors):
@@ -649,7 +654,7 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
             arrays, metadata = _validated_archive(data)
             total_reward, _ = _recorded_rewards(arrays)
             rows.append({
-                "example_id": f"example-{index}", "label": f"Generated example {index}",
+                "example_id": f"example-{index}", "label": f"Practice demonstration {index}",
                 "episode_id": metadata["episode_id"], "steps": len(arrays["actions"]),
                 "success": metadata["success"],
                 "fill_ml": float(arrays["next_observations"][-1, 12]) * 1000,

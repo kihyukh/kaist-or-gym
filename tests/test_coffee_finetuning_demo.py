@@ -8,6 +8,7 @@ from copy import deepcopy
 
 import pytest
 
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M
 from kaist_rl_lab.apps.coffee_cloning import FEATURE_INDICES, FEATURE_SCALES
 from kaist_rl_lab.apps.coffee_cloning_demo import CLONING_DEMO_JAVASCRIPT
 from kaist_rl_lab.apps.coffee_finetuning_demo import FINETUNING_HTML, FINETUNING_JAVASCRIPT
@@ -17,6 +18,7 @@ from kaist_rl_lab.apps.coffee_finetuning_runtime import FineTuningRuntime
 @pytest.fixture(scope="module")
 def finetuning_snapshots():
     model = {
+        "arm_base_distance_m": ARM_BASE_DISTANCE_M,
         "schema_version": 1, "algorithm": "nearest_neighbor",
         "feature_indices": list(FEATURE_INDICES), "feature_scales": list(FEATURE_SCALES),
         "states": [[0.0] * 15], "actions": [[0.0] * 6],
@@ -257,8 +259,8 @@ def test_comparison_and_history_use_actual_core_metrics(tmp_path, finetuning_sna
 start();latest().receive(fixtures.completed);
 assert.equal(node('#ft-results').hidden,false);assert.equal(node('#ft-history').hidden,false);
 assert.deepEqual(cells('#ft-comparison'),[
-  ['Original clone','-30.250','702.0 mL','0.1 mL','29.3 s','Success'],
-  ['Best evaluated policy','-25.125','702.0 mL','0.1 mL','28.4 s','Success']]);
+  ['Original clone','-30.250','702.0 mL','2.0 mL','0.1 mL','29.3 s','Success'],
+  ['Best evaluated policy','-25.125','702.0 mL','2.0 mL','0.1 mL','28.4 s','Success']]);
 assert.match(node('#ft-improvement').textContent,/increased by 5.125/);
 assert.match(node('#ft-improvement').textContent,/iteration 2/);
 const history=cells('#ft-history-rows');assert.equal(history.length,1);

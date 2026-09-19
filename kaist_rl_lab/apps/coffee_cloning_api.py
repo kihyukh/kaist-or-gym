@@ -32,8 +32,10 @@ def _fit_policy(demonstrations):
 def _prepare_and_train(store, *, source, session_id, successful_only):
     from fastapi import HTTPException
 
+    from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M
     from kaist_rl_lab.apps.coffee_demonstrations import MAX_ARCHIVE_BYTES
     from kaist_rl_lab.apps.coffee_web import _validated_archive
+    from kaist_rl_lab.envs.coffee_pouring import CoffeePouringEnv
 
     selection = {
         "available_trajectories": 0,
@@ -93,8 +95,9 @@ def _prepare_and_train(store, *, source, session_id, successful_only):
         except invalid_errors:
             selection["skipped_invalid"] += 1
             continue
+        distance = metadata.get("arm_base_distance_m", CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE)
         if metadata["dt"] != 1 / 32 or not np.isclose(
-                metadata["target_fill_l"], 0.7, rtol=0, atol=1e-7):
+                metadata["target_fill_l"], 0.7, rtol=0, atol=1e-7) or distance != ARM_BASE_DISTANCE_M:
             selection["skipped_incompatible"] += 1
             del arrays, metadata
             continue
@@ -109,7 +112,8 @@ def _prepare_and_train(store, *, source, session_id, successful_only):
                  for key in ("observations", "actions")}
         selection["available_transitions"] += len(pairs["actions"])
         demonstrations.append((pairs, {"dt": metadata["dt"],
-                                       "target_fill_l": metadata["target_fill_l"]}))
+                                       "target_fill_l": metadata["target_fill_l"],
+                                       "arm_base_distance_m": distance}))
         # Drop the unused next states and potentially wider source arrays before
         # decoding another archive or allocating the learner's working arrays.
         del arrays, metadata, data
@@ -129,7 +133,8 @@ def _prepare_and_train(store, *, source, session_id, successful_only):
                       "examples, or turn off the successful-only filter to study all attempts.")
         else:
             detail = ("No compatible trajectories were found. Use recordings made at 32 Hz "
-                      "with the 700 mL target, or try the prepared examples.")
+                      f"with the 700 mL target and the current {ARM_BASE_DISTANCE_M:g} m arm spacing, "
+                      "or try the prepared examples.")
         raise HTTPException(409, detail)
     try:
         model = _fit_policy(demonstrations)
@@ -137,7 +142,7 @@ def _prepare_and_train(store, *, source, session_id, successful_only):
         raise HTTPException(409, str(exc)) from None
     return {"model": model, "source": source,
             "source_label": ("Selected class submissions" if source == "students"
-                             else "Generated successful examples"),
+                             else "Generated practice demonstrations"),
             "session_id": session_id if source == "students" else None,
             "selection": selection}
 

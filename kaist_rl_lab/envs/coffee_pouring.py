@@ -9,7 +9,7 @@ intersect the rendered cup opening to be captured.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import pairwise
 from typing import Any, ClassVar
 
@@ -61,6 +61,11 @@ class CoffeePouringEnv(gym.Env):
     }
     DEFAULT_HORIZON = 330
     DEFAULT_DT = 0.125
+    # Keep the original Gym task and archives unchanged unless a caller opts
+    # into another spacing. Link lengths and all other geometry stay fixed.
+    DEFAULT_ARM_BASE_DISTANCE = 1.16
+    MIN_ARM_BASE_DISTANCE = 0.8
+    MAX_ARM_BASE_DISTANCE = 1.4
     FULL_SCALE_QUARTER_TURN_SECONDS = 10.0
     CUP_CAPACITY = 1.02
     POT_CAPACITY = 2.40
@@ -121,6 +126,7 @@ class CoffeePouringEnv(gym.Env):
         width: int = 960,
         height: int = 560,
         include_render_info: bool = True,
+        arm_base_distance: float = DEFAULT_ARM_BASE_DISTANCE,
     ) -> None:
         super().__init__()
         valid_modes = [None] + list(self.metadata["render_modes"])
@@ -144,7 +150,12 @@ class CoffeePouringEnv(gym.Env):
         self.width = int(width)
         self.height = int(height)
         self.include_render_info = include_render_info
-        self.geometry = ArmGeometry()
+        self.arm_base_distance = self.validate_arm_base_distance(arm_base_distance)
+        self.geometry = replace(
+            ArmGeometry(),
+            cup_base=(-self.arm_base_distance / 2, 0.10),
+            pot_base=(self.arm_base_distance / 2, 0.10),
+        )
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=(6,), dtype=np.float32)
         quarter_turn_speed = (np.pi / 2.0) / self.FULL_SCALE_QUARTER_TURN_SECONDS
@@ -206,6 +217,23 @@ class CoffeePouringEnv(gym.Env):
         # inputs (no rounding), with small bounds and independent returned arrays.
         self._cup_runoff_cache: dict[tuple, np.ndarray] = {}
         self._cup_surface_cache: dict[tuple, float] = {}
+
+    @classmethod
+    def validate_arm_base_distance(cls, value: Any) -> float:
+        """Validate the supported symmetric base spacing in metres."""
+        if isinstance(value, (bool, np.bool_)) or not isinstance(
+            value, (int, float, np.integer, np.floating)
+        ):
+            raise TypeError("arm_base_distance must be a number in metres")
+        distance = float(value)
+        if not np.isfinite(distance) or not (
+            cls.MIN_ARM_BASE_DISTANCE <= distance <= cls.MAX_ARM_BASE_DISTANCE
+        ):
+            raise ValueError(
+                f"arm_base_distance must be between {cls.MIN_ARM_BASE_DISTANCE} "
+                f"and {cls.MAX_ARM_BASE_DISTANCE} metres"
+            )
+        return distance
 
     @staticmethod
     def _rotation(angle: float) -> np.ndarray:

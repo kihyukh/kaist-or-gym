@@ -139,7 +139,7 @@ await replayButton(findRow('#example-rows',example.label)).listeners.click();
 assert.equal(requests.at(-1).path,replayPath(example,'examples'));
 assert.equal(get('#replay-panel').hidden,false);
 assert.equal(get('#play-replay').disabled,false);
-assert.match(get('#replay-summary').textContent,/Generated example/);
+assert.match(get('#replay-summary').textContent,/Generated practice demonstration/);
 assert.ok(get('#replay-title').textContent.includes(example.label));
 assert.equal(get('#replay-download').href,'/api/instructor/examples/example%2Fwith%3Fpunctuation/download');
 assert.equal(evaluate('playing'),false,'Selecting a recording prepares it without starting playback');

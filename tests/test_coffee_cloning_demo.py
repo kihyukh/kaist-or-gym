@@ -157,7 +157,7 @@ node('#cloning-source').value='examples';change('#cloning-source');
 assert.equal(node('#cloning-successful').disabled,true);
 assert.equal(node('#cloning-train').disabled,false);
 assert.equal(node('#cloning-run').disabled,true);
-assert.match(node('#cloning-dataset').textContent,/separate from student submissions/);
+assert.match(node('#cloning-dataset').textContent,/never counted as student submissions/);
 // A selected class must not leak into the generated-examples request.
 await train();
 assert.deepEqual(requests.at(-1).body,

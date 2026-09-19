@@ -1,5 +1,6 @@
 """Instructor controls for bounded actor–critic refinement of a cloned policy."""
 
+from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M
 from kaist_rl_lab.apps.coffee_learning_viz import (
     LEARNING_VIZ_CSS,
     LEARNING_VIZ_HTML,
@@ -29,7 +30,8 @@ FINETUNING_HTML = """
           <button id="ft-stop" type="button" disabled>Stop training</button>
         </div>
         <p class="hint">Each iteration explores once, updates the policy, then evaluates the current policy
-          without exploration noise from the same fixed starting pose.</p>
+          without exploration noise from the same fixed starting pose.
+          The arm bases are <b>__ARM_SPACING__ m apart</b>; demonstrations and policy trials use this same spacing.</p>
         <p id="ft-status" role="status" aria-live="polite">Train a behavior-cloning policy above to begin.</p>
         <p id="ft-progress" class="hint"></p>
         <p id="ft-exploration" class="hint" hidden></p>
@@ -55,7 +57,7 @@ FINETUNING_HTML = """
         <div id="ft-results" hidden>
           <h3>Fixed starting pose · no exploration noise in evaluation</h3>
           <div class="table-scroll"><table>
-            <thead><tr><th>Policy</th><th>Discounted return ↑</th><th>Cup</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
+            <thead><tr><th>Policy</th><th>Discounted return ↑</th><th>Cup</th><th>Target error ↓</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
             <tbody id="ft-comparison"></tbody></table></div>
           <p id="ft-improvement" class="ft-improvement"></p>
           <p class="hint">The best policy has the highest evaluated discounted return, including the original clone.
@@ -108,7 +110,7 @@ FINETUNING_HTML = """
             Stop keeps the best completed evaluation. Changing the cloning policy or reloading clears this experiment.</p>
         </details>
       </section>
-""".replace("__LEARNING_VIZ__", LEARNING_VIZ_HTML)
+""".replace("__LEARNING_VIZ__", LEARNING_VIZ_HTML).replace("__ARM_SPACING__", f"{ARM_BASE_DISTANCE_M:.2f}")
 
 FINETUNING_CSS = LEARNING_VIZ_CSS + """
 .ft-visual-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:20px;align-items:start;margin:16px 0;}
@@ -191,7 +193,8 @@ function createFineTuningDemo(element,beforeRun) {
     if(!result?.baseline)return;
     [['Original clone',result.baseline],['Best evaluated policy',result.best]].forEach(([label,value])=>{
       if(value)row($('#ft-comparison'),[label,number(value.return),number(value.fill_ml,1)+' mL',
-        number(value.spill_ml,1)+' mL',number(value.seconds,1)+' s',value.success?'Success':'Attempt']);
+        number(Math.abs(value.fill_ml-700),1)+' mL',number(value.spill_ml,1)+' mL',
+        number(value.seconds,1)+' s',value.success?'Success':'Attempt']);
     });
     const delta=(result.best?.return??result.baseline.return)-result.baseline.return;
     $('#ft-improvement').textContent=delta>1e-8?'Best discounted return increased by '+number(delta)+

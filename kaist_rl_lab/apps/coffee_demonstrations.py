@@ -38,10 +38,15 @@ def encode_demonstration(session: Any, participant: str = "") -> bytes:
     if len(participant) > 64:
         raise ValueError("Use a participant code of at most 64 characters.")
     metadata = {
-        "schema_version": 1,
+        # Older packages must reject a widened recording instead of silently
+        # interpreting its joints with the original base positions.
+        "schema_version": (
+            1 if session.env.arm_base_distance == CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE else 2
+        ),
         "environment": "kaist-or/CoffeePouringEnv-v0",
         "package_version": __version__,
         "physics_model": "torricelli_ballistic_v3",
+        "arm_base_distance_m": session.env.arm_base_distance,
         "episode_id": session.episode_id,
         "participant": participant,
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -97,10 +102,17 @@ def read_demonstration(data: bytes) -> tuple[dict[str, np.ndarray], dict[str, An
         metadata = json.loads(str(raw_metadata))
         arrays = {key: archive[key] for key in ARRAY_NAMES}
     if (
-        metadata.get("schema_version") != 1
+        type(metadata.get("schema_version")) is not int
+        or metadata["schema_version"] not in (1, 2)
         or metadata.get("environment") != "kaist-or/CoffeePouringEnv-v0"
     ):
         raise ValueError("Unsupported trajectory format or environment.")
+    if metadata["schema_version"] == 2 and "arm_base_distance_m" not in metadata:
+        raise ValueError("Trajectory schema 2 requires arm_base_distance_m.")
+    # Older recordings predate configurable geometry and always used 1.16 m.
+    CoffeePouringEnv.validate_arm_base_distance(metadata.get(
+        "arm_base_distance_m", CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE,
+    ))
     UUID(metadata["episode_id"])
     if len(str(metadata.get("participant", ""))) > 64:
         raise ValueError("Participant code is too long.")

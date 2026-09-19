@@ -10,6 +10,7 @@ from copy import deepcopy
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
 from kaist_rl_lab.apps.coffee_classroom import (
+    ARM_BASE_DISTANCE_M,
     POLICY_START_SEED,
     fixed_policy_layout,
     fresh_classroom_seed,
@@ -40,7 +41,7 @@ def _bounded_integer(value, minimum: int, maximum: int, label: str) -> int:
 def _new_session(seed=None) -> InteractiveSession:
     seed = POLICY_START_SEED if seed is None else seed
     return InteractiveSession(
-        seed, 700, start_paused=True, dt=BROWSER_DT,
+        seed, 700, arm_base_distance=ARM_BASE_DISTANCE_M, start_paused=True, dt=BROWSER_DT,
         steps_per_update=1, horizon=TRIAL_STEPS, reset_options=fixed_policy_layout(),
         include_render_info=False,
     )
@@ -142,6 +143,8 @@ class FineTuningRuntime:
         if kind == "ft-load":
             # Validate before replacing a working experiment.
             policy = NearestNeighborPolicy(command.get("model"))
+            if policy.arm_base_distance != ARM_BASE_DISTANCE_M:
+                raise ValueError("This policy uses different arm spacing. Retrain behavior cloning for this classroom.")
             self._replace_scene()
             self.model = command["model"]
             self.base_policy = policy

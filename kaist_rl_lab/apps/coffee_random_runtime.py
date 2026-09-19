@@ -10,7 +10,11 @@ import json
 import numpy as np
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout, fresh_classroom_seed
+from kaist_rl_lab.apps.coffee_classroom import (
+    ARM_BASE_DISTANCE_M,
+    classroom_layout,
+    fresh_classroom_seed,
+)
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 MAX_DURATION_SECONDS = 1
@@ -25,7 +29,7 @@ class RandomAgentRuntime:
     def __init__(self):
         seed = fresh_classroom_seed()
         self.session = InteractiveSession(
-            seed, 700, start_paused=True, dt=BROWSER_DT,
+            seed, 700, arm_base_distance=ARM_BASE_DISTANCE_M, start_paused=True, dt=BROWSER_DT,
             steps_per_update=1, horizon=TRIAL_STEPS, reset_options=classroom_layout(seed),
         )
         self.rng = np.random.default_rng()

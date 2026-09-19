@@ -3,7 +3,11 @@
 import json
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import POLICY_START_SEED, fixed_policy_layout
+from kaist_rl_lab.apps.coffee_classroom import (
+    ARM_BASE_DISTANCE_M,
+    POLICY_START_SEED,
+    fixed_policy_layout,
+)
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
@@ -17,7 +21,7 @@ class CloningAgentRuntime:
     def __init__(self):
         seed = POLICY_START_SEED
         self.session = InteractiveSession(
-            seed, 700, start_paused=True, dt=BROWSER_DT,
+            seed, 700, arm_base_distance=ARM_BASE_DISTANCE_M, start_paused=True, dt=BROWSER_DT,
             steps_per_update=1, horizon=TRIAL_STEPS, reset_options=fixed_policy_layout(),
         )
         self.policy = None
@@ -45,6 +49,8 @@ class CloningAgentRuntime:
         kind = command.get("kind")
         if kind == "cloning-load":
             policy = NearestNeighborPolicy(command.get("model"))
+            if policy.arm_base_distance != ARM_BASE_DISTANCE_M:
+                raise ValueError("This policy uses different arm spacing. Retrain behavior cloning for this classroom.")
             self.policy = policy
             self._restart(reset_experiment=True)
         elif kind == "cloning-start":

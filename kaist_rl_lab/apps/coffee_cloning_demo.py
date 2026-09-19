@@ -12,10 +12,11 @@ CLONING_DEMO_HTML = """
         <div class="cloning-training">
           <div><label for="cloning-source">Demonstrations to learn from</label>
             <select id="cloning-source"><option value="students">Selected class's student submissions</option>
-              <option value="examples">Generated successful examples</option></select></div>
+              <option value="examples">Generated practice demonstrations</option></select></div>
           <label class="checkbox"><input id="cloning-successful" type="checkbox" checked> Use successful attempts only</label>
           <button id="cloning-train" type="button" class="primary" disabled>Train policy</button>
         </div>
+        <p class="hint">Training uses recordings made with the current arm spacing. Older recordings remain available for replay and download.</p>
         <p id="cloning-dataset" class="hint">Select a class to use its student demonstrations, or choose generated examples.</p>
         <p id="cloning-status" role="status" aria-live="polite">Train a policy, then watch it try to pour 700 mL.</p>
         <div id="cloning-training-result" class="cloning-report" hidden>
@@ -78,7 +79,7 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
     const examples=$('#cloning-source').value==='examples';
     $('#cloning-successful').disabled=examples;
     $('#cloning-dataset').textContent=examples?
-      'Generated examples are separate from student submissions. They cover varied starting poses with the same physics and 700 mL target.':
+      'Generated practice recordings are successful but deliberately slow and slightly underfilled. They use the same spacing, varied starts, and 700 mL target as students; they are never counted as student submissions.':
       context.id?context.name+' · '+context.total+' submitted attempts · '+context.successful+' marked successful.':
       'Select a class to use its student demonstrations, or choose generated examples.';
   }
