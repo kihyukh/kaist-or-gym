@@ -10,6 +10,20 @@ QR code. Each class has its own random student link. The dashboard lists submitt
 attempts, replays recorded physics, and downloads the original training data.
 Closing a class stops new submissions but permits retries of already saved attempts.
 
+Above the training controls, **Generated successful examples** and **Submitted
+demonstrations** list individual trajectories with total recorded reward, cup/spill
+amounts, outcome, and duration. Generated examples can be inspected even before
+creating a class. The student list belongs to the selected class and can be filtered
+by participant. Choose **Replay**, then **Play** to visualize either kind of
+recording; pause, scrub, or change playback speed to inspect a moment. The viewer
+shows cumulative recorded reward alongside simulated time. Downloads preserve the
+original `.npz` archive, and generated examples never enter the student dataset.
+
+Displayed rewards are undiscounted sums of archived step rewards, not rewards
+recomputed by the viewer. This preserves recorded bonuses and penalties without
+adding a new end-of-episode reward. Older submissions acquire their reward summaries
+when listed; missing or unreadable archives show a dash rather than a fabricated zero.
+
 The instructor dashboard also includes **Random agent · no learning**. Click
 **Start random trial** to load the browser simulator and run the same coffee physics.
 All six joint commands are independently uniform over clockwise, hold, and

@@ -47,6 +47,7 @@ const fetch=async(path,options)=>{
     if(holdSessions)return new Promise(resolve=>{pendingResolve=resolve;});
     return response(200,[session]);
   }
+  if(path==='/api/instructor/examples')return response(200,[]);
   if(path.startsWith('/api/instructor/submissions?'))return response(200,[row]);
   throw Error('Unexpected request: '+path);
 };
@@ -63,7 +64,7 @@ const pump=()=>new Promise(resolve=>setImmediate(resolve));
   assert.equal(get('#dashboard').hidden,false);assert.equal(get('#password').value,'');
   const rows=get('#submission-rows').children;assert.equal(rows.length,1);
   assert.equal(rows[0].children[0].textContent,row.participant);
-  assert.equal(rows[0].children[5].children[1].href,
+  assert.equal(rows[0].children[6].children[1].href,
     '/api/instructor/submissions/id%2Fwith%3Fpunctuation/download');
   assert.equal(evaluate("safeJoinURL('https://outside.test/phishing')"),'');
   assert.equal(evaluate("safeJoinURL('javascript:alert(1)')"),'');

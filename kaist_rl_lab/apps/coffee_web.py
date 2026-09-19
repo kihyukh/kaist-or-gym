@@ -33,10 +33,24 @@ from kaist_rl_lab.envs import CoffeePouringEnv
 COOKIE_NAME = "coffee_instructor"
 SESSION_SECONDS = 12 * 60 * 60
 MAX_CLASS_SUBMISSIONS = 5000
+LEGACY_REWARD_BATCH_SIZE = 20
+ARCHIVE_ERRORS = (ValueError, TypeError, KeyError, AttributeError, IndexError, OSError,
+                  OverflowError, EOFError, BadZipFile, RuntimeError, ZlibError)
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _recorded_rewards(arrays):
+    """Sum saved step rewards without recomputing physics or terminal bonuses."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        rewards = np.asarray(arrays["rewards"], dtype=np.float64)
+        total = float(np.sum(rewards, dtype=np.float64))
+        cumulative = np.concatenate(([0.0], np.cumsum(rewards, dtype=np.float64)))
+    if not math.isfinite(total) or not np.isfinite(cumulative).all():
+        raise ValueError("Recorded rewards must have finite totals.")
+    return total, cumulative
 
 
 def _validated_archive(data: bytes):
@@ -63,6 +77,7 @@ def _validated_archive(data: bytes):
     for field, column in (("fill_l", 12), ("spill_l", 13), ("target_fill_l", 14)):
         if not np.isclose(metadata[field], final[column], rtol=1e-5, atol=1e-7):
             raise ValueError("Liquid summary does not match the recording.")
+    _recorded_rewards(arrays)
     return arrays, metadata
 
 
@@ -73,6 +88,7 @@ class ClassroomStore:
         self.archives.mkdir(parents=True, exist_ok=True)
         self.database = directory / "classroom.sqlite3"
         self.write_lock = Lock()
+        self.reward_backfill_lock = Lock()
         with self.connect() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -85,13 +101,23 @@ class ClassroomStore:
                     episode_id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES classes(id),
                     participant TEXT NOT NULL, received_at TEXT NOT NULL, steps INTEGER NOT NULL,
                     success INTEGER NOT NULL, fill_ml REAL NOT NULL, spill_ml REAL NOT NULL,
-                    duration_seconds REAL NOT NULL, sha256 TEXT NOT NULL, receipt TEXT NOT NULL
+                    duration_seconds REAL NOT NULL, sha256 TEXT NOT NULL, receipt TEXT NOT NULL,
+                    total_reward REAL, reward_checked INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE INDEX IF NOT EXISTS submissions_session ON submissions(session_id);
                 CREATE TABLE IF NOT EXISTS instructor_sessions (
                     token_hash TEXT PRIMARY KEY, expires INTEGER NOT NULL
                 );
             """)
+            # Existing installations retain their rows and archives. Taking the
+            # write transaction before inspecting columns makes restarts and
+            # concurrent application initialization idempotent.
+            db.execute("BEGIN IMMEDIATE")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(submissions)")}
+            if "total_reward" not in columns:
+                db.execute("ALTER TABLE submissions ADD COLUMN total_reward REAL")
+            if "reward_checked" not in columns:
+                db.execute("ALTER TABLE submissions ADD COLUMN reward_checked INTEGER NOT NULL DEFAULT 0")
 
     @contextmanager
     def connect(self):
@@ -107,9 +133,41 @@ class ClassroomStore:
     def archive_path(self, episode_id: str) -> Path:
         return self.archives / f"coffee_{UUID(episode_id)}.npz"
 
+    def backfill_rewards(self, session_id: str):
+        """Read a bounded batch once; unavailable legacy rewards remain unknown."""
+        if not self.reward_backfill_lock.acquire(blocking=False):
+            return
+        try:
+            with self.connect() as db:
+                rows = db.execute(
+                    "SELECT episode_id FROM submissions WHERE session_id=? AND reward_checked=0 "
+                    "ORDER BY received_at DESC, episode_id DESC LIMIT ?",
+                    (session_id, LEGACY_REWARD_BATCH_SIZE),
+                ).fetchall()
+            updates = []
+            for row in rows:
+                total = None
+                try:
+                    with self.archive_path(row["episode_id"]).open("rb") as archive:
+                        arrays, metadata = _validated_archive(archive.read(MAX_ARCHIVE_BYTES + 1))
+                    if str(UUID(metadata["episode_id"])) != row["episode_id"]:
+                        raise ValueError("The archive belongs to another episode.")
+                    total, _ = _recorded_rewards(arrays)
+                except ARCHIVE_ERRORS:
+                    pass
+                updates.append((total, row["episode_id"]))
+            with self.connect() as db:
+                db.executemany(
+                    "UPDATE submissions SET total_reward=?, reward_checked=1 "
+                    "WHERE episode_id=? AND reward_checked=0", updates,
+                )
+        finally:
+            self.reward_backfill_lock.release()
+
     def receive(self, token: str, data: bytes, arrays, metadata):
         episode_id = str(UUID(metadata["episode_id"]))
         digest = hashlib.sha256(data).hexdigest()
+        total_reward, _ = _recorded_rewards(arrays)
         with self.write_lock, self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             classroom = db.execute("SELECT * FROM classes WHERE join_token=?", (token,)).fetchone()
@@ -147,12 +205,14 @@ class ClassroomStore:
                     if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
                         raise ValueError("A different recording already uses this episode ID.")
                 db.execute(
-                    "INSERT INTO submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO submissions (episode_id, session_id, participant, received_at, "
+                    "steps, success, fill_ml, spill_ml, duration_seconds, sha256, receipt, "
+                    "total_reward, reward_checked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
                     (episode_id, classroom["id"], metadata["participant"].strip(), received,
                      len(arrays["actions"]), int(metadata["success"]),
                      float(arrays["next_observations"][-1, 12]) * 1000,
                      float(arrays["next_observations"][-1, 13]) * 1000,
-                     len(arrays["actions"]) * metadata["dt"], digest, receipt),
+                     len(arrays["actions"]) * metadata["dt"], digest, receipt, total_reward),
                 )
                 db.commit()
             except Exception:
@@ -166,6 +226,7 @@ class ClassroomStore:
 def _replay(data: bytes) -> dict:
     """Sample actual physics frames; never interpolate recorded observations."""
     arrays, metadata = _validated_archive(data)
+    total_reward, cumulative_rewards = _recorded_rewards(arrays)
     env = CoffeePouringEnv(dt=metadata["dt"], horizon=None)
     count = len(arrays["actions"])
     selected = set(np.linspace(0, count, min(count + 1, 400), dtype=int).tolist())
@@ -178,7 +239,8 @@ def _replay(data: bytes) -> dict:
             "speed": 1.0, "paused": True, "running": False,
             "motors": list(map(float, motors)), "decision_interval_wall_ms": metadata["dt"] * 1000,
         }
-        frames.append({"time": step * metadata["dt"], "snapshot": snapshot})
+        frames.append({"time": step * metadata["dt"], "snapshot": snapshot,
+                       "cumulative_reward": float(cumulative_rewards[step])})
 
     try:
         observation, _ = env.reset(seed=metadata["seed"], options={
@@ -196,7 +258,7 @@ def _replay(data: bytes) -> dict:
                 raise ValueError("The recording continues after its environment ended.")
             if index in selected:
                 append_frame(index, action)
-        return {"metadata": metadata, "frames": frames}
+        return {"metadata": metadata, "frames": frames, "total_reward": total_reward}
     finally:
         env.close()
 
@@ -330,8 +392,7 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
                 raise HTTPException(413, "Trajectory archive is too large.")
         try:
             arrays, metadata = await run_in_threadpool(_validated_archive, bytes(data))
-        except (ValueError, TypeError, KeyError, AttributeError, IndexError, OSError,
-                OverflowError, EOFError, BadZipFile, RuntimeError, ZlibError):
+        except ARCHIVE_ERRORS:
             raise HTTPException(400, "Invalid trajectory archive.") from None
         try:
             return await run_in_threadpool(store.receive, class_token, bytes(data), arrays, metadata)
@@ -416,8 +477,10 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
         with store.connect() as db:
             if not db.execute("SELECT id FROM classes WHERE id=?", (session,)).fetchone():
                 raise HTTPException(404, "Classroom not found.")
+        store.backfill_rewards(session)
+        with store.connect() as db:
             rows = db.execute("""SELECT episode_id, participant, received_at, steps, success,
-                                 fill_ml, spill_ml, duration_seconds FROM submissions
+                                 fill_ml, spill_ml, duration_seconds, total_reward FROM submissions
                                  WHERE session_id=? ORDER BY received_at DESC""", (session,))
             return [{**dict(row), "success": bool(row["success"])} for row in rows]
 
@@ -432,20 +495,75 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
     def download(episode_id: str, request: Request):
         instructor(request)
         path = submitted_path(episode_id)
+        if not path.is_file():
+            raise HTTPException(404, "Recording archive is unavailable.")
         return FileResponse(path, media_type="application/octet-stream", filename=path.name)
+
+    def prepared_replay(read_archive):
+        if not replay_lock.acquire(blocking=False):
+            raise HTTPException(429, "Another replay is being prepared. Try again shortly.")
+        try:
+            return _replay(read_archive())
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        except ARCHIVE_ERRORS:
+            raise HTTPException(409, "This recording archive is unavailable or invalid.") from None
+        finally:
+            replay_lock.release()
 
     @app.get("/api/instructor/submissions/{episode_id}/replay")
     def replay(episode_id: str, request: Request):
         instructor(request)
         path = submitted_path(episode_id)
-        if not replay_lock.acquire(blocking=False):
-            raise HTTPException(429, "Another replay is being prepared. Try again shortly.")
-        try:
-            return _replay(path.read_bytes())
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from None
-        finally:
-            replay_lock.release()
+
+        def read_archive():
+            with path.open("rb") as archive:
+                return archive.read(MAX_ARCHIVE_BYTES + 1)
+
+        return prepared_replay(read_archive)
+
+    def example_archive(example_id):
+        from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, load_examples
+
+        # Look up opaque IDs before loading anything. They are never filenames
+        # supplied by the caller, and this only reads the bundled BC recordings.
+        indexes = {f"example-{index + 1}": index for index in range(EXAMPLE_COUNT)}
+        if example_id not in indexes:
+            raise HTTPException(404, "Generated example not found.")
+        return load_examples()[indexes[example_id]]
+
+    @app.get("/api/instructor/examples")
+    def examples(request: Request):
+        instructor(request)
+        from kaist_rl_lab.apps.coffee_expert import load_examples
+
+        rows = []
+        for index, data in enumerate(load_examples(), start=1):
+            arrays, metadata = _validated_archive(data)
+            total_reward, _ = _recorded_rewards(arrays)
+            rows.append({
+                "example_id": f"example-{index}", "label": f"Generated example {index}",
+                "episode_id": metadata["episode_id"], "steps": len(arrays["actions"]),
+                "success": metadata["success"],
+                "fill_ml": float(arrays["next_observations"][-1, 12]) * 1000,
+                "spill_ml": float(arrays["next_observations"][-1, 13]) * 1000,
+                "duration_seconds": len(arrays["actions"]) * metadata["dt"],
+                "total_reward": total_reward,
+            })
+        return rows
+
+    @app.get("/api/instructor/examples/{example_id}/download")
+    def download_example(example_id: str, request: Request):
+        instructor(request)
+        data = example_archive(example_id)
+        return Response(data, media_type="application/octet-stream", headers={
+            "Content-Disposition": f'attachment; filename="coffee_{example_id}.npz"',
+        })
+
+    @app.get("/api/instructor/examples/{example_id}/replay")
+    def replay_example(example_id: str, request: Request):
+        instructor(request)
+        return prepared_replay(lambda: example_archive(example_id))
 
     @app.get("/instructor")
     def instructor_page():

@@ -76,8 +76,19 @@ INSTRUCTOR_HTML = """<!doctype html>
           <a id="qr-download" title="Open QR code" target="_blank" rel="noopener"><img id="class-qr" width="220" height="220" alt="QR code for the student class link"></a>
         </section>
       </div>
-      __CLONING_DEMO__
-      __FINETUNING__
+      <section id="examples-panel" class="panel" aria-labelledby="examples-title">
+        <div class="heading-row">
+          <div><p class="eyebrow">INSPECT DEMONSTRATIONS</p><h2 id="examples-title">Generated successful examples</h2><p id="example-count" class="hint"></p></div>
+          <button id="refresh-examples" type="button">Refresh examples</button>
+        </div>
+        <p class="hint">These are the same prepared recordings available for behavior cloning. Choose Replay to inspect a trajectory before training.</p>
+        <p id="examples-status" role="status" class="hint">Loading generated examples…</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Example</th><th>Total reward</th><th>Cup / spill</th><th>Result</th><th>Duration</th><th>Trajectory</th></tr></thead>
+          <tbody id="example-rows"></tbody>
+        </table></div>
+        <p class="hint">Total reward is the sum of the recording's step rewards. Generated examples are separate from student submissions.</p>
+      </section>
       <section id="submissions-panel" class="panel" hidden>
         <div class="heading-row">
           <div><h2>Submitted demonstrations</h2><p id="submission-count" class="hint"></p></div>
@@ -86,17 +97,18 @@ INSTRUCTOR_HTML = """<!doctype html>
         <label class="filter-label" for="participant-filter">Find a participant</label>
         <input id="participant-filter" type="search" placeholder="Student ID or participant code">
         <div class="table-scroll"><table>
-          <thead><tr><th>Participant</th><th>Received</th><th>Cup / spill</th><th>Result</th><th>Duration</th><th>Demonstration</th></tr></thead>
+          <thead><tr><th>Participant</th><th>Received</th><th>Total reward</th><th>Cup / spill</th><th>Result</th><th>Duration</th><th>Trajectory</th></tr></thead>
           <tbody id="submission-rows"></tbody>
         </table></div>
         <p id="empty-submissions" class="empty-state">Waiting for the first submission. Keep this page open during the activity.</p>
+        <p class="hint">Total reward sums the recorded step rewards, including recorded penalties and success bonuses. A dash means the reward is unavailable.</p>
       </section>
       <section id="replay-panel" class="panel" hidden aria-labelledby="replay-title">
         <div class="heading-row"><div><h2 id="replay-title">Trajectory replay</h2><p id="replay-summary" class="hint"></p></div><button id="close-replay" type="button" class="quiet">Close replay</button></div>
         <p id="replay-status" role="status"></p>
         <div class="coffee-stage replay-stage">
           <div class="coffee-canvas-wrap">
-            <canvas class="coffee-canvas" role="img" aria-label="Replay of the submitted coffee pouring demonstration"></canvas>
+            <canvas class="coffee-canvas" role="img" aria-label="Replay of the selected coffee pouring trajectory"></canvas>
             <div class="coffee-scene-stats" aria-label="Recorded coffee amounts">
               <span><span class="coffee-stat-label">Cup / target</span><strong data-coffee-stat="fill">—</strong></span>
               <span><span class="coffee-stat-label">Spilled</span><strong data-coffee-stat="spill">—</strong></span>
@@ -107,6 +119,7 @@ INSTRUCTOR_HTML = """<!doctype html>
         <div class="playback-controls">
           <button id="play-replay" type="button" class="primary" disabled>Play</button>
           <output id="replay-time" for="replay-position">0.0 / 0.0 s</output>
+          <span class="replay-reward-label">Reward so far <output id="replay-reward" for="replay-position">—</output></span>
           <label for="playback-speed">Speed</label><select id="playback-speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
           <a id="replay-download" class="button">Download .npz</a>
         </div>
@@ -114,6 +127,8 @@ INSTRUCTOR_HTML = """<!doctype html>
         <input id="replay-position" type="range" min="0" max="0" value="0" step="1" disabled>
         <p class="hint">Replay uses recorded actions and the original environment. Scrub to inspect a moment; download the full trajectory for analysis.</p>
       </section>
+      __CLONING_DEMO__
+      __FINETUNING__
     </div>
     <footer>Instructor access is separate from the student class link.</footer>
   </main>
@@ -135,7 +150,7 @@ h1 span {font-size:15px;display:inline-block;color:var(--muted);font-weight:500;
 h2 {font-size:20px;line-height:1.3;margin:0 0 12px;}
 p {margin:10px 0;}
 #page-status {min-height:24px;margin:12px 0 16px;color:var(--muted);}
-#page-status.error,#replay-status.error {color:#a03929;}
+#page-status.error,#replay-status.error,#examples-status.error {color:#a03929;}
 .panel {background:white;border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:20px;box-shadow:0 2px 8px #1d2b3a05;min-width:0;}
 .login-panel {max-width:520px;margin:40px auto;}
 label {display:block;font-size:14px;font-weight:600;margin:10px 0 6px;}
@@ -189,7 +204,8 @@ td .button,td button {font-size:12px;padding:7px 10px;}
 .playback-controls {display:flex;gap:12px;align-items:center;flex-wrap:wrap;max-width:960px;margin:14px auto 0;}
 .playback-controls label {margin:0 0 0 auto;}
 #playback-speed {width:80px;}
-#replay-time {font-size:14px;font-variant-numeric:tabular-nums;}
+#replay-time,.replay-reward-label {font-size:14px;font-variant-numeric:tabular-nums;}
+#replay-reward {font-weight:700;}
 #replay-position {display:block;width:100%;max-width:960px;padding:0;margin:8px auto;accent-color:var(--teal);cursor:pointer;}
 #replay-panel>.hint {text-align:center;}
 footer {font-size:12px;color:var(--muted);text-align:center;margin-top:20px;}
@@ -213,6 +229,7 @@ const cloningDemo=createCloningDemo($('#cloning-panel'),post,
   ()=>{randomDemo.pause();fineTuningDemo.pause();stopPlayback();},
   model=>fineTuningDemo.setModel(model));
 let sessions=[], activeSession=null, submissions=[], authenticated=false, authEpoch=0;
+let examples=[], examplesLoaded=false, exampleRequest=0;
 let listRequest=0, replayRequest=0, refreshBusy=false, replayFrames=[];
 let frameIndex=0, playing=false, playStarted=0, playOrigin=0, animation=null;
 function setStatus(message,error=false) {
@@ -239,10 +256,12 @@ function showLogin() {
   randomDemo.setEnabled(false);
   cloningDemo.setEnabled(false);
   fineTuningDemo.setEnabled(false);
-  authenticated=false;authEpoch++;listRequest++;replayRequest++;stopPlayback();
+  authenticated=false;authEpoch++;listRequest++;exampleRequest++;replayRequest++;stopPlayback();
   $('#dashboard').hidden=true;$('#logout').hidden=true;$('#login-panel').hidden=false;
-  sessions=[];submissions=[];activeSession=null;replayFrames=[];displayState=null;
-  $('#submission-rows').replaceChildren();$('#session-select').replaceChildren();
+  sessions=[];submissions=[];examples=[];examplesLoaded=false;activeSession=null;replayFrames=[];displayState=null;
+  $('#submission-rows').replaceChildren();$('#example-rows').replaceChildren();$('#session-select').replaceChildren();
+  $('#example-count').textContent='';$('#examples-status').textContent='';$('#refresh-examples').disabled=false;
+  $('#replay-reward').textContent='—';$('#replay-time').textContent='0.0 / 0.0 s';
   $('#join-url').value='';$('#class-qr').removeAttribute('src');
   ['#open-demo','#qr-download','#replay-download'].forEach(selector=>$(selector).removeAttribute('href'));
   $('#session-name').textContent='';$('#replay-title').textContent='Trajectory replay';$('#replay-summary').textContent='';
@@ -260,7 +279,7 @@ function localTime(value) {
   const date=new Date(value);
   return Number.isNaN(date.valueOf())?'—':date.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
-function number(value,digits=0) {return Number.isFinite(Number(value))?Number(value).toFixed(digits):'—';}
+function number(value,digits=0) {return value!==null&&value!==undefined&&Number.isFinite(Number(value))?Number(value).toFixed(digits):'—';}
 function duration(value) {return number(value,1)+' s';}
 function safeJoinURL(value) {
   try {const url=new URL(value,location.origin);return url.origin===location.origin?url.href:'';} catch {return '';}
@@ -301,7 +320,9 @@ async function loadSessions(preferred) {
   $('#session-select').value=activeSession||'';$('#session-select').disabled=!sessions.length;
   $('#create-details').open=!sessions.length;
   renderSession();
-  if(activeSession) await loadSubmissions();
+  await Promise.all([examplesLoaded?Promise.resolve():loadExamples(),
+    activeSession?loadSubmissions():Promise.resolve()]);
+  if(epoch!==authEpoch||!authenticated)return;
   setStatus(sessions.length?'Class links open the demo directly. Keep the instructor password private.':'Create a class session to get a student link and QR code.');
 }
 async function loadSubmissions() {
@@ -316,6 +337,49 @@ async function loadSubmissions() {
 function cell(row,text,className='') {
   const td=document.createElement('td');td.textContent=text;td.className=className;row.append(td);return td;
 }
+function trajectoryPath(item,source='students') {
+  return source==='examples'?'/api/instructor/examples/'+idPath(item.example_id):
+    '/api/instructor/submissions/'+idPath(item.episode_id);
+}
+function trajectoryActions(row,item,source='students') {
+  const actions=cell(row,'','actions');
+  const replay=document.createElement('button');replay.type='button';replay.textContent='Replay';
+  replay.addEventListener('click',()=>openReplay(item,source));actions.append(replay);
+  const download=document.createElement('a');download.className='button';download.textContent='Download';
+  download.href=trajectoryPath(item,source)+'/download';download.download='';actions.append(download);
+}
+function trajectoryOutcome(row,item) {
+  const outcome=cell(row,'');const badge=document.createElement('span');badge.className='badge'+(item.success?'':' closed');
+  badge.textContent=item.success?'Success':'Attempt';outcome.append(badge);
+}
+async function loadExamples() {
+  if(!authenticated)return;
+  const request=++exampleRequest,epoch=authEpoch;
+  $('#refresh-examples').disabled=true;$('#examples-status').textContent='Loading generated examples…';
+  $('#examples-status').classList.remove('error');
+  try {
+    const data=await api('/api/instructor/examples');
+    if(request!==exampleRequest||epoch!==authEpoch||!authenticated)return;
+    if(!Array.isArray(data))throw new Error('Could not read the generated examples.');
+    examples=data;examplesLoaded=true;
+    const rows=document.createDocumentFragment();
+    examples.forEach(item=>{
+      const row=document.createElement('tr');cell(row,item.label,'participant');
+      cell(row,number(item.total_reward,3),'nowrap');
+      cell(row,number(item.fill_ml,1)+' / '+number(item.spill_ml,1)+' mL','nowrap');
+      trajectoryOutcome(row,item);cell(row,duration(item.duration_seconds),'nowrap');
+      trajectoryActions(row,item,'examples');rows.append(row);
+    });
+    $('#example-rows').replaceChildren(rows);
+    $('#example-count').textContent=examples.length+' prepared trajectories';
+    $('#examples-status').textContent=examples.length?'':'No generated examples are available.';
+  } catch(error) {
+    if(request!==exampleRequest||epoch!==authEpoch||!authenticated)return;
+    $('#examples-status').textContent=error.message;$('#examples-status').classList.add('error');
+  } finally {
+    if(request===exampleRequest&&epoch===authEpoch)$('#refresh-examples').disabled=false;
+  }
+}
 function renderSubmissions() {
   const session=selectedSession();
   cloningDemo.setContext({id:session?.id||null,name:session?.name||'',total:submissions.length,
@@ -329,14 +393,10 @@ function renderSubmissions() {
   filtered.forEach(item=>{
     const row=document.createElement('tr');
     cell(row,item.participant||'Anonymous','participant');cell(row,localTime(item.received_at),'nowrap');
+    cell(row,number(item.total_reward,3),'nowrap');
     cell(row,number(item.fill_ml)+' / '+number(item.spill_ml)+' mL','nowrap');
-    const outcome=cell(row,'');const badge=document.createElement('span');badge.className='badge'+(item.success?'':' closed');
-    badge.textContent=item.success?'Success':'Attempt';outcome.append(badge);
-    cell(row,duration(item.duration_seconds),'nowrap');const actions=cell(row,'','actions');
-    const replay=document.createElement('button');replay.type='button';replay.textContent='Replay';
-    replay.addEventListener('click',()=>openReplay(item));actions.append(replay);
-    const download=document.createElement('a');download.className='button';download.textContent='Download';
-    download.href='/api/instructor/submissions/'+idPath(item.episode_id)+'/download';download.download='';actions.append(download);
+    trajectoryOutcome(row,item);
+    cell(row,duration(item.duration_seconds),'nowrap');trajectoryActions(row,item);
     rows.append(row);
   });
   $('#submission-rows').replaceChildren(rows);$('#empty-submissions').hidden=filtered.length>0;
@@ -354,6 +414,7 @@ function renderReplayFrame(index) {
   drawFrame(displayState);$('#replay-position').value=String(frameIndex);
   const end=replayFrames[replayFrames.length-1].time;
   $('#replay-time').textContent=number(frame.time,1)+' / '+number(end,1)+' s';
+  $('#replay-reward').textContent=number(frame.cumulative_reward,3);
   $('#replay-position').setAttribute('aria-valuetext',number(frame.time,1)+' seconds');
 }
 function tickPlayback(now) {
@@ -374,25 +435,31 @@ function startPlayback() {
   playing=true;playStarted=performance.now();playOrigin=replayFrames[frameIndex].time;
   $('#play-replay').textContent='Pause';animation=requestAnimationFrame(tickPlayback);
 }
-async function openReplay(item) {
+async function openReplay(item,source='students') {
   randomDemo.pause();
   cloningDemo.pause();
   fineTuningDemo.pause();
   stopPlayback();const request=++replayRequest;
   replayFrames=[];frameIndex=0;displayState=null;
-  $('#replay-panel').hidden=false;$('#replay-title').textContent='Replay · '+(item.participant||'Anonymous');
-  $('#replay-summary').textContent=localTime(item.received_at)+' · '+number(item.steps)+' recorded steps · '+duration(item.duration_seconds);
+  $('#play-replay').textContent='Play';
+  const label=source==='examples'?item.label:(item.participant||'Anonymous');
+  const provenance=source==='examples'?'Generated example':'Student submission · '+localTime(item.received_at);
+  const summary=provenance+' · '+number(item.steps)+' recorded steps · '+duration(item.duration_seconds);
+  $('#replay-panel').hidden=false;$('#replay-title').textContent='Replay · '+label;
+  $('#replay-summary').textContent=summary+' · total reward '+number(item.total_reward,3);
+  $('#replay-reward').textContent='—';$('#replay-time').textContent='0.0 / '+duration(item.duration_seconds);
   $('#replay-status').textContent='Preparing replay from the recorded actions…';$('#replay-status').classList.remove('error');
   $('#play-replay').disabled=true;$('#replay-position').disabled=true;
-  $('#replay-download').href='/api/instructor/submissions/'+idPath(item.episode_id)+'/download';$('#replay-download').download='';
+  $('#replay-download').href=trajectoryPath(item,source)+'/download';$('#replay-download').download='';
   const canvas=$('#replay-panel .coffee-canvas');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
   element.querySelectorAll('#replay-panel [data-coffee-stat]').forEach(stat=>{stat.textContent='—';});
   $('#replay-panel').scrollIntoView({behavior:'smooth',block:'start'});
   try {
-    const data=await api('/api/instructor/submissions/'+idPath(item.episode_id)+'/replay');
+    const data=await api(trajectoryPath(item,source)+'/replay');
     if(request!==replayRequest||!authenticated)return;
     if(!Array.isArray(data.frames)||!data.frames.length)throw new Error('No replay frames were available.');
     replayFrames=data.frames;$('#replay-position').max=String(replayFrames.length-1);
+    $('#replay-summary').textContent=summary+' · total reward '+number(data.total_reward,3);
     $('#play-replay').disabled=false;$('#replay-position').disabled=false;
     $('#replay-status').textContent='Ready · '+replayFrames.length+' sampled frames. The download contains every recorded step.';
     renderReplayFrame(0);
@@ -438,6 +505,7 @@ $('#refresh').addEventListener('click',async()=>{
   try{await loadSessions();}catch(error){setStatus(error.message,true);}finally{$('#refresh').disabled=false;}
 });
 $('#participant-filter').addEventListener('input',renderSubmissions);
+$('#refresh-examples').addEventListener('click',loadExamples);
 $('#random-start').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();fineTuningDemo.pause();});
 $('#random-pause').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();fineTuningDemo.pause();});
 $('#play-replay').addEventListener('click',()=>playing?stopPlayback():startPlayback());
