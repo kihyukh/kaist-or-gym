@@ -83,6 +83,15 @@ environment return, fill, spill, duration, and success; the expandable history
 separates noisy training returns from evaluations without noise. **Watch original
 clone** and **Watch best policy** run fresh deterministic trials at normal speed.
 
+A live learning curve sits beside the simulation on wider screens and stacks above
+it on phones. It plots exploration rewards, evaluations without noise, and the best
+evaluated reward so far, with the original clone as a reference. Points appear only
+when the corresponding trial has finished; unfinished evaluations remain missing.
+The progress display follows the current training stage and completed updates.
+Select a trial to inspect its values, or include zero on the reward axis to compare
+the scale of changes. The curve remains available while watching a policy and clears
+when a new experiment or cloning model replaces it.
+
 This is a deliberately small PPO actor–critic experiment. A five-feature linear
 actor adjusts the frozen clone's speed, and a linear critic fits observed returns
 to estimate advantages (GAE, lambda 0.95). The action is

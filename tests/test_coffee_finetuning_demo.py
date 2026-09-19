@@ -69,23 +69,41 @@ const fixtures=JSON.parse(fs.readFileSync(0,'utf8'));
 const nodes=new Map(),docListeners=new Map(),winListeners=new Map(),workers=[];
 let beforeRunCount=0,nextWorkerError=null;
 class Node {
-  constructor(){
-    this.children=[];this.listeners={};this.hidden=true;this.disabled=false;
-    this.textContent='';this.value='';this.classList={toggle(){}};
+  constructor(tag='div'){
+    this.tagName=tag;this.children=[];this.listeners={};this.attributes={};this.dataset={};
+    this.hidden=true;this.disabled=false;this.checked=false;this.value='';this._text='';
+    this.classes=new Set();this.classList={toggle:(name,on)=>{
+      if(on)this.classes.add(name);else this.classes.delete(name);
+    },contains:name=>this.classes.has(name)};
   }
+  set textContent(value){this._text=String(value);this.children=[];}
+  get textContent(){return this._text+this.children.map(child=>child.textContent).join('');}
   set innerHTML(value){throw Error('Dynamic text must never be parsed as HTML');}
+  setAttribute(key,value){
+    this.attributes[key]=String(value);
+    if(key==='class')this.classes=new Set(String(value).split(/\s+/));
+    if(key.startsWith('data-'))this.dataset[key.slice(5).replace(/-([a-z])/g,(_,char)=>char.toUpperCase())]=String(value);
+  }
+  getAttribute(key){return this.attributes[key]??null;}
+  removeAttribute(key){delete this.attributes[key];}
   addEventListener(event,callback){this.listeners[event]=callback;}
-  append(child){this.children.push(child);}
-  replaceChildren(...children){this.children=[...children];}
+  append(...children){this.children.push(...children);}
+  replaceChildren(...children){this._text='';this.children=[...children];}
+  get options(){return this.children;}
+  focus(){this.focused=true;}
 }
 function node(selector){
   if(selector==='.coffee-canvas')return null;
-  if(!nodes.has(selector))nodes.set(selector,new Node());
+  if(!nodes.has(selector)){
+    const item=new Node();if(selector==='#ft-learning-viz')item.querySelector=node;
+    nodes.set(selector,item);
+  }
   return nodes.get(selector);
 }
 node('#ft-episodes').value='4';
-const element={querySelector:node,querySelectorAll:()=>[]};
-const document={hidden:false,createElement:()=>new Node(),
+const stages=['baseline','training','update','evaluation'].map(stage=>{const item=node('#ft-stage-'+stage);item.setAttribute('data-ft-stage',stage);return item;});
+const element={querySelector:node,querySelectorAll:selector=>selector==='[data-ft-stage]'?stages:[]};
+const document={hidden:false,createElement:tag=>new Node(tag),createElementNS:(_,tag)=>new Node(tag),
   addEventListener:(event,callback)=>docListeners.set(event,callback)};
 const window={addEventListener:(event,callback)=>winListeners.set(event,callback)};
 class Worker {
@@ -209,6 +227,7 @@ if(CHANGE==='replace')demo.setModel({...fixtures.model,changed:true});
 if(CHANGE==='logout')demo.setEnabled(false);
 assert.equal(old.terminated,true);assert.equal(node('#ft-scene').hidden,true);
 assert.equal(node('#ft-results').hidden,true);assert.equal(node('#ft-history').hidden,true);
+assert.equal(node('#ft-learning-viz').hidden,true);assert.equal(node('#ft-learning-chart').children.length,0);
 assert.equal(node('#ft-run-best').disabled,true);
 const status=node('#ft-status').textContent;
 old.receive(fixtures.training);old.receive(fixtures.completed);old.receive({error:'Stale failure'});old.onerror();
@@ -310,3 +329,27 @@ def test_cloning_callback_loads_and_invalidates_the_actual_finetuning_controller
   assert.equal(node('#ft-train').disabled,true);assert.equal(node('#ft-scene').hidden,true);
 })().catch(error=>{console.error(error);process.exit(1)});
 """, include_cloning=True)
+
+
+
+def test_completed_learning_chart_survives_watching_and_display_reset(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const worker=latest();worker.receive(fixtures.completed);
+assert.equal(node('#ft-learning-viz').hidden,false);
+const finishedResult=clone(fixtures.completed.finetuning.result);
+const completedProgress=clone(fixtures.completed.finetuning.progress);
+click('#ft-run-best');
+const watching=clone(fixtures.running);
+watching.finetuning.result=finishedResult;watching.finetuning.progress=completedProgress;
+watching.finetuning.has_result=true;watching.finetuning.best_available=true;
+watching.finetuning.rollout.policy='best';worker.receive(watching);
+assert.equal(node('#ft-learning-viz').hidden,false);assert.equal(node('#ft-results').hidden,false);
+assert.match(node('#ft-showing').textContent,/Best evaluated policy/);
+click('#ft-reset');
+const reset=clone(fixtures.reset);
+reset.finetuning.result=finishedResult;reset.finetuning.progress=completedProgress;
+reset.finetuning.has_result=true;reset.finetuning.best_available=true;worker.receive(reset);
+assert.equal(node('#ft-learning-viz').hidden,false);assert.equal(node('#ft-results').hidden,false);
+assert.doesNotMatch(node('#ft-showing').textContent,/Last evaluated policy/);
+assert.match(node('#ft-showing').textContent,/reset|ready|starting pose/i);
+""")

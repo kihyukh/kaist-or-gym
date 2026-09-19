@@ -1,5 +1,10 @@
 """Instructor controls for bounded actor–critic refinement of a cloned policy."""
 
+from kaist_rl_lab.apps.coffee_learning_viz import (
+    LEARNING_VIZ_CSS,
+    LEARNING_VIZ_HTML,
+    LEARNING_VIZ_JAVASCRIPT,
+)
 from kaist_rl_lab.envs.coffee_pouring_canvas import CANVAS_JAVASCRIPT
 
 FINETUNING_HTML = """
@@ -22,25 +27,13 @@ FINETUNING_HTML = """
         </div>
         <p id="ft-status" role="status" aria-live="polite">Train a behavior-cloning policy above to begin.</p>
         <p id="ft-progress" class="hint"></p>
-        <div id="ft-results" hidden>
-          <h3>Same starting pose · no exploration during evaluation</h3>
-          <div class="table-scroll"><table>
-            <thead><tr><th>Policy</th><th>Total reward ↑</th><th>Cup</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
-            <tbody id="ft-comparison"></tbody></table></div>
-          <p id="ft-improvement" class="ft-improvement"></p>
-          <p class="hint">The best policy is the highest-reward evaluated checkpoint, including the original clone.
-            Exploratory training rewards below include noise and are not the before/after comparison.</p>
-        </div>
-        <div class="button-row">
-          <button id="ft-run-base" type="button" disabled>Watch original clone</button>
-          <button id="ft-run-best" type="button" class="primary" disabled>Watch best policy</button>
-          <button id="ft-reset" type="button" disabled>Reset displayed trial</button>
-        </div>
+        <div class="ft-visual-grid">
+          __LEARNING_VIZ__
         <div id="ft-scene" hidden>
           <div class="random-readout" aria-live="off">
             <span>Showing <strong id="ft-showing">—</strong></span>
             <span>Simulated time <strong id="ft-time">0.0 s</strong></span>
-            <span>Episode reward <strong id="ft-reward">0.000</strong></span>
+            <span>Reward so far <strong id="ft-reward">0.000</strong></span>
           </div>
           <div class="coffee-stage replay-stage"><div class="coffee-canvas-wrap">
             <canvas class="coffee-canvas" role="img" aria-label="Actor–critic coffee pouring training and evaluation"></canvas>
@@ -50,6 +43,22 @@ FINETUNING_HTML = """
               <span><span class="coffee-stat-label">In the pot</span><strong data-coffee-stat="remaining">—</strong></span>
             </div>
           </div></div>
+          <p class="hint">The scene shows the current trial. During training, the chart adds its total reward after the trial finishes.</p>
+        </div>
+        </div>
+        <div id="ft-results" hidden>
+          <h3>Same starting pose · no exploration during evaluation</h3>
+          <div class="table-scroll"><table>
+            <thead><tr><th>Policy</th><th>Total reward ↑</th><th>Cup</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
+            <tbody id="ft-comparison"></tbody></table></div>
+          <p id="ft-improvement" class="ft-improvement"></p>
+          <p class="hint">The best policy is the highest-reward evaluated checkpoint, including the original clone.
+            Exploratory training rewards include noise and are not the before/after comparison.</p>
+        </div>
+        <div class="button-row">
+          <button id="ft-run-base" type="button" disabled>Watch original clone</button>
+          <button id="ft-run-best" type="button" class="primary" disabled>Watch best policy</button>
+          <button id="ft-reset" type="button" disabled>Reset displayed trial</button>
         </div>
         <details id="ft-history" hidden><summary>Reward across training trials</summary>
           <div class="table-scroll"><table>
@@ -66,9 +75,14 @@ FINETUNING_HTML = """
             Stop keeps the best completed evaluation. Changing the cloning policy or reloading clears this experiment.</p>
         </details>
       </section>
-"""
+""".replace("__LEARNING_VIZ__", LEARNING_VIZ_HTML)
 
-FINETUNING_CSS = """
+FINETUNING_CSS = LEARNING_VIZ_CSS + """
+.ft-visual-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:20px;align-items:start;margin:16px 0;}
+.ft-visual-grid>* {min-width:0;}
+.ft-visual-grid .replay-stage {margin-top:10px;}
+.ft-visual-grid #ft-scene {padding:14px;background:#f8fafb;border:1px solid var(--line);border-radius:10px;}
+.ft-visual-grid .random-readout {margin-top:0;gap:8px 16px;}
 .ft-training-controls {display:flex;align-items:end;gap:12px;flex-wrap:wrap;}
 .ft-training-controls>div {min-width:220px;flex:1;}
 #ft-status {color:var(--navy);min-height:21px;font-size:14px;}
@@ -83,6 +97,7 @@ FINETUNING_CSS = """
 FINETUNING_JAVASCRIPT = r"""
 function createFineTuningDemo(element,beforeRun) {
   const $=selector=>element.querySelector(selector);
+  const learningViz=createLearningVisualization(element);
   const LOGICAL_WIDTH=960,LOGICAL_HEIGHT=560;
   const clamp=(value,low,high)=>Math.max(low,Math.min(high,value));
   let canvasRef=null,resizeObserver=null,displayState=null;
@@ -109,7 +124,7 @@ function createFineTuningDemo(element,beforeRun) {
     loading=false;modelSent=false;pendingCommand=false;pendingAction=null;state=null;displayState=null;
   }
   function clearExperiment() {
-    stopWorker();renderedResult='';
+    stopWorker();renderedResult='';learningViz.reset();
     $('#ft-results').hidden=true;$('#ft-history').hidden=true;$('#ft-scene').hidden=true;
     $('#ft-comparison').replaceChildren();$('#ft-history-rows').replaceChildren();
     $('#ft-progress').textContent='';$('#ft-improvement').textContent='';
@@ -146,6 +161,8 @@ function createFineTuningDemo(element,beforeRun) {
       number(item.evaluation?.return),item.update.actor_change>0?'Applied':'No change']));
   }
   function fail(message) {
+    if(state)learningViz.render({...state,training_active:false,training_stopped:true,paused:true,
+      rollout:{...state.rollout,active:false,done:false}});
     stopWorker();$('#ft-scene').hidden=true;controls();
     status('The experiment stopped. Start a new experiment to try again. '+message,true);
   }
@@ -160,12 +177,13 @@ function createFineTuningDemo(element,beforeRun) {
     if(document.hidden||pauseRequested)pendingAction=null;
     if(pendingAction){const action=pendingAction;pendingAction=null;send(action);return;}
     $('#ft-scene').hidden=false;drawFrame(displayState);
-    renderResults(state.result);
+    renderResults(state.result);learningViz.render(state);
     const progress=state.progress||{},rollout=state.rollout||{};
     const phase={baseline:'Checking original clone',training:'Exploring nearby actions',evaluation:'Testing the updated policy',complete:'Training complete'}[progress.phase]||'Ready';
     const training=state.training_active;
     $('#ft-showing').textContent=training?phase:rollout.active||rollout.done?
       (rollout.policy==='best'?'Best evaluated policy':'Original clone'):
+      rollout.elapsed_seconds===0?'Starting pose':
       progress.phase==='complete'?'Last evaluated policy':state.has_result?'Stopped experiment':'Ready';
     $('#ft-time').textContent=number(training?progress.elapsed_seconds:rollout.elapsed_seconds,1)+' s';
     $('#ft-reward').textContent=number(training?progress.reward:rollout.reward);
@@ -186,6 +204,7 @@ function createFineTuningDemo(element,beforeRun) {
   }
   function startAction(command) {
     if(!enabled||!model||loading||pendingCommand)return;
+    if(command.kind==='ft-train')learningViz.reset();
     beforeRun();pauseRequested=false;
     if(worker){send(command);return;}
     pendingAction=command;loading=true;modelSent=false;controls();status('Loading the fine-tuning simulation…');
@@ -217,4 +236,4 @@ function createFineTuningDemo(element,beforeRun) {
   }};
   __CANVAS_JS__
 }
-""".replace("__CANVAS_JS__", CANVAS_JAVASCRIPT)
+""".replace("__CANVAS_JS__", CANVAS_JAVASCRIPT) + LEARNING_VIZ_JAVASCRIPT
