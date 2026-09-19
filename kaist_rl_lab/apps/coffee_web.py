@@ -14,7 +14,7 @@ import os
 import secrets
 import sqlite3
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from io import BytesIO
@@ -34,6 +34,8 @@ COOKIE_NAME = "coffee_instructor"
 SESSION_SECONDS = 12 * 60 * 60
 MAX_CLASS_SUBMISSIONS = 5000
 LEGACY_REWARD_BATCH_SIZE = 20
+REPLAY_CACHE_BYTES = 24 * 1024 * 1024
+REPLAY_CACHE_ITEMS = 4
 ARCHIVE_ERRORS = (ValueError, TypeError, KeyError, AttributeError, IndexError, OSError,
                   OverflowError, EOFError, BadZipFile, RuntimeError, ZlibError)
 
@@ -223,24 +225,22 @@ class ClassroomStore:
                     "receipt": receipt, "duplicate": False}
 
 
-def _replay(data: bytes) -> dict:
-    """Sample actual physics frames; never interpolate recorded observations."""
+def _replay_events(data: bytes):
+    """Yield verified frames immediately, keeping the original renderer/physics."""
     arrays, metadata = _validated_archive(data)
     total_reward, cumulative_rewards = _recorded_rewards(arrays)
     env = CoffeePouringEnv(dt=metadata["dt"], horizon=None)
     count = len(arrays["actions"])
     selected = set(np.linspace(0, count, min(count + 1, 400), dtype=int).tolist())
-    frames = []
-
-    def append_frame(step, motors):
+    def frame(step, motors):
         snapshot = env.render_snapshot()
         snapshot["playback"] = {
             "generation": 1, "revision": step, "input_sequence": step, "kind": "replay",
             "speed": 1.0, "paused": True, "running": False,
             "motors": list(map(float, motors)), "decision_interval_wall_ms": metadata["dt"] * 1000,
         }
-        frames.append({"time": step * metadata["dt"], "snapshot": snapshot,
-                       "cumulative_reward": float(cumulative_rewards[step])})
+        return {"time": step * metadata["dt"], "snapshot": snapshot,
+                "cumulative_reward": float(cumulative_rewards[step])}
 
     try:
         observation, _ = env.reset(seed=metadata["seed"], options={
@@ -249,7 +249,11 @@ def _replay(data: bytes) -> dict:
         })
         if not np.array_equal(observation, arrays["observations"][0]):
             raise ValueError("The recording cannot be replayed by this environment version.")
-        append_frame(0, [0] * 6)
+        # The first response needs only archive validation and reset; no
+        # transition has to be simulated before the instructor sees the scene.
+        yield {"kind": "start", "metadata": metadata, "total_reward": total_reward,
+               "duration_seconds": count * metadata["dt"], "frame_count": len(selected),
+               "frame": frame(0, [0] * 6)}
         for index, action in enumerate(arrays["actions"], start=1):
             observation, _, terminated, _, _ = env.step(action)
             if not np.array_equal(observation, arrays["next_observations"][index - 1]):
@@ -257,17 +261,29 @@ def _replay(data: bytes) -> dict:
             if terminated and index < count:
                 raise ValueError("The recording continues after its environment ended.")
             if index in selected:
-                append_frame(index, action)
-        return {"metadata": metadata, "frames": frames, "total_reward": total_reward}
+                yield {"kind": "frames", "frames": [frame(index, action)]}
+        yield {"kind": "complete"}
     finally:
         env.close()
+
+
+def _replay(data: bytes) -> dict:
+    """Compatibility response for clients that need the complete frame array."""
+    result = None
+    for event in _replay_events(data):
+        if event["kind"] == "start":
+            result = {"metadata": event["metadata"], "total_reward": event["total_reward"],
+                      "frames": [event["frame"]]}
+        elif event["kind"] == "frames":
+            result["frames"].extend(event["frames"])
+    return result
 
 
 def create_app(*, data_dir=None, public_base_url=None, password=None, session_secret=None,
                static_dir=None, build_assets=True, allow_missing_origin=False):
     """Application factory; importing the module never starts a server."""
     from fastapi import FastAPI, HTTPException, Query, Request
-    from fastapi.responses import FileResponse, JSONResponse, Response
+    from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
     from fastapi.staticfiles import StaticFiles
     from starlette.concurrency import run_in_threadpool
 
@@ -299,6 +315,8 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
     app = FastAPI(title="Coffee classroom", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
     replay_lock = Lock()
+    replay_cache = OrderedDict()
+    replay_cache_lock = Lock()
     rate_lock = Lock()
     rates = defaultdict(deque)
 
@@ -511,6 +529,84 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
         finally:
             replay_lock.release()
 
+    def streamed_replay(read_archive):
+        """Stream bounded physics work; disconnects close the environment/lock."""
+        import anyio
+
+        class ReplayResponse(StreamingResponse):
+            async def __call__(self, scope, receive, send):
+                try:
+                    await super().__call__(scope, receive, send)
+                finally:
+                    # Starlette may cancel response iteration while it is
+                    # suspended at a yield. Explicitly close it rather than
+                    # leaving lock cleanup to async-generator garbage collection.
+                    with anyio.CancelScope(shield=True):
+                        await self.body_iterator.aclose()
+
+        def encode(event):
+            return (json.dumps(event, allow_nan=False, separators=(",", ":")) + "\n").encode()
+
+        def advance(iterator):
+            return next(iterator, None)
+
+        async def events():
+            iterator = None
+            acquired = False
+            try:
+                data = await run_in_threadpool(read_archive)
+                digest = hashlib.sha256(data).hexdigest()
+                with replay_cache_lock:
+                    cached = replay_cache.get(digest)
+                    if cached is not None:
+                        replay_cache.move_to_end(digest)
+                if cached is not None:
+                    yield cached
+                    return
+                # Switching recordings aborts the previous response. Give its
+                # bounded in-flight physics chunk time to finish and release
+                # the lock instead of reporting a spurious busy error.
+                acquired = await run_in_threadpool(replay_lock.acquire, True, 0.5)
+                if not acquired:
+                    yield encode({"kind": "error", "detail":
+                                  "Another replay is being prepared. Try again shortly."})
+                    return
+                iterator = _replay_events(data)
+                chunks = []
+                size = 0
+                completed = False
+                while (event := await run_in_threadpool(advance, iterator)) is not None:
+                    chunk = encode(event)
+                    size += len(chunk)
+                    if size <= REPLAY_CACHE_BYTES:
+                        chunks.append(chunk)
+                    else:
+                        chunks.clear()
+                    completed = event["kind"] == "complete"
+                    yield chunk
+                # Only complete, physics-verified streams are cached. Bound
+                # memory independently of archive count and student input size.
+                if completed and size <= REPLAY_CACHE_BYTES:
+                    with replay_cache_lock:
+                        replay_cache[digest] = b"".join(chunks)
+                        while (len(replay_cache) > REPLAY_CACHE_ITEMS
+                               or sum(map(len, replay_cache.values())) > REPLAY_CACHE_BYTES):
+                            replay_cache.popitem(last=False)
+            except ARCHIVE_ERRORS as exc:
+                detail = str(exc) if isinstance(exc, ValueError) else "This recording archive is unavailable or invalid."
+                yield encode({"kind": "error", "detail": detail})
+            finally:
+                # A cancelled response can arrive between worker-thread chunks.
+                # Shield cleanup so a second request can start immediately.
+                with anyio.CancelScope(shield=True):
+                    if iterator is not None:
+                        await run_in_threadpool(iterator.close)
+                    if acquired:
+                        replay_lock.release()
+
+        return ReplayResponse(events(), media_type="application/x-ndjson",
+                              headers={"X-Accel-Buffering": "no"})
+
     @app.get("/api/instructor/submissions/{episode_id}/replay")
     def replay(episode_id: str, request: Request):
         instructor(request)
@@ -521,6 +617,17 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
                 return archive.read(MAX_ARCHIVE_BYTES + 1)
 
         return prepared_replay(read_archive)
+
+    @app.get("/api/instructor/submissions/{episode_id}/replay-stream")
+    def replay_stream(episode_id: str, request: Request):
+        instructor(request)
+        path = submitted_path(episode_id)
+
+        def read_archive():
+            with path.open("rb") as archive:
+                return archive.read(MAX_ARCHIVE_BYTES + 1)
+
+        return streamed_replay(read_archive)
 
     def example_archive(example_id):
         from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, load_examples
@@ -564,6 +671,12 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
     def replay_example(example_id: str, request: Request):
         instructor(request)
         return prepared_replay(lambda: example_archive(example_id))
+
+    @app.get("/api/instructor/examples/{example_id}/replay-stream")
+    def replay_example_stream(example_id: str, request: Request):
+        instructor(request)
+        data = example_archive(example_id)
+        return streamed_replay(lambda: data)
 
     @app.get("/instructor")
     def instructor_page():

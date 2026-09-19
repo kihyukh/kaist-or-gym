@@ -2,31 +2,34 @@
 
 import json
 
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout, fresh_classroom_seed
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 TRIAL_SECONDS = 60
 TRIAL_STEPS = round(TRIAL_SECONDS / BROWSER_DT)
-ENVIRONMENT_SEED = 7001
 
 
 class CloningAgentRuntime:
     """Independent instructor rollout with no recording upload or expert fallback."""
 
     def __init__(self):
+        seed = fresh_classroom_seed()
         self.session = InteractiveSession(
-            ENVIRONMENT_SEED, 700, start_paused=True, dt=BROWSER_DT,
-            steps_per_update=1, horizon=TRIAL_STEPS, reset_options=INITIAL_LAYOUT,
+            seed, 700, start_paused=True, dt=BROWSER_DT,
+            steps_per_update=1, horizon=TRIAL_STEPS, reset_options=classroom_layout(seed),
         )
         self.policy = None
         self.attempt = 0
         self.done = False
         self.outcome = None
 
-    def _restart(self, *, reset_experiment: bool) -> None:
+    def _restart(self, *, reset_experiment: bool, seed=None) -> None:
+        seed = fresh_classroom_seed() if seed is None else seed
+        self.session.reset_options = classroom_layout(seed)
         self.session.restart(
-            seed=ENVIRONMENT_SEED, target_ml=700, speed=1, horizon=TRIAL_STEPS,
+            seed=seed, target_ml=700, speed=1, horizon=TRIAL_STEPS,
         )
         self.session.paused = reset_experiment
         self.attempt = 0 if reset_experiment else self.attempt + 1
@@ -45,7 +48,7 @@ class CloningAgentRuntime:
         elif kind == "cloning-start":
             if self.policy is None:
                 raise ValueError("Train and load a behavior-cloning policy first.")
-            self._restart(reset_experiment=False)
+            self._restart(reset_experiment=False, seed=command.get("seed"))
         elif kind == "cloning-reset":
             self._restart(reset_experiment=True)
         elif kind == "cloning-pause":

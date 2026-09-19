@@ -14,6 +14,7 @@ from kaist_rl_lab.apps.coffee_browser import (
     browser_bundle,
 )
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, BrowserRuntime
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.envs import CoffeePouringEnv
 from kaist_rl_lab.envs.coffee_pouring_canvas import CANVAS_JAVASCRIPT
@@ -33,8 +34,8 @@ def test_authoritative_motion_hold_reversal_pause_and_reset():
     try:
         env = runtime.session.env
         initial = env.joint_angles.copy()
-        np.testing.assert_allclose(env.tool_positions()["cup_center"], [-0.28, 0.28])
-        np.testing.assert_allclose(env.tool_positions()["pot_center"], [0.26, 0.62])
+        for name, center in classroom_layout(runtime.session.seed).items():
+            np.testing.assert_allclose(env.tool_positions()[name], center)
         control(runtime, 1, [1, 0, 0, 0, 0, 0], paused=True)
         call(runtime, "tick")
         np.testing.assert_array_equal(env.joint_angles, initial)
@@ -65,7 +66,9 @@ def test_authoritative_motion_hold_reversal_pause_and_reset():
         control(runtime, 7, [0] * 6, kind="reset")
         assert runtime.session.env.dt == BROWSER_DT
         assert runtime.session.env.elapsed_steps == 0
-        np.testing.assert_array_equal(runtime.session.env.joint_angles, initial)
+        assert not np.array_equal(runtime.session.env.joint_angles, initial)
+        for name, center in classroom_layout(runtime.session.seed).items():
+            np.testing.assert_allclose(runtime.session.env.tool_positions()[name], center)
         assert runtime.session.generation == 2
         assert not runtime.session.paused
         control(runtime, 8, [1] * 6, generation=1)

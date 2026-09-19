@@ -57,6 +57,40 @@ BROWSER_CSS = CANVAS_CSS + """
 WORKER_JAVASCRIPT = r"""
 let python, timer = null, deadline = 0, paused = true, running = true, training = false;
 const interval = 1000 / 32;
+const PYODIDE_BASE = 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/';
+// Keep the browser's existing Gymnasium version. Loading these verified wheels
+// with Pyodide downloads dependencies during VM startup, without running pip.
+const COFFEE_PACKAGES = {
+  'gymnasium': {
+    name:'gymnasium',version:'1.2.3',imports:['gymnasium'],
+    file_name:'https://files.pythonhosted.org/packages/56/d3/ea5f088e3638dbab12e5c20d6559d5b3bdaeaa1f2af74e526e6815836285/gymnasium-1.2.3-py3-none-any.whl',
+    sha256:'e6314bba8f549c7fdcc8677f7cd786b64908af6e79b57ddaa5ce1825bffb5373',
+    depends:['numpy','cloudpickle','typing-extensions','farama-notifications'],
+    install_dir:'site',package_type:'package',unvendored_tests:false,
+  },
+  'farama-notifications': {
+    name:'farama-notifications',version:'0.0.6',imports:['farama_notifications'],
+    file_name:'https://files.pythonhosted.org/packages/7c/f0/21f81892e4ed10f4ec3ef2e7cf8635fb76e7c0907c55d0da66be50094760/farama_notifications-0.0.6-py3-none-any.whl',
+    sha256:'f84839188efa1ce5bb361c2a84881b2dc2c0d0d7fb661ff00421820170930935',
+    depends:[],install_dir:'site',package_type:'package',unvendored_tests:false,
+  },
+};
+async function loadCoffeePython() {
+  const [module,response] = await Promise.all([
+    import(PYODIDE_BASE+'pyodide.mjs'),fetch(PYODIDE_BASE+'pyodide-lock.json'),
+  ]);
+  if (!response.ok) throw new Error('Could not load the simulation libraries.');
+  const lock = await response.json();
+  Object.assign(lock.packages,COFFEE_PACKAGES);
+  return module.loadPyodide({indexURL:PYODIDE_BASE,packageBaseUrl:PYODIDE_BASE,
+    lockFileContents:lock,packages:['numpy','gymnasium']});
+}
+async function loadCoffeeSource(data) {
+  if (!data.bundle_url) return Uint8Array.from(atob(data.bundle),c=>c.charCodeAt(0));
+  const response = await fetch(data.bundle_url);
+  if (!response.ok) throw new Error('Could not load the simulation source.');
+  return new Uint8Array(await response.arrayBuffer());
+}
 function emit(result) {
   const data = JSON.parse(result), p = data.snapshot.playback;
   paused = p.paused; running = p.running;
@@ -86,19 +120,10 @@ function schedule() {
 self.onmessage = async ({data}) => {
   try {
     if (data.kind === 'init') {
-      postMessage({loading:'Loading the Python runtime…'});
-      const {loadPyodide} = await import('https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.mjs');
-      python = await loadPyodide();
-      postMessage({loading:'Loading simulation libraries…'});
-      await python.loadPackage(['numpy', 'micropip']);
-      await python.runPythonAsync('import micropip\nawait micropip.install("gymnasium==1.2.3")');
+      postMessage({loading:'Loading the simulation and its libraries…'});
+      const [runtime,bytes] = await Promise.all([loadCoffeePython(),loadCoffeeSource(data)]);
+      python = runtime;
       postMessage({loading:'Preparing your coffee station…'});
-      let bytes;
-      if (data.bundle_url) {
-        const response=await fetch(data.bundle_url);
-        if (!response.ok) throw new Error('Could not load the simulation source.');
-        bytes=new Uint8Array(await response.arrayBuffer());
-      } else bytes=Uint8Array.from(atob(data.bundle), c=>c.charCodeAt(0));
       python.unpackArchive(bytes, 'zip', {extractDir:'/home/pyodide'});
       python.runPython(data.mode === 'random'
         ? 'from kaist_rl_lab.apps.coffee_random_runtime import RandomAgentRuntime\ncoffee_runtime = RandomAgentRuntime()'

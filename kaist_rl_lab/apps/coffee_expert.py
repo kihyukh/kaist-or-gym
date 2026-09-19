@@ -18,15 +18,19 @@ from pathlib import Path
 
 import numpy as np
 
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout
 from kaist_rl_lab.apps.coffee_demonstrations import encode_demonstration, read_demonstration
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 from kaist_rl_lab.envs import CoffeePouringEnv
 
-EXAMPLE_COUNT = 5
+EXAMPLE_COUNT = 15
 # Different approach and pouring speeds give separate demonstrations of the
 # same safe maneuver. These are generated examples, never student submissions.
 EXAMPLE_SPEEDS = ((1.0, 0.070), (0.92, 0.066), (0.84, 0.074), (0.96, 0.068), (0.88, 0.072))
+# These seeds cover the two-dimensional start distribution in an approximate
+# 5-by-3 grid. They remain separate from held-out rollout test seeds.
+EXAMPLE_SEEDS = (7938, 8095, 7605, 7415, 8026, 7207, 7268, 7880, 7410, 7249, 7838, 7184, 7878, 7700, 7860)
 MAX_EXAMPLE_STEPS = round(45 / BROWSER_DT)
 
 
@@ -104,13 +108,14 @@ def generate_example(index: int = 0) -> bytes:
     """
     if type(index) is not int or not 0 <= index < EXAMPLE_COUNT:
         raise ValueError(f"Example index must be between 0 and {EXAMPLE_COUNT - 1}.")
-    motor_limit, tilt_rate = EXAMPLE_SPEEDS[index]
+    motor_limit, tilt_rate = EXAMPLE_SPEEDS[index % len(EXAMPLE_SPEEDS)]
+    seed = EXAMPLE_SEEDS[index]
     session = InteractiveSession(
-        7001,
+        seed,
         700,
         dt=BROWSER_DT,
         steps_per_update=1,
-        reset_options=INITIAL_LAYOUT,
+        reset_options=classroom_layout(seed),
     )
     phase = "approach"
     angle = 0.0
@@ -144,7 +149,7 @@ def generate_example(index: int = 0) -> bytes:
 
 
 def generate_examples() -> list[bytes]:
-    """Regenerate all five examples offline; this is not a web request handler."""
+    """Regenerate fifteen examples offline; this is not a web request handler."""
     return [generate_example(index) for index in range(EXAMPLE_COUNT)]
 
 

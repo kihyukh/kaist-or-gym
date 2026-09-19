@@ -8,14 +8,14 @@ at its normal 32 Hz and cannot export or submit classroom demonstrations.
 import json
 from copy import deepcopy
 
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout, fresh_classroom_seed
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_finetuning import FineTuningTrainer
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 TRIAL_SECONDS = 60
 TRIAL_STEPS = round(TRIAL_SECONDS / BROWSER_DT)
-ENVIRONMENT_SEED = 7001
 DEFAULT_TRAINING_EPISODES = 8
 MAX_TRAINING_EPISODES = 12
 DEFAULT_CHUNK_STEPS = 16
@@ -28,10 +28,11 @@ def _bounded_integer(value, minimum: int, maximum: int, label: str) -> int:
     return value
 
 
-def _new_session() -> InteractiveSession:
+def _new_session(seed=None) -> InteractiveSession:
+    seed = fresh_classroom_seed() if seed is None else seed
     return InteractiveSession(
-        ENVIRONMENT_SEED, 700, start_paused=True, dt=BROWSER_DT,
-        steps_per_update=1, horizon=TRIAL_STEPS, reset_options=INITIAL_LAYOUT,
+        seed, 700, start_paused=True, dt=BROWSER_DT,
+        steps_per_update=1, horizon=TRIAL_STEPS, reset_options=classroom_layout(seed),
     )
 
 
@@ -68,9 +69,9 @@ class FineTuningRuntime:
         self.training_active = False
         self.rollout_active = False
 
-    def _replace_scene(self) -> None:
+    def _replace_scene(self, seed=None) -> None:
         self.close()
-        self.session = _new_session()
+        self.session = _new_session(seed)
         self.rollout_active = False
         self.rollout_done = False
         self.rollout_outcome = None
@@ -133,7 +134,7 @@ class FineTuningRuntime:
                 command.get("episodes", DEFAULT_TRAINING_EPISODES),
                 1, MAX_TRAINING_EPISODES, "Training episodes",
             )
-            seed = _bounded_integer(command.get("seed", 2026), 0, 2**32 - 1, "Seed")
+            seed = _bounded_integer(command.get("seed", fresh_classroom_seed()), 0, 2**32 - 1, "Seed")
             if self.training_active:
                 raise ValueError("Stop the current training run before starting another.")
             trainer = FineTuningTrainer(self.model, seed=seed, episodes=episodes)
@@ -172,7 +173,7 @@ class FineTuningRuntime:
                 raise ValueError("Stop or finish training before running a comparison.")
             if policy == "best" and self.best_policy is None:
                 raise ValueError("Finish a policy evaluation before running the best policy.")
-            self._replace_scene()
+            self._replace_scene((self.result or {}).get("evaluation_seed"))
             self.rollout_policy = policy
             self.rollout_active = True
             self.session.paused = False

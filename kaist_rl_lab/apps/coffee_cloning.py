@@ -3,7 +3,7 @@
 The policy copies the action at the closest demonstrated physical state. It does
 not use rewards, a trajectory's future states, a prerecorded action timeline, or
 an expert controller at inference time. This local method can imitate a familiar
-route, but does not establish generalization to a new starting configuration.
+route, but does not establish generalization beyond the demonstrated range.
 """
 
 from collections.abc import Sequence

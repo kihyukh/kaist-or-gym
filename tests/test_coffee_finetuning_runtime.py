@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from kaist_rl_lab.apps import coffee_finetuning_runtime as module
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout
 from kaist_rl_lab.apps.coffee_cloning import FEATURE_INDICES, FEATURE_SCALES, NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_finetuning_runtime import FineTuningRuntime
 
@@ -78,6 +79,7 @@ class FakeTrainer:
             "episodes": self.episodes, "total_steps": sum(self.calls),
             "completed_episodes": int(self.done),
             "episode_steps": self.session.env.elapsed_steps,
+            "evaluation_seed": self.session.seed,
             "baseline": baseline, "best": best,
             "history": [] if len(self.calls) < 3 else [{
                 "episode": 1, "training": baseline,
@@ -119,7 +121,7 @@ def test_initial_state_and_load_are_idle(runtime, model, fake_trainer):
     assert not fake_trainer.instances
     assert runtime.session.trajectory == []
     assert runtime.session.env.dt == BROWSER_DT
-    for name, position in INITIAL_LAYOUT.items():
+    for name, position in classroom_layout(runtime.session.seed).items():
         np.testing.assert_allclose(runtime.session.env.tool_positions()[name], position)
     with pytest.raises(ValueError, match="evaluation"):
         call(runtime, "ft-run", policy="best")

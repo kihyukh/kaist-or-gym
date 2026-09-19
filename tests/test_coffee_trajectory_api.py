@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from kaist_rl_lab.apps import coffee_web
 from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
-from kaist_rl_lab.apps.coffee_expert import load_examples
+from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, load_examples
 
 PASSWORD = "trajectory-test-password-only"
 SECRET = "trajectory-test-signing-secret-not-for-deployment"
@@ -200,7 +200,7 @@ def test_generated_examples_list_download_and_replay_without_student_records(set
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     rows = response.json()
-    assert len(rows) == 5
+    assert len(rows) == EXAMPLE_COUNT
     for index, (row, data) in enumerate(zip(rows, packaged, strict=True), start=1):
         arrays, metadata = read_demonstration(data)
         assert row["example_id"] == f"example-{index}"
@@ -227,7 +227,7 @@ def test_generated_examples_list_download_and_replay_without_student_records(set
     # Generated IDs never resolve through the student namespace, and vice versa.
     assert client.get("/api/instructor/submissions/example-1/replay").status_code == 404
     assert client.get(f"/api/instructor/examples/{rows[0]['episode_id']}/replay").status_code == 404
-    for invalid in ("example-0", "example-6", "example-01", "example_1.npz", "classroom.sqlite3"):
+    for invalid in ("example-0", f"example-{EXAMPLE_COUNT + 1}", "example-01", "example_1.npz", "classroom.sqlite3"):
         assert client.get(f"/api/instructor/examples/{invalid}/replay").status_code == 404
         assert client.get(f"/api/instructor/examples/{invalid}/download").status_code == 404
 
@@ -239,13 +239,143 @@ def test_all_trajectory_data_requires_authentication_before_reads(setup, monkeyp
     monkeypatch.setattr(store, "backfill_rewards", lambda _: pytest.fail("Unauthenticated backfill"))
     for endpoint in (
         "/api/instructor/examples", "/api/instructor/examples/example-1/replay",
+        "/api/instructor/examples/example-1/replay-stream",
         "/api/instructor/examples/example-1/download",
         "/api/instructor/submissions?session=unknown",
         "/api/instructor/submissions/unknown/replay", "/api/instructor/submissions/unknown/download",
+        "/api/instructor/submissions/unknown/replay-stream",
     ):
         response = client.get(endpoint)
         assert response.status_code == 401
         assert response.headers["cache-control"] == "no-store"
+
+
+def stream_result(response):
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[0]["kind"] == "start" and events[-1]["kind"] == "complete"
+    return events, [events[0]["frame"]] + [
+        frame for event in events[1:] if event["kind"] == "frames" for frame in event["frames"]
+    ]
+
+
+def test_streamed_replay_matches_complete_physics_and_reuses_verified_cache(setup, monkeypatch):
+    client, _, _ = setup
+    login(client)
+    _, token = new_class(client)
+    episode_id = upload(client, token, recording([-2, 1, 3, -0.25, 0.5, -4])).json()["episode_id"]
+    endpoint = f"/api/instructor/submissions/{episode_id}"
+    complete = client.get(endpoint + "/replay").json()
+    first = client.get(endpoint + "/replay-stream")
+    events, frames = stream_result(first)
+    assert frames == complete["frames"]
+    assert events[0]["total_reward"] == complete["total_reward"]
+    assert events[0]["frame_count"] == len(frames)
+    assert events[0]["duration_seconds"] == frames[-1]["time"]
+    assert first.headers["cache-control"] == "no-store"
+    assert first.headers["x-accel-buffering"] == "no"
+    monkeypatch.setattr(coffee_web, "_replay_events", lambda _: pytest.fail("Cached replay simulated again"))
+    assert client.get(endpoint + "/replay-stream").content == first.content
+    client.post("/api/instructor/logout")
+    assert client.get(endpoint + "/replay-stream").status_code == 401
+
+
+def test_stream_initial_frame_needs_no_steps_and_close_releases_environment(setup, monkeypatch):
+    from types import SimpleNamespace
+
+    import anyio
+    from starlette.requests import ClientDisconnect
+
+    client, _, _ = setup
+    login(client)
+    _, token = new_class(client)
+    data = recording()
+    episode_id = upload(client, token, data).json()["episode_id"]
+    steps, closed = [], []
+    original_step = coffee_web.CoffeePouringEnv.step
+    original_close = coffee_web.CoffeePouringEnv.close
+
+    def step(env, action):
+        steps.append(1)
+        return original_step(env, action)
+
+    def close(env):
+        closed.append(1)
+        return original_close(env)
+
+    monkeypatch.setattr(coffee_web.CoffeePouringEnv, "step", step)
+    monkeypatch.setattr(coffee_web.CoffeePouringEnv, "close", close)
+    route = next(route for route in client.app.routes
+                 if getattr(route, "path", "") == "/api/instructor/submissions/{episode_id}/replay-stream")
+    request = SimpleNamespace(cookies={coffee_web.COOKIE_NAME: client.cookies.get(coffee_web.COOKIE_NAME)})
+
+    async def cancel_after_first_frame():
+        response = route.endpoint(episode_id, request)
+
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            if message["type"] == "http.response.body":
+                event = json.loads(message["body"])
+                assert event["kind"] == "start" and event["frame"]["time"] == 0
+                assert steps == []
+                raise OSError("The browser closed the response")
+
+        # Exercise the response lifecycle, not just iterator.aclose(): ASGI
+        # disconnects can interrupt iteration while it is suspended at a yield.
+        with pytest.raises(ClientDisconnect):
+            await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+
+    anyio.run(cancel_after_first_frame)
+    assert closed == [1]
+    # The aborted response neither holds the shared lock nor populates the cache.
+    stream_result(client.get(f"/api/instructor/submissions/{episode_id}/replay-stream"))
+    assert len(steps) == 6
+
+
+def test_generated_stream_uses_same_frames_and_cache_is_bounded(setup, monkeypatch):
+    client, _, _ = setup
+    login(client)
+    # Keep this API/cache test fast; actual packaged physics is covered above.
+    first, second = recording(), recording()
+    monkeypatch.setattr("kaist_rl_lab.apps.coffee_expert.load_examples", lambda: [first, second])
+    monkeypatch.setattr(coffee_web, "REPLAY_CACHE_ITEMS", 1)
+    calls = []
+    original = coffee_web._replay_events
+
+    def replay(data):
+        calls.append(data)
+        yield from original(data)
+
+    monkeypatch.setattr(coffee_web, "_replay_events", replay)
+    for identifier in ("example-1", "example-2", "example-2", "example-1"):
+        _, frames = stream_result(client.get(f"/api/instructor/examples/{identifier}/replay-stream"))
+        assert frames[-1]["snapshot"]["state"]["step"] == 6
+    assert calls == [first, second, first]
+
+
+def test_stream_reports_invalid_physics_without_caching_partial_results(setup, monkeypatch):
+    client, store, _ = setup
+    login(client)
+    _, token = new_class(client)
+    data = recording()
+    episode_id = upload(client, token, data).json()["episode_id"]
+    arrays, metadata = read_demonstration(data)
+    arrays["next_observations"][-1, 0] += .01
+    buffer = BytesIO()
+    np.savez_compressed(buffer, **arrays, metadata=np.asarray(json.dumps(metadata)))
+    store.archive_path(episode_id).write_bytes(buffer.getvalue())
+    endpoint = f"/api/instructor/submissions/{episode_id}/replay-stream"
+    for _ in range(2):
+        events = [json.loads(line) for line in client.get(endpoint).text.splitlines()]
+        assert events[0]["kind"] == "start"
+        assert events[-1]["kind"] == "error"
+        assert "physics" in events[-1]["detail"]
+        assert not any(event["kind"] == "complete" for event in events)
+    store.archive_path(episode_id).write_bytes(data)
+    stream_result(client.get(endpoint))
 
 
 def test_replay_lock_is_shared_across_sources_and_released_after_errors(setup, monkeypatch):

@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, generate_example, load_examples
 from kaist_rl_lab.envs import CoffeePouringEnv
@@ -21,8 +22,8 @@ def test_packaged_example_replays_to_success_from_the_unmodified_student_start(i
     assert not arrays["truncated"].any()
     env = CoffeePouringEnv(horizon=None, dt=BROWSER_DT)
     observation, info = env.reset(
-        seed=7001,
-        options={**INITIAL_LAYOUT, "target_fill": 0.700},
+        seed=metadata["seed"],
+        options={**classroom_layout(metadata["seed"]), "target_fill": 0.700},
     )
     try:
         assert env.fill == env.spill == 0
@@ -52,3 +53,11 @@ def test_generator_reproduces_the_first_packaged_example():
     assert generated["fill_l"] == metadata["fill_l"]
     assert generated["spill_l"] == metadata["spill_l"]
     assert generated["success"]
+
+
+def test_packaged_examples_cover_distinct_classroom_starting_poses():
+    examples = [read_demonstration(data) for data in load_examples()]
+    assert len(examples) == 15
+    assert len({metadata["seed"] for _, metadata in examples}) == 15
+    starts = np.asarray([metadata["initial_joint_angles_rad"] for _, metadata in examples])
+    assert len(np.unique(starts, axis=0)) == 15

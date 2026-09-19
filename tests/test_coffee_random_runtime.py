@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 from kaist_rl_lab.apps.coffee_browser import browser_bundle
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout
 from kaist_rl_lab.apps.coffee_random_runtime import TRIAL_STEPS, RandomAgentRuntime
 from kaist_rl_lab.envs import CoffeePouringEnv
 
@@ -55,7 +56,7 @@ def test_initial_state_cannot_run_until_started(runtime):
     call(runtime, "random-pause", paused=False)
     assert call(runtime, "tick") == initial
     assert runtime.session.env.dt == BROWSER_DT
-    for name, center in INITIAL_LAYOUT.items():
+    for name, center in classroom_layout(runtime.session.seed).items():
         np.testing.assert_allclose(runtime.session.env.tool_positions()[name], center)
 
 
@@ -130,8 +131,8 @@ def test_trial_ends_after_30_simulated_seconds(runtime):
 def test_random_rollout_matches_the_actual_student_environment(runtime):
     reference = CoffeePouringEnv(dt=BROWSER_DT, horizon=TRIAL_STEPS)
     try:
-        reference.reset(seed=7001, options={**INITIAL_LAYOUT, "target_fill": 0.7})
         call(runtime, "random-start", seed=191)
+        reference.reset(seed=191, options={**classroom_layout(191), "target_fill": 0.7})
         for _ in range(TRIAL_STEPS):
             tick = call(runtime, "tick")
             transition = runtime.session.trajectory[-1]

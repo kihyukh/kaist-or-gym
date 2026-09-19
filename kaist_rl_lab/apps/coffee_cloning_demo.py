@@ -44,7 +44,7 @@ CLONING_DEMO_HTML = """
             </div>
           </div></div>
           <p class="hint">This is a live policy acting on the current state, not a recording replay.
-            Every trial uses the classroom starting pose. Success here does not test new starting poses.</p>
+            Every new trial samples a gently varied classroom pose. Similar, successful demonstrations help it handle these variations.</p>
         </div>
       </section>
 """
@@ -78,7 +78,7 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
     const examples=$('#cloning-source').value==='examples';
     $('#cloning-successful').disabled=examples;
     $('#cloning-dataset').textContent=examples?
-      'Generated examples are separate from student submissions. They use the same physics, starting pose, and 700 mL target.':
+      'Generated examples are separate from student submissions. They cover gently varied starting poses with the same physics and 700 mL target.':
       context.id?context.name+' · '+context.total+' submitted attempts · '+context.successful+' marked successful.':
       'Select a class to use its student demonstrations, or choose generated examples.';
   }

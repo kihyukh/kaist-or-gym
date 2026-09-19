@@ -16,7 +16,8 @@ from typing import Any
 
 import numpy as np
 
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
@@ -152,6 +153,11 @@ class FineTuningTrainer:
         self.policy = FineTunedPolicy(self.base)
         self.best_policy = FineTunedPolicy(self.base)
         self.rng = np.random.default_rng(seed)
+        # Keep exploration noise independent of layout sampling. All policy
+        # checkpoints share one sampled evaluation pose for a fair comparison;
+        # exploratory rollouts get fresh poses from the classroom distribution.
+        self.layout_rng = np.random.default_rng(np.random.SeedSequence([seed, 1]))
+        self.evaluation_seed = int(self.layout_rng.integers(0, 2**32))
         self.seed = seed
         self.episodes = episodes
         self.episode = 0
@@ -166,13 +172,16 @@ class FineTuningTrainer:
         self.critic_returns = []
         self.update = {"mean_kl": 0.0, "mean_change_bound": 0.0, "actor_change": 0.0}
         self.session = InteractiveSession(
-            7001, 700, dt=BROWSER_DT, steps_per_update=1, horizon=TRIAL_STEPS,
-            reset_options=INITIAL_LAYOUT,
+            self.evaluation_seed, 700, dt=BROWSER_DT, steps_per_update=1, horizon=TRIAL_STEPS,
+            reset_options=classroom_layout(self.evaluation_seed),
         )
         self._reset_rollout()
 
     def _reset_rollout(self):
-        self.session.restart(seed=7001, target_ml=700, speed=1, horizon=TRIAL_STEPS)
+        seed = (int(self.layout_rng.integers(0, 2**32))
+                if self.phase == "training" else self.evaluation_seed)
+        self.session.reset_options = classroom_layout(seed)
+        self.session.restart(seed=seed, target_ml=700, speed=1, horizon=TRIAL_STEPS)
         self.session.paused = False
         self.rollout_features = []
         self.rollout_latent = []
@@ -210,6 +219,7 @@ class FineTuningTrainer:
             "seconds": float(self.session.env.elapsed_steps * BROWSER_DT),
             "success": bool(self.session.info["is_success"]),
             "outcome": self.session.info["termination_reason"],
+            "initial_seed": self.session.seed,
         }
 
     def _finish_rollout(self):
@@ -280,6 +290,7 @@ class FineTuningTrainer:
             "total_steps": self.total_steps,
             "episode_steps": self.session.env.elapsed_steps,
             "seed": self.seed,
+            "evaluation_seed": self.evaluation_seed,
             "speed_bound": SPEED_BOUND,
             "latent_std": LATENT_STD,
             "decision_seconds": DECISION_STEPS * BROWSER_DT,

@@ -9,23 +9,24 @@ import json
 
 import numpy as np
 
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, INITIAL_LAYOUT
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
+from kaist_rl_lab.apps.coffee_classroom import classroom_layout, fresh_classroom_seed
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 MAX_DURATION_SECONDS = 1
 TRIAL_SECONDS = 30
 MAX_HOLD_STEPS = round(MAX_DURATION_SECONDS / BROWSER_DT)
 TRIAL_STEPS = round(TRIAL_SECONDS / BROWSER_DT)
-ENVIRONMENT_SEED = 7001
 
 
 class RandomAgentRuntime:
     """An independent instructor experiment; it cannot save student recordings."""
 
     def __init__(self):
+        seed = fresh_classroom_seed()
         self.session = InteractiveSession(
-            ENVIRONMENT_SEED, 700, start_paused=True, dt=BROWSER_DT,
-            steps_per_update=1, horizon=TRIAL_STEPS, reset_options=INITIAL_LAYOUT,
+            seed, 700, start_paused=True, dt=BROWSER_DT,
+            steps_per_update=1, horizon=TRIAL_STEPS, reset_options=classroom_layout(seed),
         )
         self.rng = np.random.default_rng()
         self.attempt = 0
@@ -35,9 +36,11 @@ class RandomAgentRuntime:
         self.done = False
         self.outcome = None
 
-    def _restart(self, *, reset_experiment: bool) -> None:
+    def _restart(self, *, reset_experiment: bool, seed=None) -> None:
+        seed = fresh_classroom_seed() if seed is None else seed
+        self.session.reset_options = classroom_layout(seed)
         self.session.restart(
-            seed=ENVIRONMENT_SEED, target_ml=700, speed=1, horizon=TRIAL_STEPS,
+            seed=seed, target_ml=700, speed=1, horizon=TRIAL_STEPS,
         )
         self.session.paused = reset_experiment
         self.attempt = 0 if reset_experiment else self.attempt + 1
@@ -67,7 +70,7 @@ class RandomAgentRuntime:
                 if type(seed) is not int or not 0 <= seed <= 2**32 - 1:
                     raise ValueError("Seed must be an integer between 0 and 4294967295")
                 self.rng = np.random.default_rng(seed)
-            self._restart(reset_experiment=False)
+            self._restart(reset_experiment=False, seed=command.get("seed"))
             self._choose_control()
         elif kind == "random-reset":
             self.rng = np.random.default_rng()

@@ -47,7 +47,7 @@ FINETUNING_HTML = """
         </div>
         </div>
         <div id="ft-results" hidden>
-          <h3>Same starting pose · no exploration during evaluation</h3>
+          <h3>Shared evaluation pose · no exploration noise</h3>
           <div class="table-scroll"><table>
             <thead><tr><th>Policy</th><th>Total reward ↑</th><th>Cup</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
             <tbody id="ft-comparison"></tbody></table></div>
@@ -70,7 +70,8 @@ FINETUNING_HTML = """
             current state; it does not invent a new direction of motion. Bounded random speed changes provide exploration.
             The critic estimates returns, and the actor uses those estimates to improve expected reward.</p>
           <p class="hint">Reward combines pouring accuracy, spilled coffee, vessel stability, elapsed time, and motor effort.
-            Faster is not always better. Every comparison uses the same starting pose and a 60-second time limit.</p>
+            Faster is not always better. Exploration uses fresh classroom poses. Each experiment samples one evaluation
+            pose and reuses it for the original clone and every checkpoint, with a 60-second time limit.</p>
           <p class="hint">Training runs faster than real time when your browser can keep up. Switching away pauses it.
             Stop keeps the best completed evaluation. Changing the cloning policy or reloading clears this experiment.</p>
         </details>

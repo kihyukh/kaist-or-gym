@@ -21,7 +21,15 @@ class Node {
   querySelector(selector){return get(selector);}
   scrollIntoView(){}
 }
-const nodes=new Map(),requests=[],held=new Set(),pending=new Map(),animations=new Map();
+const nodes=new Map(),requests=[],held=new Set(),pending=new Map(),animations=new Map(),feeds=new Map();
+function streamFeed(){
+  const queue=[];let waiter=null,aborted=false;
+  const push=value=>{if(waiter){const next=waiter;waiter=null;next.resolve(value);}else queue.push(value);};
+  return {push:event=>push({value:new TextEncoder().encode(JSON.stringify(event)+'\n'),done:false}),finish:()=>push({done:true}),
+    connect(signal){signal.addEventListener('abort',()=>{aborted=true;if(waiter){waiter.reject(Error('Aborted'));waiter=null;}});},
+    body:{getReader(){return {read(){if(aborted)return Promise.reject(Error('Aborted'));
+      return queue.length?Promise.resolve(queue.shift()):new Promise((resolve,reject)=>{waiter={resolve,reject};});},releaseLock(){}};}}};
+}
 let nextAnimation=0,now=0,authenticated=false,availableSessions;
 const get=selector=>{if(!nodes.has(selector))nodes.set(selector,new Node());return nodes.get(selector);};
 get('#playback-speed').value='1';
@@ -41,13 +49,19 @@ const exampleRows=[example,{...example,example_id:'zero',label:'Zero example',to
   {...example,example_id:'missing',label:'Missing example',total_reward:null}];
 const frames=[0,1,2].map((time,index)=>({time,snapshot:{marker:index},cumulative_reward:[0,1.25,-2.25][index]}));
 const replayData={frames,total_reward:-2.25,steps:64};
-const response=(status,data)=>({ok:status<400,status,json:async()=>data});
+const streamEvents=data=>[
+  {kind:'start',frame:data.frames[0],frame_count:data.frames.length,duration_seconds:data.frames.at(-1).time,total_reward:data.total_reward},
+  {kind:'frames',frames:data.frames.slice(1)}, {kind:'complete'}];
+const response=(status,data)=>({ok:status<400,status,json:async()=>data,
+  body:data.frames?{getReader(){let index=0;const events=streamEvents(data);return {
+    async read(){return index<events.length?{value:new TextEncoder().encode(JSON.stringify(events[index++])+'\n'),done:false}:{done:true};},releaseLock(){}};}}:null});
 const fetch=async(path,options)=>{
   requests.push({path,options});
   assert.equal(options.credentials,'same-origin');
   if(path==='/api/instructor/login'){authenticated=true;return response(200,{authenticated:true});}
   if(path==='/api/instructor/logout'){authenticated=false;return response(200,{authenticated:false});}
   if(!authenticated)return response(401,{detail:'Sign in required'});
+  if(feeds.has(path)){const feed=feeds.get(path);feed.connect(options.signal);return {ok:true,status:200,body:feed.body};}
   if(held.has(path))return new Promise(resolve=>{
     const queue=pending.get(path)||[];queue.push(resolve);pending.set(path,queue);
   });
@@ -55,11 +69,11 @@ const fetch=async(path,options)=>{
   if(path==='/api/instructor/examples')return response(200,exampleRows);
   if(path==='/api/instructor/submissions?session=test-class')return response(200,studentRows);
   if(path==='/api/instructor/submissions?session=other-class')return response(200,[]);
-  if(/^\/api\/instructor\/(examples|submissions)\/[^/]+\/replay$/.test(path))return response(200,replayData);
+  if(/^\/api\/instructor\/(examples|submissions)\/[^/]+\/replay-stream$/.test(path))return response(200,replayData);
   throw Error('Unexpected request: '+path);
 };
 const context=vm.createContext({document,fetch,URL,location:{origin:'https://coffee.test'},
-  window:{addEventListener(){},confirm:()=>true},navigator:{},setInterval(){},
+  window:{addEventListener(){},confirm:()=>true},navigator:{},setInterval(){},AbortController,TextDecoder,
   requestAnimationFrame(callback){const id=++nextAnimation;animations.set(id,callback);return id;},
   cancelAnimationFrame(id){animations.delete(id);},performance:{now:()=>now},console});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),context);
@@ -69,7 +83,7 @@ const evaluate=code=>vm.runInContext(code,context);
 evaluate('normalizedSnapshot=snapshot=>snapshot;drawFrame=()=>{};');
 const pump=()=>new Promise(resolve=>setImmediate(resolve));
 const click=selector=>get(selector).listeners.click();
-const replayPath=(item,source)=>'/api/instructor/'+source+'/'+encodeURIComponent(source==='examples'?item.example_id:item.episode_id)+'/replay';
+const replayPath=(item,source)=>'/api/instructor/'+source+'/'+encodeURIComponent(source==='examples'?item.example_id:item.episode_id)+'/replay-stream';
 const resolveHeld=(path,data,status=200)=>{
   assert.ok(pending.get(path)?.length,'Expected a pending request for '+path);
   pending.get(path).shift()(response(status,data));
@@ -215,3 +229,51 @@ assert.equal(get('#replay-panel').hidden,true);assert.equal(evaluate('replayFram
 assert.equal(get('#replay-download').href,undefined);assert.equal(evaluate('playing'),false);
 """,
     )
+
+
+def test_stream_allows_playback_before_completion_and_buffers_without_skipping(tmp_path):
+    run_instructor(tmp_path, r"""
+await login();const path=replayPath(row,'submissions'),feed=streamFeed();feeds.set(path,feed);
+const loading=replayButton(findRow('#submission-rows',row.participant)).listeners.click();await pump();
+assert.equal(get('#play-replay').disabled,true);
+feed.push(streamEvents(replayData)[0]);await pump();
+assert.equal(get('#play-replay').disabled,false,'First frame is usable before the rest is generated');
+assert.equal(evaluate('replayFrames.length'),1);assert.equal(evaluate('replayComplete'),false);
+assert.equal(get('#replay-time').textContent,'0.0 / 2.0 s');
+click('#play-replay');now=500;evaluate('tickPlayback(500)');
+assert.equal(evaluate('playing'),true);assert.equal(get('#replay-position').value,'0');
+feed.push({kind:'frames',frames:[frames[1]]});await pump();
+now=1500;evaluate('tickPlayback(1500)');
+assert.equal(get('#replay-position').value,'1');assert.equal(evaluate('playing'),true);
+feed.push({kind:'frames',frames:[frames[2]]});feed.push({kind:'complete'});feed.finish();await loading;
+now=2500;evaluate('tickPlayback(2500)');
+assert.equal(get('#replay-position').value,'2');assert.equal(evaluate('playing'),false);
+assert.equal(get('#play-replay').textContent,'Replay');
+""")
+
+
+def test_closing_partial_stream_aborts_the_request_and_rejects_late_frames(tmp_path):
+    run_instructor(tmp_path, r"""
+await login();const path=replayPath(example,'examples'),feed=streamFeed();feeds.set(path,feed);
+const loading=replayButton(findRow('#example-rows',example.label)).listeners.click();await pump();
+feed.push(streamEvents(replayData)[0]);await pump();
+const signal=requests.at(-1).options.signal;
+click('#close-replay');await loading;
+assert.equal(signal.aborted,true);assert.equal(get('#replay-panel').hidden,true);
+assert.equal(evaluate('playing'),false);
+feed.push({kind:'frames',frames:[frames[1]]});await pump();
+assert.equal(evaluate('replayFrames.length'),1);
+""")
+
+
+def test_stream_error_stops_and_disables_partial_replay(tmp_path):
+    run_instructor(tmp_path, r"""
+await login();const path=replayPath(row,'submissions'),feed=streamFeed();feeds.set(path,feed);
+const loading=replayButton(findRow('#submission-rows',row.participant)).listeners.click();await pump();
+feed.push(streamEvents(replayData)[0]);await pump();click('#play-replay');
+feed.push({kind:'error',detail:'The recording does not match replayed physics.'});await loading;
+assert.equal(evaluate('playing'),false);assert.equal(evaluate('replayFrames.length'),0);
+assert.equal(get('#play-replay').disabled,true);
+assert.match(get('#replay-status').textContent,/physics/);
+assert.equal(requests.at(-1).options.signal.aborted,true);
+""")

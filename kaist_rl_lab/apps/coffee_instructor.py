@@ -125,7 +125,7 @@ INSTRUCTOR_HTML = """<!doctype html>
         </div>
         <label class="sr-only" for="replay-position">Replay position</label>
         <input id="replay-position" type="range" min="0" max="0" value="0" step="1" disabled>
-        <p class="hint">Replay uses recorded actions and the original environment. Scrub to inspect a moment; download the full trajectory for analysis.</p>
+        <p class="hint">Replay begins loading from the first frame while the original environment verifies the remaining recorded actions. Scrub through loaded frames; download the full trajectory for analysis.</p>
       </section>
       __CLONING_DEMO__
       __FINETUNING__
@@ -232,6 +232,7 @@ let sessions=[], activeSession=null, submissions=[], authenticated=false, authEp
 let examples=[], examplesLoaded=false, exampleRequest=0;
 let listRequest=0, replayRequest=0, refreshBusy=false, replayFrames=[];
 let frameIndex=0, playing=false, playStarted=0, playOrigin=0, animation=null;
+let replayAbort=null,replayComplete=false,replayDuration=0,replayExpectedFrames=0;
 function setStatus(message,error=false) {
   $('#page-status').textContent=message;
   $('#page-status').classList.toggle('error',error);
@@ -252,11 +253,36 @@ async function api(path,options={}) {
   return data;
 }
 function post(path,body={}) {return api(path,{method:'POST',body:JSON.stringify(body)});}
+async function readReplayStream(path,signal,onEvent) {
+  const response=await fetch(path,{credentials:'same-origin',signal});
+  if(!response.ok) {
+    let data={};try{data=await response.json();}catch{}
+    if(response.status===401)showLogin();
+    throw new ApiError(typeof data.detail==='string'?data.detail:'Could not load this recording.',response.status);
+  }
+  if(!response.body?.getReader)throw new Error('This browser cannot stream the recording. Try a recent browser.');
+  const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+  try {
+    while(true) {
+      const {value,done}=await reader.read();
+      buffer+=decoder.decode(value,{stream:!done});
+      let newline;
+      while((newline=buffer.indexOf('\n'))>=0) {
+        const line=buffer.slice(0,newline);buffer=buffer.slice(newline+1);
+        if(line.trim())onEvent(JSON.parse(line));
+      }
+      if(done){if(buffer.trim())onEvent(JSON.parse(buffer));break;}
+    }
+  } finally {reader.releaseLock();}
+}
+function cancelReplayRequest() {
+  replayRequest++;if(replayAbort)replayAbort.abort();replayAbort=null;stopPlayback();
+}
 function showLogin() {
   randomDemo.setEnabled(false);
   cloningDemo.setEnabled(false);
   fineTuningDemo.setEnabled(false);
-  authenticated=false;authEpoch++;listRequest++;exampleRequest++;replayRequest++;stopPlayback();
+  authenticated=false;authEpoch++;listRequest++;exampleRequest++;cancelReplayRequest();
   $('#dashboard').hidden=true;$('#logout').hidden=true;$('#login-panel').hidden=false;
   sessions=[];submissions=[];examples=[];examplesLoaded=false;activeSession=null;replayFrames=[];displayState=null;
   $('#submission-rows').replaceChildren();$('#example-rows').replaceChildren();$('#session-select').replaceChildren();
@@ -404,7 +430,7 @@ function renderSubmissions() {
 }
 function stopPlayback() {
   playing=false;if(animation!==null)cancelAnimationFrame(animation);animation=null;
-  $('#play-replay').textContent=frameIndex===replayFrames.length-1&&replayFrames.length>1?'Replay':'Play';
+  $('#play-replay').textContent=replayComplete&&frameIndex===replayFrames.length-1&&replayFrames.length>1?'Replay':'Play';
 }
 function renderReplayFrame(index) {
   if(!replayFrames.length)return;
@@ -412,7 +438,7 @@ function renderReplayFrame(index) {
   const frame=replayFrames[frameIndex];
   displayState={...normalizedSnapshot(frame.snapshot),running:true,paused:false,transitioning:true};
   drawFrame(displayState);$('#replay-position').value=String(frameIndex);
-  const end=replayFrames[replayFrames.length-1].time;
+  const end=replayDuration||replayFrames[replayFrames.length-1].time;
   $('#replay-time').textContent=number(frame.time,1)+' / '+number(end,1)+' s';
   $('#replay-reward').textContent=number(frame.cumulative_reward,3);
   $('#replay-position').setAttribute('aria-valuetext',number(frame.time,1)+' seconds');
@@ -423,7 +449,14 @@ function tickPlayback(now) {
   let index=frameIndex;
   while(index+1<replayFrames.length&&replayFrames[index+1].time<=time)index++;
   if(index!==frameIndex)renderReplayFrame(index);
-  if(time>=replayFrames[replayFrames.length-1].time){renderReplayFrame(replayFrames.length-1);stopPlayback();return;}
+  if(time>=replayFrames[replayFrames.length-1].time){
+    renderReplayFrame(replayFrames.length-1);
+    if(replayComplete){stopPlayback();return;}
+    // Freeze the clock at the verified buffer edge; resume from that point
+    // when another frame arrives rather than skipping unseen movement.
+    playOrigin=replayFrames[replayFrames.length-1].time;playStarted=now;
+    $('#replay-status').textContent='Loading the next verified frames…';
+  }
   animation=requestAnimationFrame(tickPlayback);
 }
 function startPlayback() {
@@ -431,7 +464,7 @@ function startPlayback() {
   randomDemo.pause();
   cloningDemo.pause();
   fineTuningDemo.pause();
-  if(frameIndex===replayFrames.length-1)renderReplayFrame(0);
+  if(replayComplete&&frameIndex===replayFrames.length-1)renderReplayFrame(0);
   playing=true;playStarted=performance.now();playOrigin=replayFrames[frameIndex].time;
   $('#play-replay').textContent='Pause';animation=requestAnimationFrame(tickPlayback);
 }
@@ -439,8 +472,9 @@ async function openReplay(item,source='students') {
   randomDemo.pause();
   cloningDemo.pause();
   fineTuningDemo.pause();
-  stopPlayback();const request=++replayRequest;
+  cancelReplayRequest();const request=replayRequest,controller=new AbortController();replayAbort=controller;
   replayFrames=[];frameIndex=0;displayState=null;
+  replayComplete=false;replayDuration=Number(item.duration_seconds)||0;replayExpectedFrames=0;
   $('#play-replay').textContent='Play';
   const label=source==='examples'?item.label:(item.participant||'Anonymous');
   const provenance=source==='examples'?'Generated example':'Student submission · '+localTime(item.received_at);
@@ -448,25 +482,38 @@ async function openReplay(item,source='students') {
   $('#replay-panel').hidden=false;$('#replay-title').textContent='Replay · '+label;
   $('#replay-summary').textContent=summary+' · total reward '+number(item.total_reward,3);
   $('#replay-reward').textContent='—';$('#replay-time').textContent='0.0 / '+duration(item.duration_seconds);
-  $('#replay-status').textContent='Preparing replay from the recorded actions…';$('#replay-status').classList.remove('error');
+  $('#replay-status').textContent='Loading the first frame…';$('#replay-status').classList.remove('error');
   $('#play-replay').disabled=true;$('#replay-position').disabled=true;
   $('#replay-download').href=trajectoryPath(item,source)+'/download';$('#replay-download').download='';
   const canvas=$('#replay-panel .coffee-canvas');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
   element.querySelectorAll('#replay-panel [data-coffee-stat]').forEach(stat=>{stat.textContent='—';});
   $('#replay-panel').scrollIntoView({behavior:'smooth',block:'start'});
   try {
-    const data=await api(trajectoryPath(item,source)+'/replay');
+    await readReplayStream(trajectoryPath(item,source)+'/replay-stream',controller.signal,data=>{
+      if(request!==replayRequest||!authenticated)return;
+      if(data.kind==='error')throw new Error(data.detail||'The recording could not be verified.');
+      if(data.kind==='start') {
+        replayFrames=[data.frame];replayDuration=data.duration_seconds;replayExpectedFrames=data.frame_count;
+        $('#replay-summary').textContent=summary+' · total reward '+number(data.total_reward,3);
+        $('#play-replay').disabled=false;$('#replay-position').disabled=false;
+        renderReplayFrame(0);
+      } else if(data.kind==='frames'&&Array.isArray(data.frames))replayFrames.push(...data.frames);
+      else if(data.kind==='complete')replayComplete=true;
+      if(!replayFrames.length)throw new Error('No replay frames were available.');
+      $('#replay-position').max=String(replayFrames.length-1);
+      $('#replay-status').textContent=replayComplete?
+        'Ready · '+replayFrames.length+' verified frames. The download contains every recorded step.':
+        'Ready to play · '+replayFrames.length+' / '+replayExpectedFrames+' frames loaded. The rest loads while you watch.';
+    });
     if(request!==replayRequest||!authenticated)return;
-    if(!Array.isArray(data.frames)||!data.frames.length)throw new Error('No replay frames were available.');
-    replayFrames=data.frames;$('#replay-position').max=String(replayFrames.length-1);
-    $('#replay-summary').textContent=summary+' · total reward '+number(data.total_reward,3);
-    $('#play-replay').disabled=false;$('#replay-position').disabled=false;
-    $('#replay-status').textContent='Ready · '+replayFrames.length+' sampled frames. The download contains every recorded step.';
-    renderReplayFrame(0);
+    if(!replayComplete)throw new Error('The connection ended before the recording finished loading. Select Replay to retry.');
   } catch(error) {
-    if(request!==replayRequest)return;
+    if(request!==replayRequest||controller.signal.aborted)return;
+    controller.abort();stopPlayback();replayFrames=[];replayComplete=false;displayState=null;
+    $('#play-replay').disabled=true;$('#replay-position').disabled=true;
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
     $('#replay-status').textContent=error.message;$('#replay-status').classList.add('error');
-  }
+  } finally {if(replayAbort===controller)replayAbort=null;}
 }
 $('#login-form').addEventListener('submit',async event=>{
   event.preventDefault();const button=event.submitter||$('#login-form button');button.disabled=true;
@@ -486,7 +533,7 @@ $('#create-form').addEventListener('submit',async event=>{
 });
 $('#session-select').addEventListener('change',async()=>{
   activeSession=$('#session-select').value;submissions=[];renderSession();renderSubmissions();
-  replayRequest++;stopPlayback();$('#replay-panel').hidden=true;
+  cancelReplayRequest();$('#replay-panel').hidden=true;
   try{await loadSubmissions();}catch(error){setStatus(error.message,true);}
 });
 $('#close-session').addEventListener('click',async()=>{
@@ -511,9 +558,9 @@ $('#random-pause').addEventListener('click',()=>{stopPlayback();cloningDemo.paus
 $('#play-replay').addEventListener('click',()=>playing?stopPlayback():startPlayback());
 $('#replay-position').addEventListener('input',event=>{stopPlayback();renderReplayFrame(Number(event.target.value));});
 $('#playback-speed').addEventListener('change',()=>{if(playing){stopPlayback();startPlayback();}});
-$('#close-replay').addEventListener('click',()=>{replayRequest++;stopPlayback();$('#replay-panel').hidden=true;});
+$('#close-replay').addEventListener('click',()=>{cancelReplayRequest();$('#replay-panel').hidden=true;});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlayback();});
-window.addEventListener('pagehide',()=>stopPlayback());
+window.addEventListener('pagehide',()=>cancelReplayRequest());
 setInterval(async()=>{
   if(!authenticated||!activeSession||document.hidden||!$('#auto-refresh').checked||refreshBusy)return;
   refreshBusy=true;

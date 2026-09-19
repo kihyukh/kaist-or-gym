@@ -3,20 +3,26 @@
 import base64
 import json
 
+from kaist_rl_lab.apps.coffee_classroom import (
+    INITIAL_LAYOUT,
+    classroom_layout,
+    fresh_classroom_seed,
+)
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession, _validated_motor_command
 
+__all__ = ["BROWSER_DT", "INITIAL_LAYOUT", "BrowserRuntime"]
+
 BROWSER_DT = 1 / 32
-# Upright vessels with more separation: position the arms before pouring.
-INITIAL_LAYOUT = {"cup_center": [-0.28, 0.28], "pot_center": [0.26, 0.62]}
 
 
 class BrowserRuntime:
     """One authoritative timeline; display frames are actual recorded states."""
 
-    def __init__(self):
+    def __init__(self, *, seed=None):
+        seed = fresh_classroom_seed() if seed is None else seed
         self.session = InteractiveSession(
-            7001, 700, start_paused=True, dt=BROWSER_DT, steps_per_update=1,
-            reset_options=INITIAL_LAYOUT,
+            seed, 700, start_paused=True, dt=BROWSER_DT, steps_per_update=1,
+            reset_options=classroom_layout(seed),
         )
 
     def dispatch(self, encoded: str) -> str:
@@ -47,7 +53,9 @@ class BrowserRuntime:
             for i, motor in enumerate(motors):
                 _validated_motor_command(i, motor)
             if kind == "reset":
-                session.restart(seed=7001, target_ml=700, speed=1, horizon=None)
+                seed = fresh_classroom_seed()
+                session.reset_options = classroom_layout(seed)
+                session.restart(seed=seed, target_ml=700, speed=1, horizon=None)
             elif session.running:
                 for i, motor in enumerate(motors):
                     session.set_motor(i, motor)

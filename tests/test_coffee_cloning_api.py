@@ -241,14 +241,16 @@ def test_three_training_requests_per_minute(client, archive, monkeypatch):
 
 
 def test_prepared_examples_train_through_real_endpoint(client):
+    from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT
+
     sign_in(client)
     response = client.post(ENDPOINT, json={"source": "examples"})
     assert response.status_code == 200, response.text
     result = response.json()
-    assert result["selection"]["used_trajectories"] == 5
+    assert result["selection"]["used_trajectories"] == EXAMPLE_COUNT
     assert result["selection"]["available_transitions"] > 4000
     model = result["model"]
     assert model["algorithm"] == "nearest_neighbor"
-    assert model["metrics"]["demonstrations"] == 5
+    assert model["metrics"]["demonstrations"] == EXAMPLE_COUNT
     assert model["metrics"]["validation_trajectories"] == 1
     assert len(model["states"]) == len(model["actions"]) > 4000

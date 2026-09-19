@@ -166,14 +166,14 @@ def test_runtime_queries_current_observation_for_every_action(runtime):
 
 def test_generated_examples_train_a_successful_closed_loop_policy(runtime):
     from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
-    from kaist_rl_lab.apps.coffee_expert import load_examples
+    from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, load_examples
 
     demonstrations = [read_demonstration(data) for data in load_examples()]
     model = train_behavior_cloning(demonstrations)
-    assert model["metrics"]["demonstrations"] == 5
+    assert model["metrics"]["demonstrations"] == EXAMPLE_COUNT
     assert model["metrics"]["heldout_action_mae"] is not None
     call(runtime, "cloning-load", model=model)
-    call(runtime, "cloning-start")
+    call(runtime, "cloning-start", seed=12000)
     for _ in range(60 * 32):
         final = call(runtime, "tick")
         if final["cloning_agent"]["done"]:
