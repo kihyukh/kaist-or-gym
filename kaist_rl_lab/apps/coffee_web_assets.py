@@ -28,7 +28,7 @@ STUDENT_HTML = """<!doctype html>
     Tap its square button to hold that joint, or <b>Stop all motors</b> to hold both arms.</p>
     <p><b>Hold still does not stop the coffee.</b> Use <b>Pause time</b> to think.
     Fill the cup near 700 mL with little spill, then return both vessels upright.
-    Each reset gives you a slightly different starting pose.</p>
+    Each reset gives you a different starting pose.</p>
     <p>Tap <b>Submit trajectory</b> when you finish. It ends this attempt and sends the moves
     to your instructor. Wait for your receipt before closing this tab.</p>
   </details>

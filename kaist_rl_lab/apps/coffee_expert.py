@@ -28,9 +28,9 @@ EXAMPLE_COUNT = 15
 # Different approach and pouring speeds give separate demonstrations of the
 # same safe maneuver. These are generated examples, never student submissions.
 EXAMPLE_SPEEDS = ((1.0, 0.070), (0.92, 0.066), (0.84, 0.074), (0.96, 0.068), (0.88, 0.072))
-# These seeds cover the two-dimensional start distribution in an approximate
-# 5-by-3 grid. They remain separate from held-out rollout test seeds.
-EXAMPLE_SEEDS = (7938, 8095, 7605, 7415, 8026, 7207, 7268, 7880, 7410, 7249, 7838, 7184, 7878, 7700, 7860)
+# One seed lies near the canonical pose; the others spread across the four
+# independent position coordinates. All are distinct from held-out test seeds.
+EXAMPLE_SEEDS = (16262, 17212, 18021, 19055, 17020, 18094, 21808, 18143, 18986, 21234, 21142, 17660, 17573, 16742, 20628)
 MAX_EXAMPLE_STEPS = round(45 / BROWSER_DT)
 
 
@@ -73,7 +73,11 @@ def _reference_action(
         ]
     )
     error = np.arctan2(np.sin(target - env.joint_angles), np.cos(target - env.joint_angles))
-    action = np.clip(error / (env.dt * env.max_joint_speeds), -motor_limit, motor_limit)
+    desired = error / (env.dt * env.max_joint_speeds)
+    # Scale the approach together instead of clipping joints independently.
+    # This preserves upright vessels as their arms move from widely varied
+    # starts. These are still ordinary bounded velocity commands to the env.
+    action = desired / max(1.0, float(np.max(np.abs(desired))) / motor_limit)
     return action.astype(np.float32), error
 
 

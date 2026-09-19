@@ -1,15 +1,19 @@
 """Cooperative browser training and evaluation for the instructor's RL demo.
 
 Training advances only in explicit, bounded chunks, allowing the worker to process
-pause/stop messages between chunks. Displayed trials use the real student physics
-at its normal 32 Hz and cannot export or submit classroom demonstrations.
+pause/stop messages between chunks. Displayed trials batch unchanged 32 Hz physics
+steps for accelerated playback and cannot export or submit classroom demonstrations.
 """
 
 import json
 from copy import deepcopy
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout, fresh_classroom_seed
+from kaist_rl_lab.apps.coffee_classroom import (
+    POLICY_START_SEED,
+    fixed_policy_layout,
+    fresh_classroom_seed,
+)
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_finetuning import FineTuningTrainer
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
@@ -18,7 +22,7 @@ TRIAL_SECONDS = 60
 TRIAL_STEPS = round(TRIAL_SECONDS / BROWSER_DT)
 DEFAULT_TRAINING_EPISODES = 8
 MAX_TRAINING_EPISODES = 12
-DEFAULT_CHUNK_STEPS = 16
+DEFAULT_CHUNK_STEPS = 32
 MAX_CHUNK_STEPS = 32
 
 
@@ -29,11 +33,18 @@ def _bounded_integer(value, minimum: int, maximum: int, label: str) -> int:
 
 
 def _new_session(seed=None) -> InteractiveSession:
-    seed = fresh_classroom_seed() if seed is None else seed
+    seed = POLICY_START_SEED if seed is None else seed
     return InteractiveSession(
         seed, 700, start_paused=True, dt=BROWSER_DT,
-        steps_per_update=1, horizon=TRIAL_STEPS, reset_options=classroom_layout(seed),
+        steps_per_update=1, horizon=TRIAL_STEPS, reset_options=fixed_policy_layout(),
+        include_render_info=False,
     )
+
+
+def _playback_speed(value):
+    if type(value) is not int or value not in (0, 4, 8):
+        raise ValueError("Speed must be 4, 8, or 0 for fastest.")
+    return value
 
 
 class FineTuningRuntime:
@@ -54,6 +65,7 @@ class FineTuningRuntime:
         self.rollout_policy = "base"
         self.rollout_done = False
         self.rollout_outcome = None
+        self.playback_speed = 0
 
     def _dispose_training(self) -> None:
         if self.trainer is not None:
@@ -134,12 +146,15 @@ class FineTuningRuntime:
                 command.get("episodes", DEFAULT_TRAINING_EPISODES),
                 1, MAX_TRAINING_EPISODES, "Training episodes",
             )
-            seed = _bounded_integer(command.get("seed", fresh_classroom_seed()), 0, 2**32 - 1, "Seed")
+            speed = _playback_speed(command.get("speed", self.playback_speed))
+            seed = _bounded_integer(command["seed"] if "seed" in command else fresh_classroom_seed(),
+                                    0, 2**32 - 1, "Seed")
             if self.training_active:
                 raise ValueError("Stop the current training run before starting another.")
             trainer = FineTuningTrainer(self.model, seed=seed, episodes=episodes)
             self.close()
             self.trainer = trainer
+            self.playback_speed = speed
             self.best_policy = None
             self.training_active = True
             self.training_paused = False
@@ -163,6 +178,8 @@ class FineTuningRuntime:
                     self.session.paused = True
         elif kind == "ft-stop":
             self._stop_training()
+        elif kind == "ft-speed":
+            self.playback_speed = _playback_speed(command.get("speed"))
         elif kind == "ft-run":
             policy = command.get("policy", "best")
             if not isinstance(policy, str) or policy not in {"base", "best"}:
@@ -173,7 +190,9 @@ class FineTuningRuntime:
                 raise ValueError("Stop or finish training before running a comparison.")
             if policy == "best" and self.best_policy is None:
                 raise ValueError("Finish a policy evaluation before running the best policy.")
+            speed = _playback_speed(command.get("speed", self.playback_speed))
             self._replace_scene((self.result or {}).get("evaluation_seed"))
+            self.playback_speed = speed
             self.rollout_policy = policy
             self.rollout_active = True
             self.session.paused = False
@@ -191,7 +210,10 @@ class FineTuningRuntime:
             self._stop_training()
             self._replace_scene()
         elif kind == "tick":
-            if self.rollout_active and self.session.running and not self.session.paused:
+            steps = _bounded_integer(command.get("max_steps", 1), 1, MAX_CHUNK_STEPS, "Trial chunk size")
+            for _ in range(steps):
+                if not (self.rollout_active and self.session.running and not self.session.paused):
+                    break
                 policy = self.base_policy if self.rollout_policy == "base" else self.best_policy
                 action = policy.predict(self.session.observation)
                 for index, direction in enumerate(action):
@@ -224,6 +246,7 @@ class FineTuningRuntime:
                 "progress": self.progress,
                 "result": self.result,
                 "paused": self.session.paused,
+                "playback_speed": self.playback_speed,
                 "rollout": {
                     "active": self.rollout_active,
                     "policy": self.rollout_policy,

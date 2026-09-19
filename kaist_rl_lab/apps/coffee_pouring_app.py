@@ -71,9 +71,12 @@ class InteractiveSession:
         start_paused: bool = False,
         dt: float = CoffeePouringEnv.DEFAULT_DT,
         reset_options: dict[str, Any] | None = None,
+        include_render_info: bool = True,
     ) -> None:
         self.lock = RLock()
-        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt)
+        self.include_render_info = include_render_info
+        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt,
+                                    include_render_info=include_render_info)
         self.seed = int(seed)
         self.reset_options = deepcopy(reset_options or {})
         self.speed = _validated_speed(speed)
@@ -125,7 +128,8 @@ class InteractiveSession:
 
         dt = self.env.dt
         self.close()
-        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt)
+        self.env = CoffeePouringEnv(render_mode="rgb_array", horizon=horizon, dt=dt,
+                                    include_render_info=self.include_render_info)
         self.seed = int(seed)
         self.speed = _validated_speed(speed)
         self.motors = np.zeros(6, dtype=np.float32)

@@ -100,7 +100,7 @@ function node(selector){
   }
   return nodes.get(selector);
 }
-node('#ft-episodes').value='4';
+node('#ft-episodes').value='4';node('#ft-speed').value='0';
 const stages=['baseline','training','update','evaluation'].map(stage=>{const item=node('#ft-stage-'+stage);item.setAttribute('data-ft-stage',stage);return item;});
 const element={querySelector:node,querySelectorAll:selector=>selector==='[data-ft-stage]'?stages:[]};
 const document={hidden:false,createElement:tag=>new Node(tag),createElementNS:(_,tag)=>new Node(tag),
@@ -167,7 +167,7 @@ assert.deepEqual(worker.messages,[{kind:'init',mode:'finetuning',bundle_url:'htt
 click('#ft-train');assert.equal(workers.length,1);assert.equal(beforeRunCount,1);
 worker.receive({loading:'Loading NumPy…'});assert.match(node('#ft-status').textContent,/NumPy/);
 worker.receive(fixtures.initial);assert.deepEqual(worker.messages.at(-1),{kind:'ft-load',model:fixtures.model});
-worker.receive(fixtures.loaded);assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:4});
+worker.receive(fixtures.loaded);assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:4,speed:0});
 worker.receive(fixtures.training);assert.equal(node('#ft-scene').hidden,false);
 assert.equal(node('#ft-train').disabled,true);assert.equal(node('#ft-episodes').disabled,true);
 assert.equal(node('#ft-pause').disabled,false);assert.equal(node('#ft-stop').disabled,false);
@@ -277,7 +277,7 @@ def test_watching_base_policy_requires_no_rl_training_and_pause_reset_are_scoped
 ):
     run_demo(tmp_path, finetuning_snapshots, r"""
 enable();click('#ft-run-base');const worker=latest();worker.receive(fixtures.initial);worker.receive(fixtures.loaded);
-assert.deepEqual(worker.messages.at(-1),{kind:'ft-run',policy:'base'});
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-run',policy:'base',speed:0});
 assert.equal(kinds(worker).includes('ft-train'),false);worker.receive(fixtures.running);
 assert.match(node('#ft-status').textContent,/without exploration noise/);
 click('#ft-pause');worker.receive(fixtures.rollout_paused);assert.equal(node('#ft-pause').textContent,'Resume');
@@ -352,4 +352,32 @@ reset.finetuning.has_result=true;reset.finetuning.best_available=true;worker.rec
 assert.equal(node('#ft-learning-viz').hidden,false);assert.equal(node('#ft-results').hidden,false);
 assert.doesNotMatch(node('#ft-showing').textContent,/Last evaluated policy/);
 assert.match(node('#ft-showing').textContent,/reset|ready|starting pose/i);
+""")
+
+
+def test_default_fastest_and_speed_changes_use_runtime_controls_without_retraining(
+    tmp_path, finetuning_snapshots,
+):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+demo.setEnabled(false);assert.equal(node('#ft-speed').disabled,true);
+enable();assert.equal(node('#ft-speed').value,'0');assert.equal(node('#ft-speed').disabled,false);
+node('#ft-speed').value='4';node('#ft-speed').listeners.change();assert.equal(workers.length,0);
+click('#ft-train');const worker=latest();assert.equal(node('#ft-speed').disabled,true);
+worker.receive(fixtures.initial);worker.receive(fixtures.loaded);
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:4,speed:4});
+const training=clone(fixtures.training);training.finetuning.playback_speed=4;worker.receive(training);
+assert.equal(node('#ft-speed').disabled,false);assert.match(node('#ft-progress').textContent,/4× requested/);
+const starts=kinds(worker).filter(kind=>kind==='ft-train').length;
+node('#ft-speed').value='8';node('#ft-speed').listeners.change();
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-speed',speed:8});
+assert.equal(node('#ft-speed').disabled,true);assert.equal(workers.length,1);
+training.finetuning.playback_speed=8;worker.receive(training);
+assert.equal(kinds(worker).filter(kind=>kind==='ft-train').length,starts);
+assert.equal(node('#ft-speed').disabled,false);assert.match(node('#ft-progress').textContent,/8× requested/);
+node('#ft-speed').value='0';node('#ft-speed').listeners.change();
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-speed',speed:0});
+training.finetuning.playback_speed=0;worker.receive(training);
+assert.match(node('#ft-progress').textContent,/fastest available/);
+worker.receive(fixtures.completed);node('#ft-speed').value='8';
+click('#ft-run-best');assert.deepEqual(worker.messages.at(-1),{kind:'ft-run',policy:'best',speed:8});
 """)

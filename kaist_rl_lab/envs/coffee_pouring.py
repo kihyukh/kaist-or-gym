@@ -120,6 +120,7 @@ class CoffeePouringEnv(gym.Env):
         dt: float = DEFAULT_DT,
         width: int = 960,
         height: int = 560,
+        include_render_info: bool = True,
     ) -> None:
         super().__init__()
         valid_modes = [None] + list(self.metadata["render_modes"])
@@ -134,12 +135,15 @@ class CoffeePouringEnv(gym.Env):
                 raise ValueError("horizon must be positive or None")
         if not np.isfinite(dt) or dt <= 0:
             raise ValueError("dt must be a finite positive number")
+        if type(include_render_info) is not bool:
+            raise TypeError("include_render_info must be true or false")
 
         self.render_mode = render_mode
         self.horizon = None if horizon is None else int(horizon)
         self.dt = float(dt)
         self.width = int(width)
         self.height = int(height)
+        self.include_render_info = include_render_info
         self.geometry = ArmGeometry()
 
         self.action_space = spaces.Box(-1.0, 1.0, shape=(6,), dtype=np.float32)
@@ -198,6 +202,10 @@ class CoffeePouringEnv(gym.Env):
         self._pygame = None
         self._window = None
         self._clock = None
+        # A held cup repeats this geometry throughout a pour. Cache only exact
+        # inputs (no rounding), with small bounds and independent returned arrays.
+        self._cup_runoff_cache: dict[tuple, np.ndarray] = {}
+        self._cup_surface_cache: dict[tuple, float] = {}
 
     @staticmethod
     def _rotation(angle: float) -> np.ndarray:
@@ -884,7 +892,11 @@ class CoffeePouringEnv(gym.Env):
             return 0.0
         x = points[:, 0]
         y = points[:, 1]
-        return float(0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
+        # Keep the dot-product order identical to a one-place np.roll, avoiding
+        # its general axis/shift machinery inside the surface-area bisection.
+        next_y = np.concatenate((y[1:], y[:1]))
+        next_x = np.concatenate((x[1:], x[:1]))
+        return float(0.5 * abs(np.dot(x, next_y) - np.dot(y, next_x)))
 
     @staticmethod
     def _clip_polygon_below(points: np.ndarray, surface_y: float) -> np.ndarray:
@@ -931,6 +943,10 @@ class CoffeePouringEnv(gym.Env):
         """
 
         polygon = self._cup_polygon(tools)
+        key = (polygon.tobytes(), preferred_x, self.geometry.table_y,
+               self.GRAVITY, self.STREAM_PATH_SAMPLES)
+        if key in self._cup_runoff_cache:
+            return self._cup_runoff_cache[key].copy()
         rims = polygon[:2]
         height_difference = float(rims[0, 1] - rims[1, 1])
         if abs(height_difference) > 1e-9:
@@ -940,11 +956,15 @@ class CoffeePouringEnv(gym.Env):
         else:
             side_index = 0
 
-        return self._cup_exterior_runoff_path(
+        path = self._cup_exterior_runoff_path(
             tools,
             np.asarray(rims[side_index], dtype=np.float64),
             side_index=side_index,
         )
+        if len(self._cup_runoff_cache) >= 32:
+            self._cup_runoff_cache.pop(next(iter(self._cup_runoff_cache)))
+        self._cup_runoff_cache[key] = path.copy()
+        return path
 
     def _gravity_fall_path(
         self,
@@ -1251,6 +1271,9 @@ class CoffeePouringEnv(gym.Env):
         if volume is None:
             volume = self.fill
         target_fraction = float(np.clip(volume / self.CUP_CAPACITY, 0.0, 1.0))
+        key = (polygon.tobytes(), target_fraction)
+        if key in self._cup_surface_cache:
+            return self._cup_surface_cache[key]
         low = float(np.min(polygon[:, 1]))
         high = float(np.max(polygon[:, 1]))
         full_area = self._polygon_area(polygon)
@@ -1261,7 +1284,11 @@ class CoffeePouringEnv(gym.Env):
                 low = middle
             else:
                 high = middle
-        return float(0.5 * (low + high))
+        surface = float(0.5 * (low + high))
+        if len(self._cup_surface_cache) >= 32:
+            self._cup_surface_cache.pop(next(iter(self._cup_surface_cache)))
+        self._cup_surface_cache[key] = surface
+        return surface
 
     @staticmethod
     def _quadratic_roots(a: float, b: float, c: float) -> list[float]:
@@ -1578,10 +1605,16 @@ class CoffeePouringEnv(gym.Env):
         return observation.astype(np.float32)
 
     def _get_info(self) -> dict[str, Any]:
+        """Core feedback, with optional expensive rendering diagnostics.
+
+        Accelerated learners can omit stable_cup_capacity, cup/pot_surface_y,
+        stream_path, spill_path, direct_spill_path and cup_runoff_path. Full
+        render_snapshot() remains available and never depends on this setting.
+        """
         tools = self.tool_positions()
         error = abs(self.fill - self.target_fill)
         success = self._is_success()
-        return {
+        info = {
             "is_success": bool(success),
             "fill": float(self.fill),
             "target_fill": float(self.target_fill),
@@ -1595,9 +1628,6 @@ class CoffeePouringEnv(gym.Env):
             "stream_exit_speed": float(self.last_exit_speed),
             "jet_radius": float(self.last_jet_radius),
             "source_remaining": self.source_remaining,
-            "stable_cup_capacity": self._stable_cup_capacity(tools),
-            "cup_surface_y": self._cup_surface_world_y(tools),
-            "pot_surface_y": self._pot_surface_world_y(tools),
             "elapsed_steps": int(self.elapsed_steps),
             "elapsed_time": float(self.elapsed_steps * self.dt),
             "time_remaining": (
@@ -1610,17 +1640,24 @@ class CoffeePouringEnv(gym.Env):
             "cup_mouth": np.asarray(tools["cup_mouth"], dtype=np.float32),
             "pot_spout": np.asarray(tools["pot_spout"], dtype=np.float32),
             "stream_end": self.last_stream_end.astype(np.float32).copy(),
-            "stream_path": self.last_stream_path.astype(np.float32).copy(),
-            "spill_path": self.last_spill_path.astype(np.float32).copy(),
             "direct_spill": float(self.last_direct_spill),
             "direct_spill_rate": float(self.last_direct_spill_rate),
-            "direct_spill_path": self.last_direct_spill_path.astype(np.float32).copy(),
             "cup_runoff": float(self.last_cup_runoff),
             "cup_runoff_rate": float(self.last_cup_runoff_rate),
-            "cup_runoff_path": self.last_cup_runoff_path.astype(np.float32).copy(),
             "spill_impact_x": float(self.spill_impact_x),
             "termination_reason": self._last_termination_reason,
         }
+        if self.include_render_info:
+            info.update({
+                "stable_cup_capacity": self._stable_cup_capacity(tools),
+                "cup_surface_y": self._cup_surface_world_y(tools),
+                "pot_surface_y": self._pot_surface_world_y(tools),
+                "stream_path": self.last_stream_path.astype(np.float32).copy(),
+                "spill_path": self.last_spill_path.astype(np.float32).copy(),
+                "direct_spill_path": self.last_direct_spill_path.astype(np.float32).copy(),
+                "cup_runoff_path": self.last_cup_runoff_path.astype(np.float32).copy(),
+            })
+        return info
 
     def step(self, action: np.ndarray):
         if self._episode_done:

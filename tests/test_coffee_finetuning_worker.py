@@ -14,7 +14,7 @@ from kaist_rl_lab.apps.coffee_browser import WORKER_JAVASCRIPT, browser_bundle
 NODE_HARNESS = r"""
 const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
 const timers=new Map(),messages=[],commands=[];
-let nextTimer=0,now=100,currentCommand=null,failNext=false;
+let nextTimer=0,now=100,currentCommand=null,failNext=false,stepCost=0,advancePhysics=false;
 let frame={snapshot:{playback:{paused:true,running:true}},finetuning:{training_running:false}};
 const clone=value=>JSON.parse(JSON.stringify(value));
 const fakePython={
@@ -22,6 +22,11 @@ const fakePython={
   runPython(code){
     assert.equal(code,'coffee_runtime.dispatch(_coffee_command)');commands.push(clone(currentCommand));
     if(failNext){failNext=false;throw Error('Simulated physics failure');}
+    if(advancePhysics&&['ft-step','tick'].includes(currentCommand.kind)){
+      const steps=currentCommand.max_steps||1;now+=steps*stepCost;
+      if(currentCommand.kind==='ft-step')frame.finetuning.progress.total_steps+=steps;
+      else frame.finetuning.rollout.elapsed_seconds+=steps/32;
+    }
     return JSON.stringify(frame);
   }
 };
@@ -134,3 +139,72 @@ def test_browser_bundle_contains_numpy_finetuning_runtime():
         assert "kaist_rl_lab/apps/coffee_finetuning_runtime.py" in names
     assert "FineTuningRuntime" in WORKER_JAVASCRIPT
     assert "data.mode === 'finetuning'" in WORKER_JAVASCRIPT
+
+
+
+@pytest.mark.parametrize("speed", [4, 8])
+@pytest.mark.parametrize("kind", ["ft-train", "ft-run"])
+def test_accelerated_finetuning_batches_real_steps_at_requested_pace(tmp_path, speed, kind):
+    run_worker(tmp_path, r"""
+const current=clone(KIND==='ft-train'?training:running);
+Object.assign(current.finetuning,{playback_speed:SPEED,progress:{total_steps:0},rollout:{elapsed_seconds:0}});
+advancePhysics=true;stepCost=2;
+await send(KIND,current);step();
+assert.equal(commands.at(-1).kind,KIND==='ft-train'?'ft-step':'tick');
+assert.equal(commands.at(-1).max_steps,SPEED);
+assert.equal(pending()[0].delay,1000/32-SPEED*stepCost);
+now+=pending()[0].delay;step();
+assert.equal(commands.at(-1).max_steps,SPEED);
+const advanced=KIND==='ft-train'?messages.at(-1).finetuning.progress.total_steps:
+  messages.at(-1).finetuning.rollout.elapsed_seconds*32;
+assert.equal(advanced,SPEED*2);
+// A delayed foreground callback does not replay missed wall-clock intervals.
+now=10000;step();assert.equal(commands.at(-1).max_steps,SPEED);
+assert.equal(pending()[0].delay,1000/32-SPEED*stepCost);
+await send('ft-pause',paused,{paused:true});assert.equal(timers.size,0);
+""".replace("SPEED", str(speed)).replace("KIND", json.dumps(kind)))
+
+
+def test_fastest_mode_adapts_chunk_size_and_yields_between_bounded_batches(tmp_path):
+    run_worker(tmp_path, r"""
+const current=clone(training);
+Object.assign(current.finetuning,{playback_speed:0,progress:{total_steps:0},rollout:{elapsed_seconds:0}});
+advancePhysics=true;stepCost=.5;
+await send('ft-train',current);
+for(let count=0;count<8;count++){
+  step();assert.equal(pending()[0].delay,0);
+  assert.ok(commands.at(-1).max_steps>=1&&commands.at(-1).max_steps<=32);
+}
+assert.equal(commands.at(-1).max_steps,32);
+const chunks=commands.filter(command=>command.kind==='ft-step');
+assert.equal(messages.at(-1).finetuning.progress.total_steps,chunks.reduce((total,item)=>total+item.max_steps,0));
+await send('ft-pause',paused,{paused:true});assert.equal(timers.size,0);
+""")
+
+
+def test_expensive_steps_reduce_work_per_chunk_to_keep_controls_responsive(tmp_path):
+    run_worker(tmp_path, r"""
+const current=clone(training);
+Object.assign(current.finetuning,{playback_speed:0,progress:{total_steps:0},rollout:{elapsed_seconds:0}});
+advancePhysics=true;stepCost=12;
+await send('ft-train',current);step();const initial=commands.at(-1).max_steps;
+for(let count=0;count<4;count++)step();
+assert.ok(commands.at(-1).max_steps<initial);
+assert.ok(commands.at(-1).max_steps*stepCost<=50);
+assert.equal(timers.size,1);assert.equal(pending()[0].delay,0);
+await send('ft-stop',paused);assert.equal(timers.size,0);
+""")
+
+
+def test_speed_changes_replace_pending_timer_and_leave_student_ticks_at_one_step(tmp_path):
+    run_worker(tmp_path, r"""
+const current=clone(running);current.finetuning.playback_speed=4;
+await send('ft-run',current);step();assert.equal(commands.at(-1).max_steps,4);
+const old=[...timers.keys()][0];current.finetuning.playback_speed=0;
+await send('ft-speed',current,{speed:0});
+assert.equal(timers.size,1);assert.notEqual([...timers.keys()][0],old);assert.equal(pending()[0].delay,0);
+step();assert.ok(commands.at(-1).max_steps>4);
+await send('pause',{snapshot:{playback:{paused:true,running:true}}});assert.equal(timers.size,0);
+await send('reset',{snapshot:{playback:{paused:false,running:true}}});step();
+assert.deepEqual(commands.at(-1),{kind:'tick'});assert.equal(pending()[0].delay,1000/32);
+""")

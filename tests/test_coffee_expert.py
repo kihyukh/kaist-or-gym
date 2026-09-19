@@ -4,9 +4,18 @@ import numpy as np
 import pytest
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout
+from kaist_rl_lab.apps.coffee_classroom import (
+    CUP_POSITION_JITTER,
+    POT_POSITION_JITTER,
+    classroom_layout,
+)
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
-from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, generate_example, load_examples
+from kaist_rl_lab.apps.coffee_expert import (
+    EXAMPLE_COUNT,
+    MAX_EXAMPLE_STEPS,
+    generate_example,
+    load_examples,
+)
 from kaist_rl_lab.envs import CoffeePouringEnv
 
 
@@ -40,7 +49,7 @@ def test_packaged_example_replays_to_success_from_the_unmodified_student_start(i
         assert env.spill < 0.001
         assert env.fill == metadata["fill_l"]
         assert env.spill == metadata["spill_l"]
-        assert env.elapsed_steps * BROWSER_DT <= 32
+        assert env.elapsed_steps <= MAX_EXAMPLE_STEPS
     finally:
         env.close()
 
@@ -61,3 +70,6 @@ def test_packaged_examples_cover_distinct_classroom_starting_poses():
     assert len({metadata["seed"] for _, metadata in examples}) == 15
     starts = np.asarray([metadata["initial_joint_angles_rad"] for _, metadata in examples])
     assert len(np.unique(starts, axis=0)) == 15
+    layouts = [classroom_layout(metadata["seed"]) for _, metadata in examples]
+    centers = np.asarray([layout["cup_center"] + layout["pot_center"] for layout in layouts])
+    assert np.all(np.ptp(centers, axis=0) > 1.5 * np.asarray(CUP_POSITION_JITTER + POT_POSITION_JITTER))

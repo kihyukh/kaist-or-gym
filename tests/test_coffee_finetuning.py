@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout
+from kaist_rl_lab.apps.coffee_classroom import fixed_policy_layout
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy, train_behavior_cloning
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.apps.coffee_expert import load_examples
@@ -134,14 +134,14 @@ def test_real_training_uses_rewards_retains_best_and_replays_exactly(example_mod
         evaluation_seed = result["evaluation_seed"]
         assert result["baseline"]["initial_seed"] == evaluation_seed
         assert result["history"][0]["evaluation"]["initial_seed"] == evaluation_seed
-        assert result["history"][0]["training"]["initial_seed"] != evaluation_seed
+        assert result["history"][0]["training"]["initial_seed"] == evaluation_seed
         assert any(row["update"]["actor_change"] > 0 for row in result["history"])
         assert np.linalg.norm(trainer.critic) > 0
         assert example_model == original
         assert trainer.step_chunk() == result
         env = CoffeePouringEnv(dt=BROWSER_DT, horizon=60 * 32)
         observation, _ = env.reset(
-            seed=evaluation_seed, options={**classroom_layout(evaluation_seed), "target_fill": 0.7},
+            seed=evaluation_seed, options={**fixed_policy_layout(), "target_fill": 0.7},
         )
         reward = 0.0
         for _ in range(60 * 32):

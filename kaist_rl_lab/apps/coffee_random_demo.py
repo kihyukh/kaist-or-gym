@@ -11,7 +11,7 @@ RANDOM_DEMO_HTML = """
         <p>What happens if the robot just tries random moves?</p>
         <p class="hint">Each of the six joints independently chooses clockwise, hold, or counter-clockwise
           with equal probability. It holds these commands for a random duration of up to <b>1 second</b>,
-          then chooses again. Each trial starts from a gently varied pose and lasts up to <b>30 seconds</b>.</p>
+          then chooses again. Each trial starts from a random classroom pose and lasts up to <b>30 seconds</b>.</p>
         <div class="button-row">
           <button id="random-start" class="primary" type="button">Start random trial</button>
           <button id="random-pause" type="button" disabled>Pause</button>

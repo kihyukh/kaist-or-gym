@@ -9,7 +9,7 @@ import pytest
 
 from kaist_rl_lab.apps import coffee_finetuning_runtime as module
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout
+from kaist_rl_lab.apps.coffee_classroom import fixed_policy_layout
 from kaist_rl_lab.apps.coffee_cloning import FEATURE_INDICES, FEATURE_SCALES, NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_finetuning_runtime import FineTuningRuntime
 
@@ -121,7 +121,7 @@ def test_initial_state_and_load_are_idle(runtime, model, fake_trainer):
     assert not fake_trainer.instances
     assert runtime.session.trajectory == []
     assert runtime.session.env.dt == BROWSER_DT
-    for name, position in classroom_layout(runtime.session.seed).items():
+    for name, position in fixed_policy_layout().items():
         np.testing.assert_allclose(runtime.session.env.tool_positions()[name], position)
     with pytest.raises(ValueError, match="evaluation"):
         call(runtime, "ft-run", policy="best")
@@ -150,10 +150,10 @@ def test_training_runs_only_in_bounded_chunks_and_pause_freezes_it(runtime, mode
         assert call(runtime, "tick") == paused
     call(runtime, "ft-pause", paused=False)
     second = call(runtime, "ft-step")
-    assert trainer.calls == [1, 16]
+    assert trainer.calls == [1, module.DEFAULT_CHUNK_STEPS]
     assert second["finetuning"]["has_result"]
     assert second["finetuning"]["best_available"]
-    assert second["finetuning"]["progress"]["elapsed_seconds"] == 17 * BROWSER_DT
+    assert second["finetuning"]["progress"]["elapsed_seconds"] == (1 + module.DEFAULT_CHUNK_STEPS) * BROWSER_DT
     assert second["finetuning"]["progress"]["reward"] == runtime.session.cumulative_reward
     assert second["finetuning"]["progress"]["completed_episodes"] == 0
     with pytest.raises(ValueError, match="Stop"):
@@ -315,3 +315,90 @@ def test_actual_training_and_best_rollout_report_the_same_physics(runtime, model
     assert rollout["elapsed_seconds"] == state["result"]["best"]["seconds"]
     assert call(runtime, "tick") == final
     assert call(runtime, "ft-pause", paused=False) == final
+
+
+def test_speed_changes_preserve_the_active_learner_and_physics(runtime, model, fake_trainer):
+    assert call(runtime, "snapshot")["finetuning"]["playback_speed"] == 0
+    call(runtime, "ft-load", model=model)
+    call(runtime, "ft-train", episodes=4, seed=12, speed=4)
+    call(runtime, "ft-step", max_steps=3)
+    trainer = runtime.trainer
+    session = runtime.session
+    before = call(runtime, "snapshot")
+    for speed in (8, 0, 4):
+        changed = call(runtime, "ft-speed", speed=speed)
+        assert changed["finetuning"]["playback_speed"] == speed
+        changed["finetuning"]["playback_speed"] = before["finetuning"]["playback_speed"]
+        assert changed == before
+        assert runtime.trainer is trainer
+        assert runtime.session is session
+        assert trainer.calls == [3]
+        assert runtime.session.env.dt == BROWSER_DT
+    call(runtime, "ft-pause", paused=True)
+    changed = call(runtime, "ft-speed", speed=8)
+    assert changed["finetuning"]["paused"]
+    assert not changed["finetuning"]["training_running"]
+    assert trainer.calls == [3]
+
+
+@pytest.mark.parametrize("speed", [None, True, -1, 1, 2, 4.0, 16, "8"])
+def test_invalid_speed_changes_are_atomic(runtime, model, fake_trainer, speed):
+    call(runtime, "ft-load", model=model)
+    before = call(runtime, "ft-run", policy="base", speed=4)
+    for kind, extras in [("ft-speed", {}), ("ft-run", {"policy": "base"}), ("ft-train", {})]:
+        with pytest.raises(ValueError, match="Speed"):
+            call(runtime, kind, speed=speed, **extras)
+        assert call(runtime, "snapshot") == before
+        assert not fake_trainer.instances
+
+
+def test_batched_playback_computes_every_policy_decision_and_stops_at_terminal(monkeypatch, model):
+    monkeypatch.setattr(module, "TRIAL_STEPS", 7)
+    runtimes = [FineTuningRuntime(), FineTuningRuntime()]
+
+    class ObservedPolicy:
+        def __init__(self):
+            self.observations = []
+
+        def predict(self, observation):
+            self.observations.append(observation.copy())
+            return np.array([.05 + .02 * observation[0], 0, 0, 0, 0, 0], dtype=np.float32)
+
+    policies = [ObservedPolicy(), ObservedPolicy()]
+    try:
+        for runtime, policy in zip(runtimes, policies):
+            call(runtime, "ft-load", model=model)
+            runtime.base_policy = policy
+        call(runtimes[0], "ft-run", policy="base", speed=4)
+        call(runtimes[1], "ft-run", policy="base", speed=0)
+        for _ in range(7):
+            single = call(runtimes[0], "tick")
+        first_batch = call(runtimes[1], "tick", max_steps=4)
+        assert first_batch["finetuning"]["rollout"]["elapsed_seconds"] == 4 * BROWSER_DT
+        batched = call(runtimes[1], "tick", max_steps=32)
+        assert batched["finetuning"]["rollout"]["done"]
+        assert batched["finetuning"]["rollout"]["elapsed_seconds"] == 7 * BROWSER_DT
+        assert batched["finetuning"]["rollout"] == single["finetuning"]["rollout"]
+        assert batched["snapshot"] == single["snapshot"]
+        assert len(policies[0].observations) == len(policies[1].observations) == 7
+        assert not np.array_equal(policies[0].observations[0], policies[0].observations[-1])
+        np.testing.assert_array_equal(policies[0].observations, policies[1].observations)
+        for left, right in zip(runtimes[0].session.trajectory, runtimes[1].session.trajectory):
+            for field in ("observation", "action", "next_observation"):
+                np.testing.assert_array_equal(left[field], right[field])
+            for field in ("reward", "terminated", "truncated"):
+                assert left[field] == right[field]
+        assert call(runtimes[1], "tick", max_steps=32) == batched
+        assert len(policies[1].observations) == 7
+    finally:
+        for runtime in runtimes:
+            runtime.close()
+
+
+@pytest.mark.parametrize("steps", [True, 0, -1, 33, 2.5, "4"])
+def test_invalid_playback_chunk_does_not_advance_the_scene(runtime, model, steps):
+    call(runtime, "ft-load", model=model)
+    before = call(runtime, "ft-run", policy="base")
+    with pytest.raises(ValueError, match="Trial chunk"):
+        call(runtime, "tick", max_steps=steps)
+    assert call(runtime, "snapshot") == before

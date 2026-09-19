@@ -1,4 +1,4 @@
-"""All live demos sample gentle starts while RL comparisons share one test pose."""
+"""Demonstrations vary their starts; BC and RL trials share a fixed comparison pose."""
 
 import base64
 import json
@@ -12,10 +12,9 @@ from kaist_rl_lab.apps import coffee_finetuning as trainer_module
 from kaist_rl_lab.apps import coffee_finetuning_runtime as finetuning_module
 from kaist_rl_lab.apps import coffee_random_runtime as random_module
 from kaist_rl_lab.apps.coffee_classroom import (
-    HORIZONTAL_JITTER,
-    INITIAL_LAYOUT,
-    POT_HEIGHT_JITTER,
+    POLICY_START_SEED,
     classroom_layout,
+    fixed_policy_layout,
 )
 from kaist_rl_lab.apps.coffee_cloning import FEATURE_INDICES, FEATURE_SCALES
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
@@ -34,15 +33,11 @@ def model():
     }
 
 
-def assert_classroom_pose(session):
-    layout = classroom_layout(session.seed)
+def assert_classroom_pose(session, *, fixed=False):
+    layout = fixed_policy_layout() if fixed else classroom_layout(session.seed)
     tools = session.env.tool_positions()
     for vessel in ("cup", "pot"):
         np.testing.assert_allclose(tools[vessel + "_center"], layout[vessel + "_center"], atol=1e-12)
-    shift = tools["cup_center"][0] - INITIAL_LAYOUT["cup_center"][0]
-    assert abs(shift) <= HORIZONTAL_JITTER
-    assert tools["pot_center"][0] - INITIAL_LAYOUT["pot_center"][0] == pytest.approx(shift)
-    assert abs(tools["pot_center"][1] - INITIAL_LAYOUT["pot_center"][1]) <= POT_HEIGHT_JITTER
     assert session.env.fill == 0
     assert session.env.spill == 0
     assert session.env.target_fill == pytest.approx(.7)
@@ -86,41 +81,50 @@ def test_explicit_student_seed_reproduces_the_initial_pose():
         second.session.close()
 
 
-@pytest.mark.parametrize("module,runtime_class,prefix", [
-    (cloning_module, cloning_module.CloningAgentRuntime, "cloning"),
-    (random_module, random_module.RandomAgentRuntime, "random"),
-])
-def test_policy_runs_vary_by_default_and_repeat_with_an_explicit_seed(
-    monkeypatch, model, module, runtime_class, prefix,
-):
+def test_random_agent_varies_by_default_and_repeats_with_an_explicit_seed(monkeypatch):
     seeds = iter(range(100, 110))
-    monkeypatch.setattr(module, "fresh_classroom_seed", lambda: next(seeds))
-    runtime = runtime_class()
+    monkeypatch.setattr(random_module, "fresh_classroom_seed", lambda: next(seeds))
+    runtime = random_module.RandomAgentRuntime()
     try:
-        if prefix == "cloning":
-            call(runtime, "cloning-load", model=model)
         sampled = []
         for _ in range(2):
-            call(runtime, prefix + "-start")
+            call(runtime, "random-start")
             assert_classroom_pose(runtime.session)
             sampled.append((runtime.session.seed, runtime.session.observation.copy()))
         assert sampled[0][0] != sampled[1][0]
         assert not np.array_equal(sampled[0][1], sampled[1][1])
-        call(runtime, prefix + "-start", seed=345)
+        call(runtime, "random-start", seed=345)
         initial = runtime.session.observation.copy()
         motors = runtime.session.motors.copy()
         call(runtime, "tick")
         next_observation = runtime.session.observation.copy()
-        call(runtime, prefix + "-start", seed=345)
+        call(runtime, "random-start", seed=345)
         np.testing.assert_array_equal(runtime.session.observation, initial)
         np.testing.assert_array_equal(runtime.session.motors, motors)
         call(runtime, "tick")
         np.testing.assert_array_equal(runtime.session.observation, next_observation)
-        old_seed = runtime.session.seed
-        call(runtime, prefix + "-reset")
-        assert runtime.session.seed != old_seed
+        call(runtime, "random-reset")
+        assert runtime.session.seed != 345
         assert runtime.session.paused
         assert_classroom_pose(runtime.session)
+    finally:
+        runtime.session.close()
+
+
+def test_behavior_cloning_always_restarts_from_the_fixed_policy_pose(model):
+    runtime = cloning_module.CloningAgentRuntime()
+    try:
+        call(runtime, "cloning-load", model=model)
+        initial = runtime.session.observation.copy()
+        for seed in (None, 12, 999, None):
+            call(runtime, "cloning-start", **({"seed": seed} if seed is not None else {}))
+            assert_classroom_pose(runtime.session, fixed=True)
+            np.testing.assert_array_equal(runtime.session.observation, initial)
+            call(runtime, "tick")
+        call(runtime, "cloning-reset")
+        assert runtime.session.seed == POLICY_START_SEED
+        assert runtime.session.paused
+        np.testing.assert_array_equal(runtime.session.observation, initial)
     finally:
         runtime.session.close()
 
@@ -148,7 +152,7 @@ def test_invalid_seed_does_not_replace_a_working_policy_trial(model, invalid):
         trainer_module.FineTuningTrainer(model, seed=invalid)
 
 
-def test_exploration_varies_pose_but_all_checkpoints_share_one_evaluation_pose(monkeypatch, model):
+def test_exploration_and_all_checkpoints_share_the_fixed_policy_pose(monkeypatch, model):
     monkeypatch.setattr(trainer_module, "TRIAL_STEPS", 2)
     trainers = [trainer_module.FineTuningTrainer(model, seed=45, episodes=3) for _ in range(2)]
     results = []
@@ -157,7 +161,7 @@ def test_exploration_varies_pose_but_all_checkpoints_share_one_evaluation_pose(m
             poses = []
             while not trainer.done:
                 assert trainer.session.env.elapsed_steps == 0
-                assert_classroom_pose(trainer.session)
+                assert_classroom_pose(trainer.session, fixed=True)
                 poses.append((trainer.phase, trainer.session.seed, trainer.session.initial_joint_angles.copy()))
                 trainer.step_chunk(max_steps=2)
             evaluation = [item for item in poses if item[0] != "training"]
@@ -165,10 +169,9 @@ def test_exploration_varies_pose_but_all_checkpoints_share_one_evaluation_pose(m
             assert len(evaluation) == 4
             assert len(exploration) == 3
             assert {item[1] for item in evaluation} == {trainer.evaluation_seed}
-            for _, _, joints in evaluation[1:]:
+            for _, _, joints in poses[1:]:
                 np.testing.assert_array_equal(joints, evaluation[0][2])
-            assert len({item[1] for item in exploration}) == 3
-            assert trainer.evaluation_seed not in {item[1] for item in exploration}
+            assert {item[1] for item in poses} == {POLICY_START_SEED}
             result = trainer.result()
             assert result["baseline"]["initial_seed"] == trainer.evaluation_seed
             assert result["best"]["initial_seed"] == trainer.evaluation_seed
@@ -181,7 +184,7 @@ def test_exploration_varies_pose_but_all_checkpoints_share_one_evaluation_pose(m
             trainer.close()
 
 
-def test_finetuning_watch_reuses_evaluation_pose_and_new_experiments_are_fresh(monkeypatch, model):
+def test_finetuning_watch_and_reset_preserve_pose_while_experiments_refresh_noise_seed(monkeypatch, model):
     monkeypatch.setattr(trainer_module, "TRIAL_STEPS", 2)
     seeds = iter(range(200, 220))
     monkeypatch.setattr(finetuning_module, "fresh_classroom_seed", lambda: next(seeds))
@@ -202,13 +205,13 @@ def test_finetuning_watch_reuses_evaluation_pose_and_new_experiments_are_fresh(m
         assert runtime.session.seed == first_evaluation_seed
         np.testing.assert_array_equal(runtime.session.observation, original_pose)
         call(runtime, "ft-reset")
-        assert runtime.session.seed != first_evaluation_seed
-        assert_classroom_pose(runtime.session)
+        assert runtime.session.seed == first_evaluation_seed
+        assert_classroom_pose(runtime.session, fixed=True)
         call(runtime, "ft-run", policy="base")
         np.testing.assert_array_equal(runtime.session.observation, original_pose)
         call(runtime, "ft-train", episodes=1)
         assert runtime.result["seed"] != first_seed
-        assert runtime.result["evaluation_seed"] != first_evaluation_seed
+        assert runtime.result["evaluation_seed"] == first_evaluation_seed
         call(runtime, "ft-stop")
         call(runtime, "ft-train", episodes=1, seed=first_seed)
         assert runtime.result["evaluation_seed"] == first_evaluation_seed

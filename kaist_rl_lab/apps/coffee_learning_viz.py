@@ -26,7 +26,7 @@ LEARNING_VIZ_HTML = """
           <div class="ft-chart-inspect-heading"><label for="ft-chart-trial">Inspect completed results</label>
             <select id="ft-chart-trial" disabled><option value="">No results yet</option></select></div>
           <div id="ft-chart-inspector" class="ft-chart-inspector" aria-live="polite"></div>
-          <p class="hint ft-chart-explanation">Exploration uses fresh poses and random actions. Evaluation reuses one sampled
+          <p class="hint ft-chart-explanation">Exploration varies actions from one fixed starting pose. Evaluation uses the same
             pose without action noise. Points appear only when a rollout finishes; inspecting a point shows its results.</p>
         </section>
 """

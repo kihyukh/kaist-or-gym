@@ -56,6 +56,7 @@ BROWSER_CSS = CANVAS_CSS + """
 
 WORKER_JAVASCRIPT = r"""
 let python, timer = null, deadline = 0, paused = true, running = true, training = false;
+let fineTuning=false,playbackSpeed=1,stepCostMs=6,trainingSteps=null,rolloutSteps=null;
 const interval = 1000 / 32;
 const PYODIDE_BASE = 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/';
 // Keep the browser's existing Gymnasium version. Loading these verified wheels
@@ -94,7 +95,12 @@ async function loadCoffeeSource(data) {
 function emit(result) {
   const data = JSON.parse(result), p = data.snapshot.playback;
   paused = p.paused; running = p.running;
+  fineTuning = !!data.finetuning;
   training = !!data.finetuning?.training_running;
+  const speed=data.finetuning?.playback_speed;
+  playbackSpeed=fineTuning&&[0,4,8].includes(speed)?speed:training?0:1;
+  trainingSteps=data.finetuning?.progress?.total_steps;
+  rolloutSteps=data.finetuning?.rollout?.elapsed_seconds*32;
   postMessage(data);
 }
 function dispatch(command) {
@@ -106,16 +112,29 @@ function schedule() {
   timer = setTimeout(() => {
     timer = null;
     try {
-      const wasTraining = training;
-      dispatch({kind:wasTraining ? 'ft-step' : 'tick'});
-      if (!wasTraining) {
+      const wasTraining=training,wasFineTuning=fineTuning,speed=playbackSpeed;
+      const started=performance.now();
+      if (wasFineTuning) {
+        // Batch real 1/32-second physics steps, requerying the policy each time.
+        // Adapt toward <=50 ms of work so pause/speed messages remain responsive.
+        let steps=Math.max(1,Math.min(32,Math.floor(50/stepCostMs)));
+        if (speed>0) steps=Math.min(steps,speed);
+        const before=wasTraining?trainingSteps:rolloutSteps;
+        dispatch({kind:wasTraining?'ft-step':'tick',max_steps:steps});
+        const after=wasTraining?trainingSteps:rolloutSteps;
+        const advanced=Number.isFinite(before)&&Number.isFinite(after)&&after>before?after-before:steps;
+        const elapsed=performance.now()-started;
+        if (elapsed>0) stepCostMs=Math.max(.05,.5*stepCostMs+.5*elapsed/advanced);
+        // Anchor at the actual start when a tab falls behind: no catch-up burst.
+        deadline=Math.max(deadline,started)+(speed>0?advanced*interval/speed:0);
+      } else {
+        dispatch({kind:'tick'});
         deadline += interval;
-        // A slow/background tab never queues a burst of catch-up steps.
         if (deadline < performance.now() - interval) deadline = performance.now() + interval;
       }
       schedule();
     } catch (error) { paused=true; training=false; postMessage({error:String(error)}); }
-  }, training ? 0 : Math.max(0, deadline - performance.now()));
+  }, fineTuning&&playbackSpeed===0 ? 0 : Math.max(0, deadline - performance.now()));
 }
 self.onmessage = async ({data}) => {
   try {
@@ -139,7 +158,7 @@ self.onmessage = async ({data}) => {
     const wasPaused = paused;
     dispatch(data);
     const restarting = ['reset','random-start','random-reset','cloning-load','cloning-start','cloning-reset',
-      'ft-load','ft-train','ft-run','ft-reset','ft-stop'].includes(data.kind);
+      'ft-load','ft-train','ft-run','ft-reset','ft-stop','ft-speed'].includes(data.kind);
     if ((!training && (paused || !running)) || restarting) {
       clearTimeout(timer); timer = null;
     }

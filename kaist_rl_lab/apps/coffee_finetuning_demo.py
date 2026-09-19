@@ -21,6 +21,9 @@ FINETUNING_HTML = """
           <div><label for="ft-episodes">Exploratory trials</label>
             <select id="ft-episodes"><option value="4">4 · quick demonstration</option>
               <option value="8" selected>8 · more practice</option><option value="12">12 · longer experiment</option></select></div>
+          <div><label for="ft-speed">Training &amp; playback speed</label>
+            <select id="ft-speed"><option value="4">4×</option><option value="8">8×</option>
+              <option value="0" selected>Fastest available</option></select></div>
           <button id="ft-train" type="button" class="primary" disabled>Start fine-tuning</button>
           <button id="ft-pause" type="button" disabled>Pause</button>
           <button id="ft-stop" type="button" disabled>Stop training</button>
@@ -47,7 +50,7 @@ FINETUNING_HTML = """
         </div>
         </div>
         <div id="ft-results" hidden>
-          <h3>Shared evaluation pose · no exploration noise</h3>
+          <h3>Fixed starting pose · no exploration noise in evaluation</h3>
           <div class="table-scroll"><table>
             <thead><tr><th>Policy</th><th>Total reward ↑</th><th>Cup</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
             <tbody id="ft-comparison"></tbody></table></div>
@@ -70,9 +73,10 @@ FINETUNING_HTML = """
             current state; it does not invent a new direction of motion. Bounded random speed changes provide exploration.
             The critic estimates returns, and the actor uses those estimates to improve expected reward.</p>
           <p class="hint">Reward combines pouring accuracy, spilled coffee, vessel stability, elapsed time, and motor effort.
-            Faster is not always better. Exploration uses fresh classroom poses. Each experiment samples one evaluation
-            pose and reuses it for the original clone and every checkpoint, with a 60-second time limit.</p>
-          <p class="hint">Training runs faster than real time when your browser can keep up. Switching away pauses it.
+            Faster is not always better. Exploration, evaluation, and policy playback all reuse one fixed starting
+            pose, with a 60-second time limit. Demonstrations use a wider range of random starting poses.</p>
+          <p class="hint">Choose 4×, 8×, or the fastest speed your device can run. Speed changes how quickly the simulation
+            is shown; every physics step and policy decision is still computed. Switching away pauses it.
             Stop keeps the best completed evaluation. Changing the cloning policy or reloading clears this experiment.</p>
         </details>
       </section>
@@ -113,6 +117,7 @@ function createFineTuningDemo(element,beforeRun) {
     $('#ft-train').disabled=!enabled||!model||busy||training;
     $('#ft-train').textContent=loading?'Loading simulation…':state?.has_result?'Start a new experiment':'Start fine-tuning';
     $('#ft-episodes').disabled=busy||training;
+    $('#ft-speed').disabled=!enabled||!model||busy;
     $('#ft-pause').disabled=!enabled||busy||!(training||state?.rollout?.active);
     $('#ft-pause').textContent=state?.paused?'Resume':'Pause';
     $('#ft-stop').disabled=!enabled||loading||!training;
@@ -190,7 +195,7 @@ function createFineTuningDemo(element,beforeRun) {
     $('#ft-reward').textContent=number(training?progress.reward:rollout.reward);
     $('#ft-progress').textContent=state.has_result||training?
       'Completed '+(progress.completed_episodes||0)+' / '+(progress.episodes||0)+' exploratory trials · '+
-      (training?'accelerated training and separate evaluation':'experiment stopped or completed'):'';
+      (training?(state.playback_speed?state.playback_speed+'× requested':'fastest available')+' · fixed starting pose':'experiment stopped or completed'):'';
     const outcome={success:'Success',spill_or_overflow:'Too much spill or overflow',time_limit:'Time limit reached'}[rollout.outcome]||'Finished';
     if(training)status((state.paused?'Paused · ':'')+phase+(progress.episode?' · trial '+progress.episode+' / '+progress.episodes:''));
     else if(rollout.done)status(outcome+' · reward '+number(rollout.reward)+' · '+
@@ -205,6 +210,7 @@ function createFineTuningDemo(element,beforeRun) {
   }
   function startAction(command) {
     if(!enabled||!model||loading||pendingCommand)return;
+    command={...command,speed:Number($('#ft-speed').value)};
     if(command.kind==='ft-train')learningViz.reset();
     beforeRun();pauseRequested=false;
     if(worker){send(command);return;}
@@ -228,6 +234,9 @@ function createFineTuningDemo(element,beforeRun) {
   });
   $('#ft-stop').addEventListener('click',()=>{pendingAction=null;send({kind:'ft-stop'});});
   $('#ft-reset').addEventListener('click',()=>send({kind:'ft-reset'}));
+  $('#ft-speed').addEventListener('change',()=>{
+    if(worker&&!loading&&state?.model_loaded)send({kind:'ft-speed',speed:Number($('#ft-speed').value)});
+  });
   document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
   window.addEventListener('blur',pause);window.addEventListener('pagehide',pause);
   return {pause,setModel(value){model=value;clearExperiment();},setEnabled(value){

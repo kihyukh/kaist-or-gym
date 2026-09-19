@@ -3,7 +3,7 @@
 import json
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT
-from kaist_rl_lab.apps.coffee_classroom import classroom_layout, fresh_classroom_seed
+from kaist_rl_lab.apps.coffee_classroom import POLICY_START_SEED, fixed_policy_layout
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
@@ -15,10 +15,10 @@ class CloningAgentRuntime:
     """Independent instructor rollout with no recording upload or expert fallback."""
 
     def __init__(self):
-        seed = fresh_classroom_seed()
+        seed = POLICY_START_SEED
         self.session = InteractiveSession(
             seed, 700, start_paused=True, dt=BROWSER_DT,
-            steps_per_update=1, horizon=TRIAL_STEPS, reset_options=classroom_layout(seed),
+            steps_per_update=1, horizon=TRIAL_STEPS, reset_options=fixed_policy_layout(),
         )
         self.policy = None
         self.attempt = 0
@@ -26,8 +26,10 @@ class CloningAgentRuntime:
         self.outcome = None
 
     def _restart(self, *, reset_experiment: bool, seed=None) -> None:
-        seed = fresh_classroom_seed() if seed is None else seed
-        self.session.reset_options = classroom_layout(seed)
+        seed = POLICY_START_SEED if seed is None else seed
+        if type(seed) is not int or not 0 <= seed < 2**32:
+            raise ValueError("Seed must be an unsigned 32-bit integer.")
+        self.session.reset_options = fixed_policy_layout()
         self.session.restart(
             seed=seed, target_ml=700, speed=1, horizon=TRIAL_STEPS,
         )

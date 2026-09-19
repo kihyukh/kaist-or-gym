@@ -6,38 +6,47 @@ who wants to demonstrate behavior cloning before a class has collected examples.
 
 Each starts with a distinct pose sampled from the browser's classroom start
 distribution, an empty cup, 1.2 L in the pot, and the 700 mL target. Both vessels
-remain upright. Their common horizontal displacement is uniform within ±2.5 cm;
-the pot's additional vertical displacement is independently uniform within
-±1.5 cm. The nominal cup and pot centers are `(-0.28, 0.28)` and `(0.26, 0.62)`
-metres. Keeping variation in two coordinates makes a small set of demonstrations
-useful while exposing students to different initial observations. The fifteen
-seeds below approximately cover a 5-by-3 grid inside this distribution.
+remain upright. Four coordinates vary independently: the cup moves horizontally
+within ±9 cm and vertically within ±5 cm; the pot moves horizontally within
+±11 cm and vertically within ±7 cm. Each offset is uniform within its range.
+The nominal cup and pot centers are `(-0.28, 0.28)` and `(0.26, 0.62)` metres.
+This creates visibly different relative positions, with horizontal spans of
+18–22 cm and vertical spans of 10–14 cm. All sixteen extreme corners and 2,000
+randomly sampled poses passed the original environment's reachability, joint
+limit, table clearance, and collision checks.
+
+The first example starts near the nominal pose. The other fourteen seeds spread
+across the four-dimensional start range. Policy playback and fine-tuning use the
+unchanged nominal pose for consistent comparisons; demonstrations and student
+attempts use the broader distribution.
 
 The generator issues six normalized angular-velocity commands to
 the original `CoffeePouringEnv` at 32 Hz. It does not change physics, liquid amounts,
 recorded observations, collision rules, or success criteria. An inverse-kinematics
 controller positions the vessels, slowly tilts the pot along a constant-spout
-path, then returns it upright. Five approach/pouring speeds repeat across the
+path, then returns it upright. During the approach, it scales the six velocity
+commands together so that a full pot stays upright during larger arm movements.
+Five approach/pouring speeds repeat across the
 fifteen distinct starting poses. Every recording succeeds with less than
 0.001 mL of spill.
 
 | Example | Start seed | Duration | Cup coffee | Total reward |
 |---|---:|---:|---:|---:|
-| 1 | 7938 | 29.531 s | 699.48 mL | 27.965 |
-| 2 | 8095 | 30.969 s | 699.68 mL | 28.008 |
-| 3 | 7605 | 29.594 s | 699.36 mL | 27.951 |
-| 4 | 7415 | 30.062 s | 702.02 mL | 27.953 |
-| 5 | 8026 | 29.562 s | 701.80 mL | 27.942 |
-| 6 | 7207 | 29.312 s | 699.48 mL | 27.960 |
-| 7 | 7268 | 30.531 s | 699.68 mL | 28.037 |
-| 8 | 7880 | 29.125 s | 699.36 mL | 27.980 |
-| 9 | 7410 | 29.844 s | 702.02 mL | 27.946 |
-| 10 | 7249 | 29.125 s | 701.80 mL | 27.968 |
-| 11 | 7838 | 28.938 s | 699.48 mL | 27.987 |
-| 12 | 7184 | 30.312 s | 699.68 mL | 28.031 |
-| 13 | 7878 | 28.656 s | 699.36 mL | 28.006 |
-| 14 | 7700 | 29.406 s | 702.02 mL | 27.974 |
-| 15 | 7860 | 28.875 s | 701.80 mL | 27.963 |
+| 1 | 16262 | 29.031 s | 699.48 mL | 28.114 |
+| 2 | 17212 | 32.344 s | 699.68 mL | 28.047 |
+| 3 | 18021 | 27.281 s | 699.36 mL | 28.076 |
+| 4 | 19055 | 31.188 s | 702.02 mL | 28.042 |
+| 5 | 17020 | 30.438 s | 701.80 mL | 27.982 |
+| 6 | 18094 | 30.031 s | 699.48 mL | 28.044 |
+| 7 | 21808 | 29.156 s | 699.68 mL | 28.150 |
+| 8 | 18143 | 29.812 s | 699.36 mL | 28.071 |
+| 9 | 18986 | 31.188 s | 702.02 mL | 28.027 |
+| 10 | 21234 | 27.219 s | 701.80 mL | 28.121 |
+| 11 | 21142 | 30.156 s | 699.48 mL | 28.012 |
+| 12 | 17660 | 28.750 s | 699.68 mL | 28.140 |
+| 13 | 17573 | 27.500 s | 699.36 mL | 28.159 |
+| 14 | 16742 | 31.438 s | 702.02 mL | 27.995 |
+| 15 | 20628 | 28.000 s | 701.80 mL | 28.099 |
 
 Regenerate with `python -m kaist_rl_lab.apps.coffee_expert`. The web server reads the
 packaged recordings; it does not need to run this controller. Tests replay every
@@ -47,14 +56,19 @@ changes to the start sampler.
 
 The cloning policy trains only on recorded observation/action pairs. A calibration
 run trained the unchanged nearest-neighbor policy on these fifteen recordings
-(14,203 steps; 11,841 unique training samples) and evaluated it on twenty unseen
-seeds, **12000 through 12019**, with the same sampler, 32 Hz physics, 700 mL target,
-and a 60-second limit. All **20/20** rollouts succeeded: 699.385–702.381 mL in the
-cup, less than 0.004 mL spilled, and 28.969–31.031 seconds. Total rewards ranged from
-27.899 to 28.066. These are closed-loop rollouts, not action predictions on stored
-demonstrations. The separate whole-trajectory held-out action MAE was 0.00857.
+(14,193 steps; 14,135 unique training samples). From the canonical policy pose
+(seed 7001), the policy succeeded with **699.590 mL**, reward **28.1366**, and a
+duration of **30.0625 seconds**. This pose is not an exact initial pose in the
+demonstration set.
+
+The same policy was evaluated on twenty unseen broader starts, seeds **12000
+through 12019**, with the classroom sampler, 32 Hz physics, 700 mL target, and a
+60-second limit. All **20/20** rollouts succeeded: 699.092–701.989 mL in the cup,
+less than 0.007 mL spilled, and 27.906–31.375 seconds. Total rewards ranged from
+27.964 to 28.182. These are closed-loop rollouts, not action predictions on stored
+demonstrations. The separate whole-trajectory held-out action MAE was 0.03516.
 
 This check uses generated successful demonstrations as a proxy for a small class's
 data. It does not guarantee that fifteen human demonstrations will perform equally
-well, or establish robustness outside this modest start distribution. Student data
+well, or establish robustness outside this tested start distribution. Student data
 quality, route coverage, and consistency still matter.

@@ -76,17 +76,19 @@ in that tab; reload or switching class/source requires retraining.
 
 With at least two demonstrations, action error is measured on a whole held-out
 trajectory before fitting the final policy on all selected examples. This error
-is not task success. Each new student, random-agent, and cloned-policy trial samples
-a fresh pose. Both upright vessels shift together by up to 2.5 cm horizontally;
-the pot also moves up to 1.5 cm vertically. The empty cup, full pot, 700 mL target,
-physics, and success rules stay the same. Keeping variation to two coordinates
-helps a small set of demonstrations cover the starting-state distribution.
+is not task success. Student demonstrations and the random-agent experiment sample
+independent horizontal and vertical offsets for each vessel. The cup varies by
+up to ±9 cm horizontally and ±5 cm vertically, and the pot by ±11 cm and ±7 cm.
+Vessels remain upright with an empty cup, full pot, and a 700 mL target. All 16
+extreme combinations and 2,000 random samples passed the environment's reset
+validation. These larger four-dimensional variations cover visibly different
+approaches, rather than shifting both vessels together.
 
-Cloning from the 15 generated demonstrations succeeded on 20/20 unseen starting
-seeds (12000–12019), with 699.385–702.381 mL in the cup and less than 0.004 mL spill.
-This is a calibration using consistent generated examples, not a guarantee for
-15 arbitrary student attempts. Successful student demonstrations should cover the
-varied starts. Seed and exact initial joints are preserved in every recording.
+Cloned-policy playback, fine-tuning exploration, and checkpoint evaluation use
+one fixed canonical pose: cup (-0.28, 0.28) m and pot (0.26, 0.62) m. Thus changes
+in policy behavior are not confounded by changes in the starting pose. Training
+examples remain varied and the fitted policy still acts on the current state.
+Seed and exact initial joints are preserved in every recording.
 
 ## Fine-tuning with reward
 
@@ -96,7 +98,14 @@ The browser first evaluates the original clone, then alternates exploratory tria
 actor–critic updates, and deterministic evaluations. The comparison reports actual
 environment return, fill, spill, duration, and success; the expandable history
 separates noisy training returns from evaluations without noise. **Watch original
-clone** and **Watch best policy** run fresh deterministic trials at normal speed.
+clone** and **Watch best policy** run fresh deterministic trials at the selected
+playback speed. Choose **4×**, **8×**, or **Fastest available** (default); the same
+control applies during training. Requested speeds are limited by the device.
+Every 1/32-second physics step and policy decision is still computed. Adaptive
+batches of up to 32 steps reduce rendering overhead while yielding for pause,
+stop, and speed changes. The simulator caches repeated geometry calculations,
+and hidden training steps omit render-only diagnostics; displayed frames still
+use the full renderer.
 
 A live learning curve sits beside the simulation on wider screens and stacks above
 it on phones. It plots exploration rewards, evaluations without noise, and the best
@@ -126,14 +135,12 @@ undiscounted finite 60-second task, including its timeout terminal penalty.
 It does not call the demonstration-generating controller or add expert corrections.
 
 The highest-return completed evaluation is retained, including the unchanged
-clone. Improvement is not guaranteed. Every new experiment samples an evaluation
-pose, then uses that same pose for the original clone and all updated checkpoints.
-Exploratory trials sample new poses independently. **Watch original clone** and
-**Watch best policy** reuse the experiment's evaluation pose so their rewards
-can be compared directly. The experiment seed and evaluation seed are included
-in results. This comparison measures refinement on one sampled pose, not average
-performance across the whole starting-state distribution. Exact results can vary
-slightly across numerical runtimes.
+clone. Improvement is not guaranteed. Exploration, evaluation, and the two policy
+playback buttons all use the same fixed pose across experiments. Only exploration
+action noise varies with the training seed. Results include that seed and the
+fixed environment seed. This comparison measures refinement on one pose, not
+average performance across the broader demonstration distribution. Exact results
+can vary slightly across numerical runtimes.
 
 Training runs in the instructor browser in bounded chunks so pause and stop remain
 responsive. Backgrounding the page pauses it. Stop retains only fully evaluated

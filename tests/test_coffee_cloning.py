@@ -164,7 +164,8 @@ def test_runtime_queries_current_observation_for_every_action(runtime):
     assert not np.array_equal(observed[0], observed[-1])
 
 
-def test_generated_examples_train_a_successful_closed_loop_policy(runtime):
+def test_varied_generated_examples_train_a_successful_policy_at_the_canonical_pose(runtime):
+    from kaist_rl_lab.apps.coffee_classroom import POLICY_START_SEED
     from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
     from kaist_rl_lab.apps.coffee_expert import EXAMPLE_COUNT, load_examples
 
@@ -173,7 +174,7 @@ def test_generated_examples_train_a_successful_closed_loop_policy(runtime):
     assert model["metrics"]["demonstrations"] == EXAMPLE_COUNT
     assert model["metrics"]["heldout_action_mae"] is not None
     call(runtime, "cloning-load", model=model)
-    call(runtime, "cloning-start", seed=12000)
+    call(runtime, "cloning-start", seed=POLICY_START_SEED)
     for _ in range(60 * 32):
         final = call(runtime, "tick")
         if final["cloning_agent"]["done"]:
