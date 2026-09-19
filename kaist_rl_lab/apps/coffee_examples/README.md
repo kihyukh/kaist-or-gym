@@ -74,32 +74,39 @@ pairs; it has no expert fallback. These fifteen recordings contain **17,473
 steps**, with **11,206 unique training samples**. The separate whole-trajectory
 held-out action MAE is **0.02542**. From the canonical policy pose (seed 7001), the
 clone succeeds with **672.054 mL**, less than 0.001 mL spilled, and **36.0625
-seconds**. Its undiscounted reward is **27.38892** and discounted return is
-**20.44806**. Its imperfect pouring accuracy is inherited from the practice data.
+seconds**. Under the original environment reward, its undiscounted total is
+**27.38892** and discounted return is **20.44806**. The separate RL time score used
+for fine-tuning is **51.00507**; it uses a different reward function. Its imperfect pouring accuracy is inherited from the practice data.
 
 The same clone was run closed-loop on twenty unseen classroom starts, seeds
 **12000–12019**, at 32 Hz, with the same 1.28 m geometry, 700 mL target, and
 60-second limit. **20/20** succeeded. Across those runs, final fill ranged from
 **671.899 to 686.221 mL**, spill stayed below **0.055 mL**, and duration ranged
-from **34.41 to 38.75 seconds**. Discounted returns ranged from **19.89630 to
-21.03761**. These are new rollouts, not predictions on stored demonstration frames.
+from **34.41 to 38.75 seconds**. Discounted returns of the original environment
+reward ranged from **19.89630 to 21.03761**. These are new rollouts, not predictions on stored demonstration frames.
 
-A **100-iteration** fine-tuning run with seed **2026**, the fixed canonical pose,
-and the unchanged bounded-speed actor-critic algorithm improved discounted return
-from **20.44806 to 20.92999** (**2.36%**), with its best noise-free evaluation at
-iteration **95**. That policy poured **680.444 mL** in **34.25 seconds**, reducing
-duration by **5.03%** and target error from **27.95 to 19.56 mL** (**30.0%**), with
-less than 0.001 mL spilled. All **100 evaluations succeeded**; replaying the best
-and final policies reproduced their evaluation metrics exactly.
+The current **10-iteration policy-search** benchmark was run with seeds **2026,
+2027, and 2028**, the fixed canonical pose, and the new RL time score. All three
+runs reached the 1.4× speed limit, at iterations **10, 10, and 8**, respectively.
+The best policy finished in **27.75 seconds**, compared with the clone's
+**36.0625 seconds**: **23.05% faster**. Its RL time score increased from **51.00507
+to 62.27926** (**22.10%**).
 
-Iteration 3 poured a more accurate **686.027 mL**, but took **35.8125 seconds**
-and scored **20.79698**. The discounted objective balances accuracy and speed,
-so the highest-scoring checkpoint need not have the closest final fill. The
-measured score gain is modest, and improvement is not monotonic; the best
-checkpoint is retained for replay.
+That faster policy poured **666.372 mL**, with less than 0.001 mL spilled. Its target
+error was **33.63 mL**, compared with the clone's **27.95 mL**. This is a real tradeoff:
+the unchanged task still accepts ±40 mL, and the time-focused objective prefers the
+faster successful pour despite its lower accuracy. All **30 current-policy
+evaluations succeeded**; **29 of 30 exploratory candidates succeeded**. The failed
+candidate remains in the recorded benchmark. Replaying each best policy through
+the instructor runtime reproduced its evaluation metrics exactly.
 
-These measurements show a real improvement from imperfect recorded behavior;
-they do not promise a particular gain on every training seed or student dataset.
+The [reproducible fine-tuning benchmark](../../../benchmarks/coffee_finetuning/README.md)
+compares both current methods and the earlier PPO baseline over these same seeds,
+including complete candidate/evaluation histories and both reward objectives.
+
+These measurements show improved speed and RL time score from imperfect recorded
+behavior. They do not promise a particular gain on every training seed or student
+dataset.
 Generated examples are only a proxy for a small class's data. Fifteen human
 demonstrations may have different coverage, quality, and consistency, and the
 held-out check does not establish robustness outside the tested start range.

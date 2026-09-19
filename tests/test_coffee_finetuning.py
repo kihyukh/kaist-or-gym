@@ -12,12 +12,14 @@ from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.apps.coffee_expert import load_examples
 from kaist_rl_lab.apps.coffee_finetuning import (
     ACTOR_FEATURES,
+    ACTOR_LEARNING_RATE,
     DEFAULT_EPISODES,
     LATENT_STD,
     MAX_EPISODES,
     MAX_LATENT_MEAN,
     MAX_MEAN_CHANGE,
     MAX_UPDATE_KL,
+    PPO_EPOCHS,
     SPEED_BOUND,
     STEP_DISCOUNT,
     FineTunedPolicy,
@@ -26,6 +28,7 @@ from kaist_rl_lab.apps.coffee_finetuning import (
     generalized_advantages,
     ppo_actor_update,
 )
+from kaist_rl_lab.apps.coffee_finetuning_reward import fine_tuning_reward
 from kaist_rl_lab.envs import CoffeePouringEnv
 
 
@@ -157,14 +160,14 @@ def test_real_training_uses_rewards_retains_best_and_replays_exactly(example_mod
             observation, current, terminal, truncated, info = env.step(
                 trainer.best_policy.predict(observation),
             )
-            reward += discount * current
+            reward += discount * fine_tuning_reward(info, BROWSER_DT)
             raw_reward += current
             discount *= STEP_DISCOUNT
             if terminal or truncated:
                 break
         assert reward == pytest.approx(result["best"]["return"], abs=1e-9)
         assert raw_reward == pytest.approx(result["best"]["raw_return"], abs=1e-9)
-        assert reward < raw_reward
+        assert reward != pytest.approx(raw_reward)
         assert env.fill * 1000 == pytest.approx(result["best"]["fill_ml"], abs=1e-9)
         assert info["is_success"] == result["best"]["success"]
         env.close()
@@ -205,17 +208,18 @@ def test_ppo_update_matches_finite_difference_of_clipped_objective():
             ).mean()
 
         expected = weights.copy()
-        for _ in range(4):
+        for _ in range(PPO_EPOCHS):
             gradient = np.array([
                 (objective(expected + 1e-6 * basis) - objective(expected - 1e-6 * basis)) / 2e-6
                 for basis in np.eye(ACTOR_FEATURES)
             ])
-            step = 0.025 * gradient / max(np.linalg.norm(gradient), 1.0)
+            step = ACTOR_LEARNING_RATE * gradient / max(np.linalg.norm(gradient), 1.0)
             for _ in range(16):
                 candidate = expected + step
                 delta = candidate - weights
                 kl = np.mean((x @ delta) ** 2) / (2 * LATENT_STD**2)
-                if 1.5 * abs(delta).sum() <= MAX_MEAN_CHANGE and kl <= MAX_UPDATE_KL:
+                if (1.5 * abs(delta).sum() <= MAX_MEAN_CHANGE and kl <= MAX_UPDATE_KL
+                        and 1.5 * abs(candidate).sum() <= max(MAX_LATENT_MEAN, 1.5 * abs(weights).sum())):
                     expected = candidate
                     break
                 step *= 0.5
@@ -290,8 +294,8 @@ def test_evaluation_is_greedy_current_policy_and_never_samples_noise(example_mod
         discounted = 0.0
         for step in range(20):
             action = trainer.policy.predict(observation)
-            observation, reward, _, _, _ = expected_env.step(action)
-            discounted += STEP_DISCOUNT**step * reward
+            observation, _, _, _, info = expected_env.step(action)
+            discounted += STEP_DISCOUNT**step * fine_tuning_reward(info, BROWSER_DT)
             trainer.step_chunk(1)
             np.testing.assert_array_equal(trainer.session.observation, observation)
             np.testing.assert_array_equal(trainer.session.trajectory[-1]['action'], action)

@@ -25,7 +25,8 @@ const fakePython={
     if(advancePhysics&&['ft-step','tick'].includes(currentCommand.kind)){
       const steps=currentCommand.max_steps||1;now+=steps*stepCost;
       if(currentCommand.kind==='ft-step')frame.finetuning.progress.total_steps+=steps;
-      else frame.finetuning.rollout.elapsed_seconds+=steps/32;
+      else if(frame.cloning_agent)frame.cloning_agent.step+=steps;
+      else if(frame.finetuning)frame.finetuning.rollout.elapsed_seconds+=steps/32;
     }
     return JSON.stringify(frame);
   }
@@ -207,4 +208,42 @@ step();assert.ok(commands.at(-1).max_steps>4);
 await send('pause',{snapshot:{playback:{paused:true,running:true}}});assert.equal(timers.size,0);
 await send('reset',{snapshot:{playback:{paused:false,running:true}}});step();
 assert.deepEqual(commands.at(-1),{kind:'tick'});assert.equal(pending()[0].delay,1000/32);
+""")
+
+
+def test_cloning_defaults_to_four_real_steps_and_paces_snapshots_at_32hz(tmp_path):
+    run_worker(tmp_path, r"""
+const cloning={snapshot:{playback:{paused:false,running:true}},cloning_agent:{step:0}};
+advancePhysics=true;stepCost=2;
+await send('cloning-start',cloning);step();
+assert.deepEqual(commands.at(-1),{kind:'tick',max_steps:4});
+assert.equal(messages.at(-1).cloning_agent.step,4);
+assert.equal(pending()[0].delay,1000/32-8);
+now=10000;step();assert.equal(commands.at(-1).max_steps,4);
+assert.equal(pending()[0].delay,1000/32-8);
+const previous=[...timers.keys()][0];frame.cloning_agent.playback_speed=8;
+await send('cloning-speed',null,{speed:8});
+assert.notEqual([...timers.keys()][0],previous);step();assert.equal(commands.at(-1).max_steps,8);
+frame.cloning_agent.playback_speed=1;await send('cloning-speed',null,{speed:1});
+step();assert.equal(commands.at(-1).max_steps,1);
+frame.snapshot.playback.paused=true;await send('cloning-pause',null,{paused:true});
+assert.equal(timers.size,0);
+""")
+
+
+def test_cloning_batches_adapt_and_student_random_controls_remain_one_step(tmp_path):
+    run_worker(tmp_path, r"""
+advancePhysics=true;stepCost=20;
+const cloning={snapshot:{playback:{paused:false,running:true}},cloning_agent:{step:0,playback_speed:4}};
+await send('cloning-start',cloning);step();const initial=commands.at(-1).max_steps;
+for(let index=0;index<6;index++)step();
+assert.ok(commands.at(-1).max_steps<initial);
+assert.ok(commands.at(-1).max_steps*stepCost<=50);
+frame.snapshot.playback.running=false;frame.snapshot.playback.paused=true;step();
+assert.equal(timers.size,0);
+advancePhysics=false;
+for(const kind of ['reset','random-start']){
+  await send(kind,{snapshot:{playback:{paused:false,running:true}}});step();
+  assert.deepEqual(commands.at(-1),{kind:'tick'});assert.equal(pending()[0].delay,1000/32);
+}
 """)

@@ -68,6 +68,7 @@ function node(selector){
   return nodes.get(selector);
 }
 node('#cloning-source').value='students';node('#cloning-successful').checked=true;
+node('#cloning-speed').value='4';
 const element={querySelector:node,querySelectorAll:()=>[]};
 const document={hidden:false,createElement:()=>new Node(),
   addEventListener:(event,callback)=>docListeners.set(event,callback)};
@@ -207,7 +208,7 @@ assert.equal(node('#cloning-run').disabled,true);
 worker.receive({loading:'Loading NumPy…'});assert.match(node('#cloning-status').textContent,/NumPy/);
 worker.receive(fixtures.initial);
 assert.deepEqual(worker.messages.at(-1),{kind:'cloning-load',model:fixtures.model});
-worker.receive(fixtures.loaded);assert.equal(worker.messages.at(-1).kind,'cloning-start');
+worker.receive(fixtures.loaded);assert.deepEqual(worker.messages.at(-1),{kind:'cloning-start',speed:4});
 worker.receive(fixtures.running);assert.equal(node('#cloning-scene').hidden,false);
 assert.equal(node('#cloning-trial').textContent,'1');
 assert.equal(node('#cloning-pause').disabled,false);
@@ -225,6 +226,23 @@ assert.equal(worker.messages.at(-1).kind,'cloning-start');
 assert.equal(requests.length,1);
 """,
     )
+
+
+def test_cloning_speed_control_defaults_to_four_and_updates_live_pacing(tmp_path, cloning_snapshots):
+    from kaist_rl_lab.apps.coffee_cloning_demo import CLONING_DEMO_HTML
+
+    assert '<option value="4" selected>4×</option>' in CLONING_DEMO_HTML
+    run_demo(tmp_path, cloning_snapshots, r"""
+await start();const worker=latest();
+assert.match(node('#cloning-status').textContent,/4× playback speed/);
+node('#cloning-speed').value='8';change('#cloning-speed');
+assert.deepEqual(worker.messages.at(-1),{kind:'cloning-speed',speed:8});
+assert.equal(node('#cloning-speed').disabled,true);
+const faster=JSON.parse(JSON.stringify(fixtures.running));faster.cloning_agent.playback_speed=8;
+worker.receive(faster);assert.equal(node('#cloning-speed').disabled,false);
+assert.match(node('#cloning-status').textContent,/8× playback speed/);
+click('#cloning-run');assert.deepEqual(worker.messages.at(-1),{kind:'cloning-start',speed:8});
+""")
 
 
 @pytest.mark.parametrize("change_type", ["source", "class", "filter", "logout"])

@@ -167,6 +167,65 @@ def test_runtime_queries_current_observation_for_every_action(runtime):
     assert not np.array_equal(observed[0], observed[-1])
 
 
+@pytest.mark.parametrize("terminal_after", [None, 3])
+def test_batched_cloning_ticks_match_single_steps_and_stop_exactly(runtime, terminal_after):
+    reference = CloningAgentRuntime()
+    observed = []
+
+    class StatePolicy:
+        def predict(self, observation):
+            observed.append(observation.copy())
+            return np.asarray([0, 0, 0, 0, 0, .2 + .1 * observation[0]], dtype=np.float32)
+
+    try:
+        for value in (runtime, reference):
+            value.policy = StatePolicy()
+            call(value, "cloning-start")
+            if terminal_after:
+                value.session.env.horizon = terminal_after
+        batched = call(runtime, "tick", max_steps=8)
+        count = len(observed)
+        for _ in range(8):
+            single = call(reference, "tick")
+        assert count == (terminal_after or 8)
+        assert len(observed) == count * 2
+        for index in range(count):
+            np.testing.assert_array_equal(observed[index], observed[index + count])
+        assert batched["cloning_agent"] == single["cloning_agent"]
+        assert batched["snapshot"] == single["snapshot"]
+        assert runtime.session.cumulative_reward == reference.session.cumulative_reward
+        np.testing.assert_array_equal(runtime.session.observation, reference.session.observation)
+        for actual, expected in zip(runtime.session.trajectory, reference.session.trajectory):
+            np.testing.assert_array_equal(actual["action"], expected["action"])
+            assert actual["reward"] == expected["reward"]
+    finally:
+        reference.session.close()
+
+
+def test_cloning_playback_defaults_to_four_and_speed_change_preserves_physics(runtime):
+    assert call(runtime, "snapshot")["cloning_agent"]["playback_speed"] == 4
+    call(runtime, "cloning-load", model=train_behavior_cloning([demonstration(np.zeros((2, 6)))]))
+    call(runtime, "cloning-start")
+    before = call(runtime, "tick", max_steps=4)
+    changed = call(runtime, "cloning-speed", speed=8)
+    assert changed["cloning_agent"]["playback_speed"] == 8
+    changed["cloning_agent"]["playback_speed"] = 4
+    assert changed == before
+    assert call(runtime, "cloning-reset")["cloning_agent"]["playback_speed"] == 8
+    assert call(runtime, "cloning-start", speed=1)["cloning_agent"]["playback_speed"] == 1
+
+
+@pytest.mark.parametrize("kind, key", [("cloning-speed", "speed"), ("cloning-start", "speed"), ("tick", "max_steps")])
+@pytest.mark.parametrize("value", [None, True, 0, 33, 1.5, "4"])
+def test_invalid_cloning_pacing_commands_leave_state_unchanged(runtime, kind, key, value):
+    call(runtime, "cloning-load", model=train_behavior_cloning([demonstration(np.zeros((2, 6)))]))
+    call(runtime, "cloning-start")
+    before = call(runtime, "tick")
+    with pytest.raises(ValueError):
+        call(runtime, kind, **{key: value})
+    assert call(runtime, "snapshot") == before
+
+
 def test_varied_generated_examples_train_a_successful_policy_at_the_canonical_pose(runtime):
     from kaist_rl_lab.apps.coffee_classroom import POLICY_START_SEED
     from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration

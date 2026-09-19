@@ -56,7 +56,7 @@ BROWSER_CSS = CANVAS_CSS + """
 
 WORKER_JAVASCRIPT = r"""
 let python, timer = null, deadline = 0, paused = true, running = true, training = false;
-let fineTuning=false,playbackSpeed=1,stepCostMs=6,trainingSteps=null,rolloutSteps=null;
+let fineTuning=false,policyPlayback=false,playbackSpeed=1,stepCostMs=6,trainingSteps=null,rolloutSteps=null;
 const interval = 1000 / 32;
 const PYODIDE_BASE = 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/';
 // Keep the browser's existing Gymnasium version. Loading these verified wheels
@@ -96,11 +96,14 @@ function emit(result) {
   const data = JSON.parse(result), p = data.snapshot.playback;
   paused = p.paused; running = p.running;
   fineTuning = !!data.finetuning;
+  policyPlayback = fineTuning || !!data.cloning_agent;
   training = !!data.finetuning?.training_running;
   const speed=data.finetuning?.playback_speed;
-  playbackSpeed=fineTuning&&[0,4,8].includes(speed)?speed:training?0:1;
+  playbackSpeed=data.cloning_agent?
+    ([1,4,8].includes(data.cloning_agent.playback_speed)?data.cloning_agent.playback_speed:4):
+    fineTuning&&[0,4,8].includes(speed)?speed:training?0:1;
   trainingSteps=data.finetuning?.progress?.total_steps;
-  rolloutSteps=data.finetuning?.rollout?.elapsed_seconds*32;
+  rolloutSteps=fineTuning?data.finetuning?.rollout?.elapsed_seconds*32:data.cloning_agent?.step;
   postMessage(data);
 }
 function dispatch(command) {
@@ -112,9 +115,9 @@ function schedule() {
   timer = setTimeout(() => {
     timer = null;
     try {
-      const wasTraining=training,wasFineTuning=fineTuning,speed=playbackSpeed;
+      const wasTraining=training,wasPolicyPlayback=policyPlayback,speed=playbackSpeed;
       const started=performance.now();
-      if (wasFineTuning) {
+      if (wasPolicyPlayback) {
         // Batch real 1/32-second physics steps, requerying the policy each time.
         // Adapt toward <=50 ms of work so pause/speed messages remain responsive.
         let steps=Math.max(1,Math.min(32,Math.floor(50/stepCostMs)));
@@ -157,7 +160,7 @@ self.onmessage = async ({data}) => {
     if (!python) return;
     const wasPaused = paused;
     dispatch(data);
-    const restarting = ['reset','random-start','random-reset','cloning-load','cloning-start','cloning-reset',
+    const restarting = ['reset','random-start','random-reset','cloning-load','cloning-start','cloning-reset','cloning-speed',
       'ft-load','ft-train','ft-run','ft-reset','ft-stop','ft-speed'].includes(data.kind);
     if ((!training && (paused || !running)) || restarting) {
       clearTimeout(timer); timer = null;

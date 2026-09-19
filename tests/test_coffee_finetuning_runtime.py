@@ -43,8 +43,9 @@ class FakeTrainer:
 
     instances: ClassVar[list] = []
 
-    def __init__(self, model, *, seed, episodes):
+    def __init__(self, model, *, seed, episodes, strategy):
         self.model = deepcopy(model)
+        self.strategy = strategy
         self.seed = seed
         self.episodes = episodes
         self.session = module._new_session()
@@ -431,7 +432,8 @@ def test_discounted_watch_return_uses_physics_time_independent_of_speed_pause_an
     partial = call(runtime, "tick", max_steps=4)
     partial_reward = partial["finetuning"]["rollout"]["reward"]
     rewards = np.array([row["reward"] for row in runtime.session.trajectory])
-    assert partial_reward == pytest.approx(np.dot(module.STEP_DISCOUNT ** np.arange(4), rewards))
+    idle_reward = 14 * (1 - module.STEP_DISCOUNT) - module.BROWSER_DT
+    assert partial_reward == pytest.approx(np.sum(module.STEP_DISCOUNT ** np.arange(4) * idle_reward))
     assert partial["finetuning"]["rollout"]["raw_return"] == pytest.approx(rewards.sum())
     paused = call(runtime, "ft-pause", paused=True)
     assert call(runtime, "tick", max_steps=32) == paused
@@ -442,7 +444,9 @@ def test_discounted_watch_return_uses_physics_time_independent_of_speed_pause_an
     rewards = np.array([row["reward"] for row in runtime.session.trajectory])
     rollout = completed["finetuning"]["rollout"]
     assert rollout["done"] and len(rewards) == 9
-    assert rollout["reward"] == pytest.approx(np.dot(module.STEP_DISCOUNT ** np.arange(9), rewards))
+    expected_rewards = np.full(9, idle_reward)
+    expected_rewards[-1] = -module.BROWSER_DT + 14 - 100 - 100 * .7
+    assert rollout["reward"] == pytest.approx(np.dot(module.STEP_DISCOUNT ** np.arange(9), expected_rewards))
     assert rollout["raw_return"] == pytest.approx(rewards.sum())
     assert rollout["reward"] != pytest.approx(rollout["raw_return"])
     assert call(runtime, "tick", max_steps=32) == completed
@@ -463,7 +467,8 @@ def test_live_training_and_completed_scene_use_the_trainers_discounted_return(
     call(runtime, "ft-train", episodes=1, seed=2026)
     partial = call(runtime, "ft-step", max_steps=3)["finetuning"]
     rewards = np.array([row["reward"] for row in runtime.session.trajectory])
-    expected = np.dot(module.STEP_DISCOUNT ** np.arange(3), rewards)
+    idle_reward = 14 * (1 - module.STEP_DISCOUNT) - module.BROWSER_DT
+    expected = np.sum(module.STEP_DISCOUNT ** np.arange(3) * idle_reward)
     assert partial["progress"]["reward"] == pytest.approx(expected)
     assert partial["progress"]["raw_return"] == pytest.approx(rewards.sum())
     completed = call(runtime, "ft-step", max_steps=32)["finetuning"]

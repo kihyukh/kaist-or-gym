@@ -103,7 +103,7 @@ function node(selector){
   }
   return nodes.get(selector);
 }
-node('#ft-episodes').value='100';node('#ft-speed').value='0';
+node('#ft-episodes').value='10';node('#ft-strategy').value='policy_search';node('#ft-speed').value='0';node('#ft-playback-speed').value='4';
 const stages=['baseline','training','update','evaluation'].map(stage=>{const item=node('#ft-stage-'+stage);item.setAttribute('data-ft-stage',stage);return item;});
 const element={querySelector:node,querySelectorAll:selector=>selector==='[data-ft-stage]'?stages:[]};
 const document={hidden:false,createElement:tag=>new Node(tag),createElementNS:(_,tag)=>new Node(tag),
@@ -170,7 +170,7 @@ assert.deepEqual(worker.messages,[{kind:'init',mode:'finetuning',bundle_url:'htt
 click('#ft-train');assert.equal(workers.length,1);assert.equal(beforeRunCount,1);
 worker.receive({loading:'Loading NumPy…'});assert.match(node('#ft-status').textContent,/NumPy/);
 worker.receive(fixtures.initial);assert.deepEqual(worker.messages.at(-1),{kind:'ft-load',model:fixtures.model});
-worker.receive(fixtures.loaded);assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:100,speed:0});
+worker.receive(fixtures.loaded);assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:10,strategy:'policy_search',speed:0});
 worker.receive(fixtures.training);assert.equal(node('#ft-scene').hidden,false);
 assert.equal(node('#ft-train').disabled,true);assert.equal(node('#ft-episodes').disabled,true);
 assert.equal(node('#ft-pause').disabled,false);assert.equal(node('#ft-stop').disabled,false);
@@ -179,21 +179,32 @@ assert.equal(worker.messages.some(message=>message.kind==='ft-step'||message.kin
 """)
 
 
-def test_iteration_selector_defaults_to_one_hundred_and_reward_is_explained_visibly():
+def test_ten_iteration_default_and_time_objective_are_explained_visibly():
     options = re.search(r'<select id="ft-episodes">(.*?)</select>', FINETUNING_HTML, re.DOTALL).group(1)
-    assert re.findall(r'<option value="(\d+)"', options) == ["25", "50", "100"]
-    assert '<option value="100" selected>' in options
+    assert re.findall(r'<option value="(\d+)"', options) == ["10", "25", "50", "100"]
+    assert '<option value="10" selected>' in options
+    assert '<option value="policy_search" selected>' in FINETUNING_HTML
+    assert '<option value="ppo">' in FINETUNING_HTML
+    playback = re.search(r'<select id="ft-playback-speed">(.*?)</select>', FINETUNING_HTML, re.DOTALL).group(1)
+    assert '<option value="4" selected>' in playback
     explanation = FINETUNING_HTML.split('id="ft-reward-explanation"', 1)[1].split('</section>', 1)[0]
     assert 'hidden' not in explanation.split('>', 1)[0]
     assert 'Earlier reward counts more.' in explanation
-    assert 'discounted return' in explanation
-    assert 'undiscounted total reward' in explanation
+    assert 'RL time score' in explanation
+    assert 'undiscounted recorded reward' in explanation
+    assert 'otherwise −100' in explanation
+    assert '− 100 × final error' in explanation
+    assert 'γΦₜ₊₁ − Φₜ' in explanation
+    assert 'Φ = 0 at every terminal state' in explanation
+    assert '1 point' in explanation
+    assert '− 0.008dt' not in explanation
     assert 'γ = 0.99<sup>1/32</sup>' in explanation
 
 
 def test_training_pause_resume_and_live_counters(tmp_path, finetuning_snapshots):
     run_demo(tmp_path, finetuning_snapshots, r"""
 start();const worker=latest();const training=clone(fixtures.training);
+training.finetuning.result.strategy='ppo';training.finetuning.result.algorithm='bounded_speed_ppo_actor_critic';
 Object.assign(training.finetuning.progress,{phase:'training',episode:3,completed_episodes:2,elapsed_seconds:12.5,reward:-14.25});
 worker.receive(training);assert.match(node('#ft-status').textContent,/Exploring nearby actions/);
 assert.match(node('#ft-progress').textContent,/Completed 2 \/ 4/);
@@ -203,7 +214,26 @@ worker.receive(fixtures.paused);assert.equal(node('#ft-pause').textContent,'Resu
 click('#ft-pause');assert.deepEqual(worker.messages.at(-1),{kind:'ft-pause',paused:false});
 assert.equal(beforeRunCount,2);worker.receive(fixtures.training);
 const evaluation=clone(training);evaluation.finetuning.progress.phase='evaluation';
-worker.receive(evaluation);assert.match(node('#ft-status').textContent,/Testing the updated policy/);
+worker.receive(evaluation);assert.match(node('#ft-status').textContent,/Testing the current policy/);
+""")
+
+
+def test_method_choice_is_sent_and_locked_while_training(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+enable();node('#ft-strategy').value='ppo';node('#ft-strategy').listeners.change();
+assert.match(node('#ft-method-description').textContent,/critic.*predict future score/i);
+node('#ft-episodes').value='25';click('#ft-train');const worker=latest();
+assert.equal(node('#ft-strategy').disabled,true);
+worker.receive(fixtures.initial);worker.receive(fixtures.loaded);
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:25,strategy:'ppo',speed:0});
+worker.receive(fixtures.training);assert.equal(node('#ft-strategy').disabled,true);
+worker.receive(fixtures.completed);assert.equal(node('#ft-strategy').disabled,false);
+node('#ft-strategy').value='policy_search';node('#ft-strategy').listeners.change();
+assert.match(node('#ft-method-description').textContent,/paired faster\/slower/);
+click('#ft-train');assert.equal(worker.messages.at(-1).strategy,'policy_search');
+const search=clone(fixtures.training);search.finetuning.result.strategy='policy_search';
+search.finetuning.progress.phase='training';worker.receive(search);
+assert.match(node('#ft-status').textContent,/Testing a candidate speed/);
 """)
 
 
@@ -287,6 +317,20 @@ assert.equal(node('#ft-exploration').hidden,true);assert.equal(node('#ft-explora
 """)
 
 
+def test_paired_search_summary_uses_shared_pair_center(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const frame=clone(fixtures.completed);
+frame.finetuning.result.strategy='policy_search';
+frame.finetuning.result.history[0].update={
+  accepted:false,actor_change:0,candidate_speed:.9,pair_center:1,
+  exploration:{kind:'paired_parameter',speed_min:.9,speed_max:.9,slower_decisions:1,faster_decisions:0}};
+latest().receive(frame);
+assert.equal(node('#ft-exploration').textContent,'Candidate: 90.0% of cloned speed · pair centered at 100.0%.');
+assert.doesNotMatch(node('#ft-exploration').textContent,/policy being explored|adjustments/);
+assert.equal(cells('#ft-history-rows')[0][3],'No change');
+""")
+
+
 def test_stop_early_never_enables_unevaluated_policy_and_new_training_clears_results(
     tmp_path, finetuning_snapshots,
 ):
@@ -307,7 +351,7 @@ def test_watching_base_policy_requires_no_rl_training_and_pause_reset_are_scoped
 ):
     run_demo(tmp_path, finetuning_snapshots, r"""
 enable();click('#ft-run-base');const worker=latest();worker.receive(fixtures.initial);worker.receive(fixtures.loaded);
-assert.deepEqual(worker.messages.at(-1),{kind:'ft-run',policy:'base',speed:0});
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-run',policy:'base',speed:4});
 assert.equal(kinds(worker).includes('ft-train'),false);worker.receive(fixtures.running);
 assert.match(node('#ft-status').textContent,/without exploration noise/);
 click('#ft-pause');worker.receive(fixtures.rollout_paused);assert.equal(node('#ft-pause').textContent,'Resume');
@@ -394,7 +438,7 @@ enable();assert.equal(node('#ft-speed').value,'0');assert.equal(node('#ft-speed'
 node('#ft-speed').value='4';node('#ft-speed').listeners.change();assert.equal(workers.length,0);
 click('#ft-train');const worker=latest();assert.equal(node('#ft-speed').disabled,true);
 worker.receive(fixtures.initial);worker.receive(fixtures.loaded);
-assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:100,speed:4});
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:10,strategy:'policy_search',speed:4});
 const training=clone(fixtures.training);training.finetuning.playback_speed=4;worker.receive(training);
 assert.equal(node('#ft-speed').disabled,false);assert.match(node('#ft-progress').textContent,/4× requested/);
 const starts=kinds(worker).filter(kind=>kind==='ft-train').length;
@@ -409,5 +453,10 @@ assert.deepEqual(worker.messages.at(-1),{kind:'ft-speed',speed:0});
 training.finetuning.playback_speed=0;worker.receive(training);
 assert.match(node('#ft-progress').textContent,/fastest available/);
 worker.receive(fixtures.completed);node('#ft-speed').value='8';
-click('#ft-run-best');assert.deepEqual(worker.messages.at(-1),{kind:'ft-run',policy:'best',speed:8});
+click('#ft-run-best');assert.deepEqual(worker.messages.at(-1),{kind:'ft-run',policy:'best',speed:4});
+worker.receive(fixtures.running);node('#ft-playback-speed').value='8';node('#ft-playback-speed').listeners.change();
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-speed',speed:8});
+worker.receive(fixtures.running);const before=worker.messages.length;
+node('#ft-speed').value='0';node('#ft-speed').listeners.change();assert.equal(worker.messages.length,before);
+worker.receive(fixtures.completed);click('#ft-train');assert.equal(worker.messages.at(-1).speed,0);
 """)

@@ -28,6 +28,9 @@ CLONING_DEMO_HTML = """
           <button id="cloning-run" class="primary" type="button" disabled>Run cloned policy</button>
           <button id="cloning-pause" type="button" disabled>Pause policy</button>
           <button id="cloning-reset" type="button" disabled>Reset policy trial</button>
+          <label for="cloning-speed">Playback speed
+            <select id="cloning-speed"><option value="1">1×</option><option value="4" selected>4×</option>
+              <option value="8">8×</option></select></label>
         </div>
         <div id="cloning-scene" hidden>
           <div class="random-readout" aria-live="off">
@@ -45,6 +48,7 @@ CLONING_DEMO_HTML = """
             </div>
           </div></div>
           <p class="hint">This is a live policy acting on the current state, not a recording replay.
+            Playback starts at 4× speed; the policy still chooses every simulation step.
             Policy playback reuses one fixed starting pose so you can compare repeated runs. Training demonstrations cover a wider range of random starts.</p>
         </div>
       </section>
@@ -72,6 +76,7 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
   let enabled=false,context={id:null,name:'',total:0,successful:0};
   let model=null,worker=null,state=null,epoch=0,training=false,loading=false;
   let pendingStart=false,pendingCommand=false,pauseRequested=false,modelSent=false;
+  const playbackSpeed=()=>[1,4,8].includes(Number($('#cloning-speed').value))?Number($('#cloning-speed').value):4;
   function status(message,error=false) {
     $('#cloning-status').textContent=message;$('#cloning-status').classList.toggle('error',error);
   }
@@ -93,6 +98,7 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
     $('#cloning-pause').disabled=!enabled||training||loading||pendingCommand||!state?.attempt||state.done;
     $('#cloning-pause').textContent=displayState?.paused?'Resume policy':'Pause policy';
     $('#cloning-reset').disabled=!enabled||training||loading||pendingCommand||!state;
+    $('#cloning-speed').disabled=!enabled||training||loading||pendingCommand;
   }
   function stopWorker() {
     if(worker)worker.terminate();worker=null;
@@ -162,7 +168,7 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
     }
     if(!state.model_loaded){fail('The trained policy could not be loaded.');return;}
     if(document.hidden||pauseRequested)pendingStart=false;
-    if(pendingStart){pendingStart=false;send({kind:'cloning-start'});return;}
+    if(pendingStart){pendingStart=false;send({kind:'cloning-start',speed:playbackSpeed()});return;}
     $('#cloning-scene').hidden=false;drawFrame(displayState);
     $('#cloning-trial').textContent=String(state.attempt);
     $('#cloning-time').textContent=state.elapsed_seconds.toFixed(1)+' / '+state.limit_seconds.toFixed(1)+' s';
@@ -170,7 +176,8 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
     $('#cloning-outcome').textContent=state.done?outcome:!state.attempt?'Ready':displayState.paused?'Paused':'Running';
     status(state.done?'Trial complete · '+outcome+' · '+Math.round(displayState.fill*1000)+' mL in the cup, '+
       Math.round(displayState.spill*1000)+' mL spilled.':!state.attempt?'Policy loaded. Click Run cloned policy.':
-      displayState.paused?'Policy paused. Resume to continue.':'Running the cloned policy on the current state.');
+      displayState.paused?'Policy paused. Resume to continue.':'Running the cloned policy at '+
+        (state.playback_speed||playbackSpeed())+'× playback speed.');
     if((document.hidden||pauseRequested)&&state.attempt&&!state.done&&!displayState.paused){
       send({kind:'cloning-pause',paused:true});return;
     }
@@ -179,7 +186,7 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
   function run() {
     if(!enabled||!model||training||loading||pendingCommand)return;
     beforeRun();pauseRequested=false;
-    if(worker){send({kind:'cloning-start'});return;}
+    if(worker){send({kind:'cloning-start',speed:playbackSpeed()});return;}
     pendingStart=true;loading=true;modelSent=false;controls();status('Loading the policy simulation…');
     try {
       const current=new Worker('/coffee-worker.js',{type:'module'});worker=current;
@@ -199,6 +206,9 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
     pauseRequested=!displayState?.paused;send({kind:'cloning-pause',paused:pauseRequested});
   });
   $('#cloning-reset').addEventListener('click',()=>send({kind:'cloning-reset'}));
+  $('#cloning-speed').addEventListener('change',()=>{
+    if(worker&&state?.model_loaded)send({kind:'cloning-speed',speed:playbackSpeed()});
+  });
   $('#cloning-source').addEventListener('change',()=>{clearPolicy();dataset();controls();});
   $('#cloning-successful').addEventListener('change',()=>{clearPolicy();controls();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});

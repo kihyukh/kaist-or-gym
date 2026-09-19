@@ -1,17 +1,13 @@
-"""Small NumPy actor-critic that refines a frozen behavior-cloned policy.
+"""Two small reward learners that refine a frozen behavior-cloned policy.
 
-The actor chooses one shared speed multiplier, not six unconstrained controls.
-Every motor command stays within 15% of its BC command and zero BC commands stay
-zero. A Gaussian latent action is squashed with tanh; its fixed transform is
-part of the environment, so PPO ratios use the retained Gaussian latent value.
-
-The objective discounts the environment reward by 0.99 per simulated second.
-The time limit is part of this task and receives zero value bootstrap,
-just like success/failure. A learned linear critic supplies GAE advantages.
-Checkpoints are evaluated without exploration and the unchanged BC checkpoint
-is retained whenever training does not improve the actual evaluation return.
+Paired policy search tests coherent faster/slower versions of the current
+policy. PPO instead learns a state-dependent speed actor with a linear critic.
+Both query BC at each physical step, preserve motor directions, and use the same
+time-focused discounted objective. Every exploration trial is followed by a
+separate noise-free evaluation; only evaluated checkpoints are offered for replay.
 """
 
+from copy import deepcopy
 from typing import Any
 
 import numpy as np
@@ -23,22 +19,29 @@ from kaist_rl_lab.apps.coffee_classroom import (
     fixed_policy_layout,
 )
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
+from kaist_rl_lab.apps.coffee_finetuning_reward import DISCOUNT_PER_SECOND, fine_tuning_reward
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
-SPEED_BOUND = 0.15
-LATENT_STD = 0.65
-MAX_UPDATE_KL = 0.01
-MAX_MEAN_CHANGE = 0.10
+SPEED_BOUND = 0.5
+LATENT_STD = 0.5
+MAX_UPDATE_KL = 0.08
+MAX_MEAN_CHANGE = 0.6
 MAX_LATENT_MEAN = 1.25
-DECISION_STEPS = 8
+DECISION_STEPS = 16
+PPO_EPOCHS = 12
+ACTOR_LEARNING_RATE = 0.15
 TRIAL_STEPS = 60 * 32
 DEFAULT_EPISODES = 100
 MAX_EPISODES = 100
 ACTOR_FEATURES = 5
 GAE_LAMBDA = 0.95
-DISCOUNT_PER_SECOND = 0.99
 STEP_DISCOUNT = DISCOUNT_PER_SECOND**BROWSER_DT
 CRITIC_RETENTION = 0.95
+STRATEGIES = ("policy_search", "ppo")
+SEARCH_SPEED_MIN = 0.7
+SEARCH_SPEED_MAX = 1.4
+SEARCH_RADIUS_MIN = 0.08
+SEARCH_RADIUS_MAX = 0.12
 
 
 def actor_features(observation: np.ndarray) -> np.ndarray:
@@ -88,7 +91,7 @@ def generalized_advantages(rewards, values, *, discounts=None, trace_decay=GAE_L
     return advantages
 
 
-def ppo_actor_update(weights, features, latent, advantages, *, epochs=4, discount_weights=None):
+def ppo_actor_update(weights, features, latent, advantages, *, epochs=PPO_EPOCHS, discount_weights=None):
     """Clipped policy gradient with explicit sampled-state Gaussian KL backtracking.
 
     Fixed variance makes KL analytic. The L1 parameter-change limit additionally
@@ -118,7 +121,7 @@ def ppo_actor_update(weights, features, latent, advantages, *, epochs=4, discoun
         length = float(np.linalg.norm(gradient))
         if not np.isfinite(length) or length < 1e-12:
             break
-        step = 0.025 * gradient / max(length, 1.0)
+        step = ACTOR_LEARNING_RATE * gradient / max(length, 1.0)
         for _ in range(16):
             candidate = current + step
             delta = candidate - original
@@ -167,14 +170,31 @@ class FineTunedPolicy:
         return np.clip(action * (1 + gain), -1, 1).astype(np.float32)
 
 
+class ScaledClonedPolicy:
+    """A state-feedback clone with one learned global speed parameter."""
+
+    def __init__(self, base: NearestNeighborPolicy, multiplier=1.0):
+        if not np.isfinite(multiplier) or not SEARCH_SPEED_MIN <= multiplier <= SEARCH_SPEED_MAX:
+            raise ValueError("Invalid policy-search speed multiplier.")
+        self.base = base
+        self.multiplier = float(multiplier)
+        self.weights = np.array([self.multiplier])
+
+    def predict(self, observation: np.ndarray) -> np.ndarray:
+        return np.clip(self.base.predict(observation) * self.multiplier, -1, 1).astype(np.float32)
+
+
 class FineTuningTrainer:
     """Incremental training: a browser worker can yield between bounded chunks."""
 
-    def __init__(self, model: dict[str, Any], *, seed=2026, episodes=DEFAULT_EPISODES):
+    def __init__(self, model: dict[str, Any], *, seed=2026, episodes=DEFAULT_EPISODES, strategy="ppo"):
         if type(seed) is not int or not 0 <= seed <= 2**32 - 1:
             raise ValueError("Training seed must be a 32-bit nonnegative integer.")
         if type(episodes) is not int or not 1 <= episodes <= MAX_EPISODES:
             raise ValueError(f"Choose between 1 and {MAX_EPISODES} training episodes.")
+        if strategy not in STRATEGIES:
+            raise ValueError("Choose policy_search or ppo for fine-tuning.")
+        self.strategy = strategy
         self.base = NearestNeighborPolicy(model)
         if self.base.arm_base_distance != ARM_BASE_DISTANCE_M:
             raise ValueError("This policy uses different arm spacing. Retrain behavior cloning for this classroom.")
@@ -183,8 +203,12 @@ class FineTuningTrainer:
         self.base.actions = self.base.actions.copy()
         self.base.states.flags.writeable = False
         self.base.actions.flags.writeable = False
-        self.policy = FineTunedPolicy(self.base)
-        self.best_policy = FineTunedPolicy(self.base)
+        self.policy = (ScaledClonedPolicy(self.base) if strategy == "policy_search"
+                       else FineTunedPolicy(self.base))
+        self.best_policy = deepcopy(self.policy)
+        self.search_proposals = []
+        self.search_center = 1.0
+        self.candidate_policy = None
         self.rng = np.random.default_rng(seed)
         # Demonstrations cover varied poses; this experiment changes only the
         # policy. Every exploration/evaluation starts from the same fixed pose.
@@ -224,8 +248,20 @@ class FineTuningTrainer:
         self.discount_factor = 1.0
         self.decision_remaining = 0
         self.latent = 0.0
+        if self.strategy == "policy_search" and self.phase == "training":
+            if not self.search_proposals:
+                self.search_center = self.policy.multiplier
+                radius = float(self.rng.uniform(SEARCH_RADIUS_MIN, SEARCH_RADIUS_MAX))
+                self.search_proposals = [
+                    float(np.clip(self.search_center + sign * radius, SEARCH_SPEED_MIN, SEARCH_SPEED_MAX))
+                    for sign in self.rng.permutation([-1, 1])
+                ]
+            self.candidate_policy = ScaledClonedPolicy(self.base, self.search_proposals.pop(0))
 
     def _begin_decision(self):
+        if self.strategy == "policy_search":
+            self.decision_remaining = DECISION_STEPS
+            return
         features = actor_features(self.session.observation)
         mean = float(features @ self.policy.weights) if self.phase != "baseline" else 0.0
         self.latent = float(self.rng.normal(mean, LATENT_STD)) if self.phase == "training" else mean
@@ -272,19 +308,38 @@ class FineTuningTrainer:
             self.baseline = metrics
             self.best = dict(metrics)
             self.best["episode"] = 0
-            self._fit_critic()
+            if self.strategy == "ppo":
+                self._fit_critic()
             self.episode = 1
             self.phase = "training"
         elif self.phase == "training":
-            advantages = generalized_advantages(
-                self.rollout_rewards, self.rollout_values, discounts=self.rollout_discounts,
-            )
-            self.policy.weights, self.update = ppo_actor_update(
-                self.policy.weights, self.rollout_features, self.rollout_latent, advantages,
-                discount_weights=self.rollout_discount_weights,
-            )
-            self.update["exploration"] = self._exploration_metrics()
-            self._fit_critic()
+            if self.strategy == "policy_search":
+                old_speed = self.policy.multiplier
+                candidate_speed = self.candidate_policy.multiplier
+                accepted = metrics["return"] > self.best["return"]
+                if accepted:
+                    self.policy = self.candidate_policy
+                self.update = {
+                    "actor_change": abs(self.policy.multiplier - old_speed),
+                    "accepted": accepted, "pair_center": self.search_center,
+                    "candidate_speed": candidate_speed,
+                    "exploration": {
+                        "kind": "paired_parameter", "decisions": 1,
+                        "speed_min": candidate_speed, "speed_max": candidate_speed,
+                        "slower_decisions": int(candidate_speed < self.search_center),
+                        "faster_decisions": int(candidate_speed > self.search_center),
+                    },
+                }
+            else:
+                advantages = generalized_advantages(
+                    self.rollout_rewards, self.rollout_values, discounts=self.rollout_discounts,
+                )
+                self.policy.weights, self.update = ppo_actor_update(
+                    self.policy.weights, self.rollout_features, self.rollout_latent, advantages,
+                    epochs=PPO_EPOCHS, discount_weights=self.rollout_discount_weights,
+                )
+                self.update["exploration"] = self._exploration_metrics()
+                self._fit_critic()
             self.history.append({
                 "episode": self.episode, "training": metrics,
                 "evaluation": None, "update": dict(self.update),
@@ -294,7 +349,7 @@ class FineTuningTrainer:
             self.history[-1]["evaluation"] = metrics
             if metrics["return"] > self.best["return"]:
                 self.best = {**metrics, "episode": self.episode}
-                self.best_policy = FineTunedPolicy(self.base, self.policy.weights)
+                self.best_policy = deepcopy(self.policy)
             if self.episode >= self.episodes:
                 self.done = True
                 self.phase = "complete"
@@ -329,18 +384,23 @@ class FineTuningTrainer:
                 self._begin_decision()
             # Requery BC at every new physical state even while holding a
             # sampled speed: no prerecorded action timeline is replayed.
-            latent = self.latent
-            if self.phase == "evaluation":
-                latent = float(actor_features(self.session.observation) @ self.policy.weights)
-            action = self.policy.action_with_latent(self.session.observation, latent)
+            if self.strategy == "policy_search":
+                active_policy = self.candidate_policy if self.phase == "training" else self.policy
+                action = active_policy.predict(self.session.observation)
+            else:
+                latent = self.latent
+                if self.phase == "evaluation":
+                    latent = float(actor_features(self.session.observation) @ self.policy.weights)
+                action = self.policy.action_with_latent(self.session.observation, latent)
             for index, value in enumerate(action):
                 self.session.set_motor(index, float(value))
             self.session.advance()
-            reward = self.session.trajectory[-1]["reward"]
+            reward = fine_tuning_reward(self.session.info, BROWSER_DT)
             self.discounted_return += self.discount_factor * reward
             self.discount_factor *= STEP_DISCOUNT
-            self.rollout_rewards[-1] += self.rollout_discounts[-1] * reward
-            self.rollout_discounts[-1] *= STEP_DISCOUNT
+            if self.strategy == "ppo":
+                self.rollout_rewards[-1] += self.rollout_discounts[-1] * reward
+                self.rollout_discounts[-1] *= STEP_DISCOUNT
             self.decision_remaining -= 1
             self.total_steps += 1
             if not self.session.running:
@@ -349,7 +409,13 @@ class FineTuningTrainer:
 
     def result(self):
         return {
-            "algorithm": "bounded_speed_ppo_actor_critic",
+            "algorithm": ("bounded_paired_policy_search" if self.strategy == "policy_search"
+                          else "bounded_speed_ppo_actor_critic"),
+            "strategy": self.strategy,
+            "speed_multiplier": getattr(self.policy, "multiplier", None),
+            "best_speed_multiplier": getattr(self.best_policy, "multiplier", None),
+            "search_speed_range": [SEARCH_SPEED_MIN, SEARCH_SPEED_MAX],
+            "search_radius_range": [SEARCH_RADIUS_MIN, SEARCH_RADIUS_MAX],
             "phase": self.phase,
             "done": self.done,
             "episode": self.episode,

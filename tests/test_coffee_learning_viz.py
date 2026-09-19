@@ -129,6 +129,7 @@ def run_viz(tmp_path, state, assertions):
 
 def test_chart_separates_exploration_evaluation_and_best_checkpoint(tmp_path, learning_state):
     run_viz(tmp_path, learning_state, r"""
+node('#ft-chart-candidates').checked=true;
 viz.render(fixture);
 assert.equal(points('exploration').length,4);
 assert.equal(points('evaluation').length,4);
@@ -145,6 +146,49 @@ assertFiniteSvg();
 """)
 
 
+def test_candidate_toggle_keeps_failure_evidence_and_inspection_available(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+const state=clone(fixture);state.result.history[0].training={return:-100,success:false};
+assert.equal(node('#ft-chart-candidates').checked,false);viz.render(state);
+assert.equal(points('exploration').length,0);assert.equal(points('evaluation').length,4);
+assert.ok(numeric(svg(),'data-y-min')>-5,'Default axis follows evaluated policies');
+assert.match(node('#ft-candidate-summary').textContent,/4 completed.*1 unsuccessful.*not plotted/);
+node('#ft-chart-trial').value='1';fire(node('#ft-chart-trial'),'change');
+assert.match(node('#ft-chart-inspector').textContent,/Candidate \/ exploration -100.000/);
+node('#ft-chart-candidates').checked=true;fire(node('#ft-chart-candidates'),'change');
+assert.equal(points('exploration').length,4);assert.ok(numeric(svg(),'data-y-min')<-100);
+assert.match(node('#ft-candidate-summary').textContent,/1 unsuccessful.*shown on chart/);
+assert.equal(selected(),'1');
+node('#ft-chart-candidates').checked=false;fire(node('#ft-chart-candidates'),'change');
+assert.equal(points('exploration').length,0);assert.equal(selected(),'1');
+assert.match(node('#ft-chart-inspector').textContent,/-100.000/);
+node('#ft-chart-candidates').checked=true;fire(node('#ft-chart-candidates'),'change');
+viz.reset();assert.equal(node('#ft-chart-candidates').checked,false);
+assert.equal(node('#ft-candidate-summary').textContent,'');assertFiniteSvg();
+""")
+
+
+def test_policy_search_counts_accepted_updates_and_inspects_rejected_candidates(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+node('#ft-chart-candidates').checked=true;
+const state=clone(fixture);state.result.strategy='policy_search';
+state.result.algorithm='bounded_paired_policy_search';
+state.training_active=true;state.paused=false;state.result.done=false;
+state.progress.phase='training';state.progress.episode=4;
+state.result.history.forEach((row,index)=>{row.update={accepted:index===1,actor_change:.02};});
+viz.render(state);
+assert.match(node('#ft-learning-status').textContent,/Testing a candidate speed/);
+assert.match(node('#ft-learning-updates').textContent,/Policy updates: 1 applied \/ 4 attempted/);
+assert.equal(points('exploration').length,4);assert.equal(points('evaluation').length,4);
+node('#ft-chart-trial').value='1';fire(node('#ft-chart-trial'),'change');
+assert.match(node('#ft-chart-inspector').textContent,/Candidate \/ exploration/);
+assert.match(node('#ft-chart-inspector').textContent,/Policy unchanged/);
+node('#ft-chart-trial').value='2';fire(node('#ft-chart-trial'),'change');
+assert.match(node('#ft-chart-inspector').textContent,/Policy update applied/);
+assertFiniteSvg();
+""")
+
+
 def test_partial_trial_does_not_invent_evaluation_or_future_trials(tmp_path, learning_state):
     state = learning_state
     state["result"]["history"] = state["result"]["history"][:2]
@@ -155,6 +199,7 @@ def test_partial_trial_does_not_invent_evaluation_or_future_trials(tmp_path, lea
     state["progress"].update({"phase": "evaluation", "episode": 2, "completed_episodes": 1})
     state["training_active"] = True
     run_viz(tmp_path, state, r"""
+node('#ft-chart-candidates').checked=true;
 viz.render(fixture);
 assert.equal(points('exploration').length,2);assert.equal(points('evaluation').length,1);
 assert.deepEqual(points('evaluation').map(item=>item.getAttribute('data-trial')),['1']);
@@ -186,6 +231,7 @@ assert.ok(Number(svg().getAttribute('data-y-max'))>=0);assertFiniteSvg();
 
 def test_mouse_keyboard_and_select_inspection_use_the_same_trial(tmp_path, learning_state):
     run_viz(tmp_path, learning_state, r"""
+node('#ft-chart-candidates').checked=true;
 viz.render(fixture);assert.equal(String(selected()),'4');
 fire(points('evaluation')[0],'click');assert.equal(String(selected()),'1');
 assert.match(node('#ft-chart-inspector').textContent,/1/);
@@ -213,7 +259,7 @@ const start=best.match(/^M\s+\S+\s+(\S+)/);
 const ys=[Number(start[1]),...Array.from(best.matchAll(/V\s+(\S+)/g),match=>Number(match[1]))];
 assert.ok(ys.length>=2);assert.equal(new Set(ys).size,1);
 node('#ft-chart-trial').value='0';fire(node('#ft-chart-trial'),'change');
-assert.match(node('#ft-chart-inspector').textContent,/Original clone · discounted return 5/);
+assert.match(node('#ft-chart-inspector').textContent,/Original clone · RL time score 5/);
 assertFiniteSvg();
 """)
 
@@ -234,6 +280,7 @@ viz.render({result:null});assert.equal(node('#ft-learning-viz').hidden,true);
 
 def test_empty_and_nonfinite_records_are_not_plotted(tmp_path, learning_state):
     run_viz(tmp_path, learning_state, r"""
+node('#ft-chart-candidates').checked=true;
 viz.render(null);assert.equal(node('#ft-learning-viz').hidden,true);
 viz.render({result:{baseline:null,history:[]}});assertFiniteSvg();
 const state=clone(fixture);
@@ -260,7 +307,7 @@ viz.render(fixture);assert.equal(node('#ft-learning-viz').hidden,false);
 assert.equal(points('baseline').length,1);assert.equal(points('evaluation').length,0);
 assert.equal(points('exploration').length,0);assert.equal(selected(),'0');
 assert.match(node('#ft-learning-status').textContent,/stopped.*0 iterations/i);
-assert.match(node('#ft-chart-inspector').textContent,/Original clone · discounted return 0.000/);
+assert.match(node('#ft-chart-inspector').textContent,/Original clone · RL time score 0.000/);
 assertFiniteSvg();
 """)
 
@@ -291,6 +338,7 @@ def test_hundred_iterations_keep_current_evaluation_distinct_and_missing_results
     tmp_path, learning_state, width, ticks,
 ):
     run_viz(tmp_path, learning_state, r"""
+node('#ft-chart-candidates').checked=true;
 const state=clone(fixture),history=[];
 for(let iteration=1;iteration<=100;iteration++)history.push({
   episode:iteration,
@@ -315,7 +363,7 @@ assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\
 assert.match(node('#ft-learning-status').textContent,/iteration 100 \/ 100/);
 const ticks=descendants().filter(item=>item.getAttribute('data-axis')==='trial').map(item=>Number(item.textContent));
 assert.deepEqual(ticks,TICKS);
-assert.ok(descendants().some(item=>item.textContent==='Discounted return'));
+assert.ok(descendants().some(item=>item.textContent==='RL time score'));
 const earlier=points('evaluation')[0];viz.render(state);
 assert.equal(points('evaluation')[0],earlier,'Unchanged history should not rebuild 100 iterations');
 state.result.history[99].evaluation={return:10.2,raw_return:20100};viz.render(state);

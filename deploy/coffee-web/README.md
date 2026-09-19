@@ -98,8 +98,8 @@ The arm bases are **1.28 m apart**, compared with the original 1.16 m: each base
 moves outward by 6 cm while link lengths stay the same. Students, generated examples,
 cloned-policy playback, and every fine-tuning/evaluation rollout share this geometry.
 Wider spacing increases reach demands, but does not by itself guarantee a larger
-fine-tuning gain. Rewards, the 700 mL goal, and the ±15% speed-refinement bound remain
-the same.
+fine-tuning gain. The environment reward and 700 mL goal remain the same. Fine-tuning uses the
+separate time-focused score described below.
 
 Seed, exact initial joints, and arm spacing are preserved in every new recording.
 Recordings made with different arm spacing remain available for replay and download,
@@ -111,94 +111,109 @@ accepts original schema-1 recordings.
 
 ## Fine-tuning with reward
 
-After training a cloned policy, use **Fine-tune with actor–critic** underneath it.
-Choose 25, 50, or 100 (default) exploratory trials and click **Start fine-tuning**.
-The browser first evaluates the original clone, then alternates exploratory trials,
-actor–critic updates, and deterministic evaluations. The comparison reports actual
-discounted return, fill, spill, duration, and success; the expandable history
-separates noisy training returns from evaluations without noise. **Watch original
-clone** and **Watch best policy** run fresh deterministic trials at the selected
-playback speed. Choose **4×**, **8×**, or **Fastest available** (default); the same
-control applies during training. Requested speeds are limited by the device.
-Every 1/32-second physics step and policy decision is still computed. Adaptive
-batches of up to 32 steps reduce rendering overhead while yielding for pause,
-stop, and speed changes. The simulator caches repeated geometry calculations,
-and hidden training steps omit render-only diagnostics; displayed frames still
-use the full renderer.
+After training a cloned policy, use **Fine-tune with reinforcement learning**.
+The default is **Policy search · classroom demo**, with **10 iterations**; 25, 50,
+and 100 are also available. **Actor–critic · PPO** provides an alternative learning
+method. Both start by evaluating the original clone, then complete one exploratory
+or candidate trial per iteration and evaluate the resulting current policy without
+exploration noise. All trials use the same fixed starting pose and 1.28 m arm spacing.
 
-A live learning curve sits beside the simulation on wider screens and stacks above
-it on phones. It plots exploration rewards, evaluations without noise, and the best
-evaluated reward so far, with the original clone as a reference. Points appear only
-when the corresponding trial has finished; unfinished evaluations remain missing.
-The progress display follows the current training stage and completed updates.
-Select a trial to inspect its values, or include zero on the reward axis to compare
-the scale of changes. The curve remains available while watching a policy and clears
-when a new experiment or cloning model replaces it.
+The comparison reports the **RL time score**, fill, target error, spill, duration,
+and success. The score emphasizes completing a successful pour quickly; a faster
+valid pour can outrank a slower pour that is closer to exactly 700 mL. Read the
+accuracy and time columns together. The goal remains 700 mL with its unchanged
+±40 mL success tolerance; optimizing speed may move final fill toward that tolerance's
+edge. No particular gain is guaranteed.
 
-This is a deliberately small PPO actor–critic experiment. A five-feature linear
-actor adjusts the frozen clone's speed, and a linear critic fits observed returns
-to estimate advantages (GAE, lambda 0.95). The action is
-`clip(BC(state) * (1 + 0.15 * tanh(z)), -1, 1)`, with Gaussian latent speed noise
-of standard deviation 0.65 held for eight physics steps (0.25 simulated seconds)
-during exploration. Evaluation recomputes the actor mean at every physics step.
-Zero commands remain zero and motion directions remain those of the clone.
-This bounds each motor change relative to BC at the **current state**, not the
-distance between complete trajectories. It is speed refinement, not unrestricted
-learning of six new joint commands.
+**Policy search** explores the parameters of a policy, rather than adding random
+noise to every control. It tests paired faster/slower settings around a shared
+starting multiplier, with a random radius from 0.08 to 0.12. Pair order is random.
+A candidate replaces the current policy only if its completed score improves.
+The second candidate still uses the pair's original center even if the first was
+accepted. The overall multiplier stays between 0.7 and 1.4 times the cloned policy's
+commands; each motor command is clipped to `[-1, 1]`. A fresh deterministic rollout
+of the current accepted policy supplies each navy evaluation point. Rejected
+candidates still count as completed iterations but do not count as applied updates.
 
-Each update uses four clipped PPO epochs (ratio 0.8–1.2), Gaussian KL backtracking
-with a 0.01 limit on sampled states, and a global latent-mean change bound of 0.10
-per update. The latent mean is bounded by 1.25 to keep exploration from collapsing
-at the saturated edges of `tanh`. Diagnostics record sampled speed range, standard
-deviation, and counts of faster/slower decisions. At the original clone, about 95%
-of sampled speed multipliers fall between 0.872 and 1.128; the hard bounds remain
-0.85–1.15. This explores speed refinement only, not arbitrary arm motions.
-The KL check supplements PPO clipping; clipping alone does not enforce a hard trust
-region. Training uses the environment's original reward in a finite 60-second task,
-including its timeout terminal penalty, discounted by **0.99 per simulated second**.
-At 32 physics steps per second, `gamma = 0.99 ** (1/32)` and the objective is
-`sum(gamma**t * reward_t)` from step zero. Reward within each eight-step decision,
-its continuation value, GAE, critic targets, and evaluation all use this discount;
-the final partial decision uses its actual duration. PPO weights decisions by their
-episode-start discount. Critic fitting uses constant-size sufficient statistics
-with 0.95 retention per fit instead of repeatedly processing all past trials.
-It does not call the demonstration-generating controller or add expert corrections.
+**Actor–critic (PPO)** explores state-dependent speed adjustments during a trial.
+A critic learns to estimate future RL time scores from observed rollouts, and the
+actor uses estimated advantages for clipped policy-gradient updates. Its speed
+multiplier is `1 + 0.5 * tanh(z)`, bounded between 0.5 and 1.5. Gaussian latent
+noise has standard deviation 0.5 and is resampled every 0.5 simulated seconds.
+Updates use 12 clipped PPO epochs, learning rate 0.15, a sampled-state Gaussian
+KL cap of 0.08, and a global latent-mean change cap of 0.6. The critic and GAE
+remain unchanged. These limits bound updates; evaluated performance can rise or
+fall. In both methods the frozen
+clone is queried at every physics step; zero commands remain zero and motion
+directions remain those of the clone. Neither method calls the demonstration
+controller, copies future actions from a recording, or uses an expert correction.
 
-The instructor page includes a visible **Reward used for fine-tuning** section.
-At each step, with liquid measured in litres and `dt = 1/32` seconds, reward is:
+A live chart sits beside the simulation on wider screens and stacks above it on
+phones. By default, navy points show the current policy evaluated without noise,
+and green shows the best evaluated score so far, including the original clone.
+Select **Show candidate / exploration scores** to add the amber trial series;
+the axis then includes those scores, including failed trials. Completed and
+unsuccessful candidate counts remain visible even when that series is not plotted.
+Every trial remains available in the inspector and history. Missing evaluations
+remain missing. Select an iteration to inspect its values and update status, or
+include zero on the score axis. The curve remains available while watching a policy and clears when a
+new experiment or cloning model replaces it.
 
-- `20 * (previous absolute target error - current absolute target error)` for filling;
+**Training speed** defaults to **Fastest available**. **Policy playback speed** is
+separate and defaults to **4×** for **Watch original clone** and **Watch best policy**.
+Both selectors offer 4×, 8×, and fastest. Changing one does not change the other's
+setting. Requested playback speeds are limited by the device. Every 1/32-second
+physics step and policy decision is still computed; speed only changes pacing.
+Adaptive batches of up to 32 steps reduce rendering overhead while yielding for
+pause, stop, and speed changes. Repeated geometry calculations are cached, and
+hidden training steps omit render-only diagnostics; displayed frames still use
+the full renderer.
+
+### Reward used for fine-tuning
+
+The instructor page visibly explains the **RL time score**, a fine-tuning objective
+separate from the environment reward stored in demonstration archives. The original
+clone, candidate trials, current-policy evaluations, and policy playback all use
+the same time-score helper. Archived rewards and submitted trajectories are unchanged.
+
+For each physics step, `dt = 1/32` seconds and `gamma = 0.99 ** dt`. With error and
+spill in litres and cup angle in radians, the fine-tuning step reward is:
+
+- `-dt` for elapsed time, or one point per simulated second;
 - `-40 * newly spilled liquid`;
 - `-0.024 * dt * sum(control**2)` over all six motors;
-- `-0.032 * dt * abs(cup angle in radians)`;
-- `-0.008 * dt` for elapsed time.
+- `-0.032 * dt * abs(cup angle)`;
+- `gamma * Phi(next) - Phi(current)`, where `Phi = -20 * absolute target error`.
 
 At success, failure, or timeout, it also adds
-`(15 if success else 0) - 10 * final absolute target error - 14 * total spill`.
-Success requires being within 40 mL of 700 mL, at most 20 mL spilled, flow at most
-8 mL/s, cup tilt at most 8°, and pot tilt at most 12°. Discounting makes the same
-positive payoff worth more when achieved sooner; the spill, accuracy, stability,
-and effort terms remain part of the objective. For example, a 15-point reward is
-worth about 12.27 after 20 seconds and 11.10 after 30 seconds. Animation speed
-does not affect discounting. Recorded demonstration reward remains undiscounted.
+`(100 if success else -100) - 100 * final absolute target error - 14 * total spill`.
+The potential `Phi(next)` is **zero at every terminal state, including timeout**.
+Consequently its discounted sum is the same 14 points for every rollout from an
+empty cup with a 700 mL target. This provides intermediate filling feedback without
+changing which completed policy is preferred.
 
-Each navy evaluation point is a fresh rollout of the **current updated policy**
-with zero exploration noise, from the fixed pose. It is neither the exploratory
-trial's return nor the best checkpoint's return. The green series separately shows
-the running best. The highest-return completed evaluation is retained, including the unchanged
-clone. Improvement is not guaranteed. Exploration, evaluation, and the two policy
-playback buttons all use the same fixed pose across experiments. Only exploration
-action noise varies with the training seed. Results include that seed and the
-fixed environment seed. This comparison measures refinement on one pose, not
-average performance across the broader demonstration distribution. Exact results
-can vary slightly across numerical runtimes.
+The displayed score is `sum(gamma**t * fine_tuning_reward_t)` from step zero. All
+terms, including terminal rewards, use the same discount of **0.99 per simulated
+second**. Success still requires being within 40 mL of 700 mL, at most 20 mL spilled,
+flow at most 8 mL/s, cup tilt at most 8°, and pot tilt at most 12°. Trials have a
+60-second limit. With bounded controls and those success tolerances, even a slow
+successful trial scores above any failed trial. Animation speed has no effect.
 
-Training runs in the instructor browser in bounded chunks so pause and stop remain
-responsive. Backgrounding the page pauses it. Stop retains only fully evaluated
-checkpoints. Changing class, demonstration source, cloning policy, or reloading
-clears the experiment; no RL trials are submitted as student data. Computation
-requires no additional server/GPU service. Browser training speed depends on the
-device and number of demonstration samples; larger student datasets can take longer.
+The trajectory library continues to show **undiscounted recorded environment
+reward**, including its original success bonus and penalties. Those numbers use a
+different reward function and should not be compared directly with RL time scores.
+
+The best completed evaluation is retained, including the original clone. The
+comparison measures refinement on one fixed pose, not average performance across
+the broader demonstration distribution. Seeds control exploration; results retain
+the training seed and fixed environment seed. Exact results can vary slightly
+across numerical runtimes.
+
+Training runs in the instructor browser. Backgrounding the page pauses it, and
+stop retains fully evaluated checkpoints. Changing class, demonstration source,
+cloning policy, or reloading clears the experiment. No RL trials are submitted as
+student data. Computation needs no additional server/GPU service; browser speed
+depends on the device and number of demonstration samples.
 
 Method references: [PPO](https://spinningup.openai.com/en/latest/algorithms/ppo.html)
 and [finite horizons and time limits](https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/).

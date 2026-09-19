@@ -20,8 +20,10 @@ from kaist_rl_lab.apps.coffee_finetuning import (
     DEFAULT_EPISODES,
     MAX_EPISODES,
     STEP_DISCOUNT,
+    STRATEGIES,
     FineTuningTrainer,
 )
+from kaist_rl_lab.apps.coffee_finetuning_reward import fine_tuning_reward
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 TRIAL_SECONDS = 60
@@ -165,7 +167,10 @@ class FineTuningRuntime:
                                     0, 2**32 - 1, "Seed")
             if self.training_active:
                 raise ValueError("Stop the current training run before starting another.")
-            trainer = FineTuningTrainer(self.model, seed=seed, episodes=episodes)
+            strategy = command.get("strategy", "policy_search")
+            if strategy not in STRATEGIES:
+                raise ValueError("Choose policy_search or ppo for fine-tuning.")
+            trainer = FineTuningTrainer(self.model, seed=seed, episodes=episodes, strategy=strategy)
             self.close()
             self.trainer = trainer
             self.playback_speed = speed
@@ -204,7 +209,7 @@ class FineTuningRuntime:
                 raise ValueError("Stop or finish training before running a comparison.")
             if policy == "best" and self.best_policy is None:
                 raise ValueError("Finish a policy evaluation before running the best policy.")
-            speed = _playback_speed(command.get("speed", self.playback_speed))
+            speed = _playback_speed(command.get("speed", 4))
             self._replace_scene((self.result or {}).get("evaluation_seed"))
             self.playback_speed = speed
             self.rollout_policy = policy
@@ -233,7 +238,7 @@ class FineTuningRuntime:
                 for index, direction in enumerate(action):
                     self.session.set_motor(index, float(direction))
                 self.session.advance()
-                self.discounted_return += self._discount_weight * self.session.trajectory[-1]["reward"]
+                self.discounted_return += self._discount_weight * fine_tuning_reward(self.session.info, BROWSER_DT)
                 self._discount_weight *= STEP_DISCOUNT
                 if not self.session.running:
                     self.rollout_active = False

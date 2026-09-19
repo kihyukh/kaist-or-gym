@@ -13,6 +13,13 @@ from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 TRIAL_SECONDS = 60
 TRIAL_STEPS = round(TRIAL_SECONDS / BROWSER_DT)
+DEFAULT_PLAYBACK_SPEED = 4
+
+
+def _playback_speed(value):
+    if type(value) is not int or value not in (1, 4, 8):
+        raise ValueError("Choose a playback speed of 1, 4, or 8.")
+    return value
 
 
 class CloningAgentRuntime:
@@ -23,11 +30,13 @@ class CloningAgentRuntime:
         self.session = InteractiveSession(
             seed, 700, arm_base_distance=ARM_BASE_DISTANCE_M, start_paused=True, dt=BROWSER_DT,
             steps_per_update=1, horizon=TRIAL_STEPS, reset_options=fixed_policy_layout(),
+            include_render_info=False,
         )
         self.policy = None
         self.attempt = 0
         self.done = False
         self.outcome = None
+        self.playback_speed = DEFAULT_PLAYBACK_SPEED
 
     def _restart(self, *, reset_experiment: bool, seed=None) -> None:
         seed = POLICY_START_SEED if seed is None else seed
@@ -56,7 +65,11 @@ class CloningAgentRuntime:
         elif kind == "cloning-start":
             if self.policy is None:
                 raise ValueError("Train and load a behavior-cloning policy first.")
+            speed = _playback_speed(command.get("speed", self.playback_speed))
             self._restart(reset_experiment=False, seed=command.get("seed"))
+            self.playback_speed = speed
+        elif kind == "cloning-speed":
+            self.playback_speed = _playback_speed(command.get("speed"))
         elif kind == "cloning-reset":
             self._restart(reset_experiment=True)
         elif kind == "cloning-pause":
@@ -66,10 +79,15 @@ class CloningAgentRuntime:
             if self.attempt and self.session.running and self.session.paused != paused:
                 self.session.toggle_pause()
         elif kind == "tick":
-            if (
-                self.policy is not None and self.attempt
-                and self.session.running and not self.session.paused
-            ):
+            max_steps = command.get("max_steps", 1)
+            if type(max_steps) is not int or not 1 <= max_steps <= 32:
+                raise ValueError("A policy batch must contain between 1 and 32 steps.")
+            for _ in range(max_steps):
+                if not (
+                    self.policy is not None and self.attempt
+                    and self.session.running and not self.session.paused
+                ):
+                    break
                 # Every command is selected afresh from the current physical
                 # state. Rewards, time, and the previous action are not inputs.
                 action = self.policy.predict(self.session.observation)
@@ -90,6 +108,7 @@ class CloningAgentRuntime:
             "episode_id": self.session.episode_id,
             "cloning_agent": {
                 "model_loaded": self.policy is not None,
+                "playback_speed": self.playback_speed,
                 "attempt": self.attempt,
                 "step": self.session.env.elapsed_steps,
                 "elapsed_seconds": self.session.env.elapsed_steps * BROWSER_DT,
