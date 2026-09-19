@@ -5,8 +5,8 @@ Every motor command stays within 15% of its BC command and zero BC commands stay
 zero. A Gaussian latent action is squashed with tanh; its fixed transform is
 part of the environment, so PPO ratios use the retained Gaussian latent value.
 
-The objective is the environment's original, undiscounted 60-second episodic
-return. The time limit is part of this task and receives zero value bootstrap,
+The objective discounts the environment reward by 0.99 per simulated second.
+The time limit is part of this task and receives zero value bootstrap,
 just like success/failure. A learned linear critic supplies GAE advantages.
 Checkpoints are evaluated without exploration and the unchanged BC checkpoint
 is retained whenever training does not improve the actual evaluation return.
@@ -22,15 +22,19 @@ from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 SPEED_BOUND = 0.15
-LATENT_STD = 0.30
+LATENT_STD = 0.65
 MAX_UPDATE_KL = 0.01
 MAX_MEAN_CHANGE = 0.10
+MAX_LATENT_MEAN = 1.25
 DECISION_STEPS = 8
 TRIAL_STEPS = 60 * 32
-DEFAULT_EPISODES = 8
-MAX_EPISODES = 12
+DEFAULT_EPISODES = 100
+MAX_EPISODES = 100
 ACTOR_FEATURES = 5
 GAE_LAMBDA = 0.95
+DISCOUNT_PER_SECOND = 0.99
+STEP_DISCOUNT = DISCOUNT_PER_SECOND**BROWSER_DT
+CRITIC_RETENTION = 0.95
 
 
 def actor_features(observation: np.ndarray) -> np.ndarray:
@@ -50,25 +54,37 @@ def critic_features(features: np.ndarray) -> np.ndarray:
     return np.concatenate((x, x[..., 1:] ** 2, (x[..., 1] * x[..., 2])[..., None]), axis=-1)
 
 
-def generalized_advantages(rewards, values, *, trace_decay=GAE_LAMBDA):
-    """GAE for one complete finite-horizon episode, gamma=1, bootstrap=0."""
+def generalized_advantages(rewards, values, *, discounts=None, trace_decay=GAE_LAMBDA):
+    """GAE over variable-duration decisions, with zero terminal bootstrap.
+
+    Each decision reward already discounts its constituent physics steps.
+    Its continuation discount is gamma ** actual_steps, including a short final
+    decision. A missing discount vector represents unit-length decisions.
+    """
     rewards = np.asarray(rewards, dtype=np.float64)
     values = np.asarray(values, dtype=np.float64)
     if rewards.ndim != 1 or rewards.shape != values.shape or not len(rewards):
         raise ValueError("Rewards and values must be equal nonempty vectors.")
     if not np.isfinite(rewards).all() or not np.isfinite(values).all():
         raise ValueError("Rewards and values must be finite.")
+    discounts = np.full_like(rewards, STEP_DISCOUNT) if discounts is None else np.asarray(discounts)
+    if discounts.shape != rewards.shape or not np.isfinite(discounts).all() or np.any(
+        (discounts < 0) | (discounts > 1)
+    ):
+        raise ValueError("Discounts must match rewards and lie between zero and one.")
     advantages = np.zeros_like(rewards)
     carry = 0.0
     next_value = 0.0
     for index in range(len(rewards) - 1, -1, -1):
-        carry = rewards[index] + next_value - values[index] + trace_decay * carry
+        carry = rewards[index] + discounts[index] * (
+            next_value + trace_decay * carry
+        ) - values[index]
         advantages[index] = carry
         next_value = values[index]
     return advantages
 
 
-def ppo_actor_update(weights, features, latent, advantages, *, epochs=4):
+def ppo_actor_update(weights, features, latent, advantages, *, epochs=4, discount_weights=None):
     """Clipped policy gradient with explicit sampled-state Gaussian KL backtracking.
 
     Fixed variance makes KL analytic. The L1 parameter-change limit additionally
@@ -81,6 +97,10 @@ def ppo_actor_update(weights, features, latent, advantages, *, epochs=4):
     latent = np.asarray(latent, dtype=np.float64)
     advantages = np.asarray(advantages, dtype=np.float64)
     advantages = (advantages - advantages.mean()) / max(float(advantages.std()), 1e-8)
+    if discount_weights is not None:
+        # Discounted state occupancy: early decisions contribute more to the
+        # episode-start objective, rather than optimizing an undiscounted sum.
+        advantages *= np.asarray(discount_weights, dtype=np.float64)
     old_mean = features @ original
     old_logp = -0.5 * ((latent - old_mean) / LATENT_STD) ** 2
     last_kl = 0.0
@@ -101,7 +121,14 @@ def ppo_actor_update(weights, features, latent, advantages, *, epochs=4):
             # All actor features are <=1.5 in absolute value.
             max_change = 1.5 * float(np.abs(delta).sum())
             candidate_kl = float(np.mean((features @ delta) ** 2) / (2 * LATENT_STD**2))
-            if max_change <= MAX_MEAN_CHANGE and candidate_kl <= MAX_UPDATE_KL:
+            # Keep tanh away from saturation so fixed latent variance continues
+            # to produce meaningful control exploration even after 100 updates.
+            mean_bound = 1.5 * float(np.abs(candidate).sum())
+            allowed_bound = max(MAX_LATENT_MEAN, 1.5 * float(np.abs(original).sum()))
+            if (
+                max_change <= MAX_MEAN_CHANGE and candidate_kl <= MAX_UPDATE_KL
+                and mean_bound <= allowed_bound
+            ):
                 current = candidate
                 last_kl = candidate_kl
                 break
@@ -166,8 +193,8 @@ class FineTuningTrainer:
         self.best = None
         self.history = []
         self.critic = np.zeros(10)
-        self.critic_states = []
-        self.critic_returns = []
+        self.critic_gram = np.zeros((10, 10))
+        self.critic_rhs = np.zeros(10)
         self.update = {"mean_kl": 0.0, "mean_change_bound": 0.0, "actor_change": 0.0}
         self.session = InteractiveSession(
             self.evaluation_seed, 700, dt=BROWSER_DT, steps_per_update=1, horizon=TRIAL_STEPS,
@@ -182,8 +209,13 @@ class FineTuningTrainer:
         self.session.paused = False
         self.rollout_features = []
         self.rollout_latent = []
+        self.rollout_means = []
         self.rollout_rewards = []
         self.rollout_values = []
+        self.rollout_discounts = []
+        self.rollout_discount_weights = []
+        self.discounted_return = 0.0
+        self.discount_factor = 1.0
         self.decision_remaining = 0
         self.latent = 0.0
 
@@ -193,24 +225,33 @@ class FineTuningTrainer:
         self.latent = float(self.rng.normal(mean, LATENT_STD)) if self.phase == "training" else mean
         self.rollout_features.append(features)
         self.rollout_latent.append(self.latent)
+        self.rollout_means.append(mean)
         self.rollout_rewards.append(0.0)
         self.rollout_values.append(float(critic_features(features) @ self.critic))
+        self.rollout_discounts.append(1.0)
+        self.rollout_discount_weights.append(self.discount_factor)
         self.decision_remaining = DECISION_STEPS
 
     def _fit_critic(self):
-        rewards = np.asarray(self.rollout_rewards)
-        returns = np.cumsum(rewards[::-1])[::-1]
-        self.critic_states.extend(critic_features(np.asarray(self.rollout_features)))
-        self.critic_returns.extend(returns)
-        x = np.asarray(self.critic_states)
-        y = np.asarray(self.critic_returns)
+        y = generalized_advantages(
+            self.rollout_rewards, np.zeros(len(self.rollout_rewards)),
+            discounts=self.rollout_discounts, trace_decay=1.0,
+        )
+        x = critic_features(np.asarray(self.rollout_features))
         # Reward-to-go regression is critic learning; demonstrations are never a
         # critic target. Ridge regularization keeps a tiny linear model stable.
-        self.critic = np.linalg.solve(x.T @ x + 0.05 * np.eye(x.shape[1]), x.T @ y)
+        # Constant-size sufficient statistics avoid refitting an ever-growing
+        # history at iteration 100. Forget stale policies gradually.
+        self.critic_gram *= CRITIC_RETENTION
+        self.critic_rhs *= CRITIC_RETENTION
+        self.critic_gram += x.T @ x
+        self.critic_rhs += x.T @ y
+        self.critic = np.linalg.solve(self.critic_gram + 0.05 * np.eye(x.shape[1]), self.critic_rhs)
 
     def _metrics(self):
         return {
-            "return": float(self.session.cumulative_reward),
+            "return": float(self.discounted_return),
+            "raw_return": float(self.session.cumulative_reward),
             "fill_ml": float(self.session.env.fill * 1000),
             "spill_ml": float(self.session.env.spill * 1000),
             "seconds": float(self.session.env.elapsed_steps * BROWSER_DT),
@@ -229,10 +270,14 @@ class FineTuningTrainer:
             self.episode = 1
             self.phase = "training"
         elif self.phase == "training":
-            advantages = generalized_advantages(self.rollout_rewards, self.rollout_values)
+            advantages = generalized_advantages(
+                self.rollout_rewards, self.rollout_values, discounts=self.rollout_discounts,
+            )
             self.policy.weights, self.update = ppo_actor_update(
                 self.policy.weights, self.rollout_features, self.rollout_latent, advantages,
+                discount_weights=self.rollout_discount_weights,
             )
+            self.update["exploration"] = self._exploration_metrics()
             self._fit_critic()
             self.history.append({
                 "episode": self.episode, "training": metrics,
@@ -253,6 +298,21 @@ class FineTuningTrainer:
             self.phase = "training"
         self._reset_rollout()
 
+    def _exploration_metrics(self):
+        """Observed perturbation coverage, distinct from the evaluation score."""
+        latents = np.asarray(self.rollout_latent)
+        means = np.asarray(self.rollout_means)
+        gains = SPEED_BOUND * np.tanh(latents)
+        return {
+            "decisions": len(latents),
+            "speed_min": float(1 + gains.min()),
+            "speed_max": float(1 + gains.max()),
+            "speed_std": float(gains.std()),
+            "noise_std": float((latents - means).std()),
+            "slower_decisions": int(np.sum(latents < means)),
+            "faster_decisions": int(np.sum(latents > means)),
+        }
+
     def step_chunk(self, max_steps=32):
         if type(max_steps) is not int or not 1 <= max_steps <= 32:
             raise ValueError("A training chunk must contain between 1 and 32 steps.")
@@ -270,7 +330,11 @@ class FineTuningTrainer:
             for index, value in enumerate(action):
                 self.session.set_motor(index, float(value))
             self.session.advance()
-            self.rollout_rewards[-1] += self.session.trajectory[-1]["reward"]
+            reward = self.session.trajectory[-1]["reward"]
+            self.discounted_return += self.discount_factor * reward
+            self.discount_factor *= STEP_DISCOUNT
+            self.rollout_rewards[-1] += self.rollout_discounts[-1] * reward
+            self.rollout_discounts[-1] *= STEP_DISCOUNT
             self.decision_remaining -= 1
             self.total_steps += 1
             if not self.session.running:
@@ -290,6 +354,9 @@ class FineTuningTrainer:
             "evaluation_seed": self.evaluation_seed,
             "speed_bound": SPEED_BOUND,
             "latent_std": LATENT_STD,
+            "max_latent_mean": MAX_LATENT_MEAN,
+            "discount_per_second": DISCOUNT_PER_SECOND,
+            "step_discount": STEP_DISCOUNT,
             "decision_seconds": DECISION_STEPS * BROWSER_DT,
             "limit_seconds": TRIAL_STEPS * BROWSER_DT,
             "max_update_kl": MAX_UPDATE_KL,

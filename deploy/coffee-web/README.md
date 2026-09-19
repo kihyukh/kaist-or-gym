@@ -93,10 +93,10 @@ Seed and exact initial joints are preserved in every recording.
 ## Fine-tuning with reward
 
 After training a cloned policy, use **Fine-tune with actor–critic** underneath it.
-Choose 4, 8 (default), or 12 exploratory trials and click **Start fine-tuning**.
+Choose 25, 50, or 100 (default) exploratory trials and click **Start fine-tuning**.
 The browser first evaluates the original clone, then alternates exploratory trials,
 actor–critic updates, and deterministic evaluations. The comparison reports actual
-environment return, fill, spill, duration, and success; the expandable history
+discounted return, fill, spill, duration, and success; the expandable history
 separates noisy training returns from evaluations without noise. **Watch original
 clone** and **Watch best policy** run fresh deterministic trials at the selected
 playback speed. Choose **4×**, **8×**, or **Fastest available** (default); the same
@@ -120,7 +120,7 @@ This is a deliberately small PPO actor–critic experiment. A five-feature linea
 actor adjusts the frozen clone's speed, and a linear critic fits observed returns
 to estimate advantages (GAE, lambda 0.95). The action is
 `clip(BC(state) * (1 + 0.15 * tanh(z)), -1, 1)`, with Gaussian latent speed noise
-of standard deviation 0.30 held for eight physics steps (0.25 simulated seconds)
+of standard deviation 0.65 held for eight physics steps (0.25 simulated seconds)
 during exploration. Evaluation recomputes the actor mean at every physics step.
 Zero commands remain zero and motion directions remain those of the clone.
 This bounds each motor change relative to BC at the **current state**, not the
@@ -129,12 +129,44 @@ learning of six new joint commands.
 
 Each update uses four clipped PPO epochs (ratio 0.8–1.2), Gaussian KL backtracking
 with a 0.01 limit on sampled states, and a global latent-mean change bound of 0.10
-per update. The KL check supplements PPO clipping; clipping alone does not enforce
-a hard trust region. Training uses the environment's original reward and an
-undiscounted finite 60-second task, including its timeout terminal penalty.
+per update. The latent mean is bounded by 1.25 to keep exploration from collapsing
+at the saturated edges of `tanh`. Diagnostics record sampled speed range, standard
+deviation, and counts of faster/slower decisions. At the original clone, about 95%
+of sampled speed multipliers fall between 0.872 and 1.128; the hard bounds remain
+0.85–1.15. This explores speed refinement only, not arbitrary arm motions.
+The KL check supplements PPO clipping; clipping alone does not enforce a hard trust
+region. Training uses the environment's original reward in a finite 60-second task,
+including its timeout terminal penalty, discounted by **0.99 per simulated second**.
+At 32 physics steps per second, `gamma = 0.99 ** (1/32)` and the objective is
+`sum(gamma**t * reward_t)` from step zero. Reward within each eight-step decision,
+its continuation value, GAE, critic targets, and evaluation all use this discount;
+the final partial decision uses its actual duration. PPO weights decisions by their
+episode-start discount. Critic fitting uses constant-size sufficient statistics
+with 0.95 retention per fit instead of repeatedly processing all past trials.
 It does not call the demonstration-generating controller or add expert corrections.
 
-The highest-return completed evaluation is retained, including the unchanged
+The instructor page includes a visible **Reward used for fine-tuning** section.
+At each step, with liquid measured in litres and `dt = 1/32` seconds, reward is:
+
+- `20 * (previous absolute target error - current absolute target error)` for filling;
+- `-40 * newly spilled liquid`;
+- `-0.024 * dt * sum(control**2)` over all six motors;
+- `-0.032 * dt * abs(cup angle in radians)`;
+- `-0.008 * dt` for elapsed time.
+
+At success, failure, or timeout, it also adds
+`(15 if success else 0) - 10 * final absolute target error - 14 * total spill`.
+Success requires being within 40 mL of 700 mL, at most 20 mL spilled, flow at most
+8 mL/s, cup tilt at most 8°, and pot tilt at most 12°. Discounting makes the same
+positive payoff worth more when achieved sooner; the spill, accuracy, stability,
+and effort terms remain part of the objective. For example, a 15-point reward is
+worth about 12.27 after 20 seconds and 11.10 after 30 seconds. Animation speed
+does not affect discounting. Recorded demonstration reward remains undiscounted.
+
+Each navy evaluation point is a fresh rollout of the **current updated policy**
+with zero exploration noise, from the fixed pose. It is neither the exploratory
+trial's return nor the best checkpoint's return. The green series separately shows
+the running best. The highest-return completed evaluation is retained, including the unchanged
 clone. Improvement is not guaranteed. Exploration, evaluation, and the two policy
 playback buttons all use the same fixed pose across experiments. Only exploration
 action noise varies with the training seed. Results include that seed and the

@@ -1,6 +1,7 @@
 """Browser controller lifecycle with actual runtime snapshots and worker isolation."""
 
 import json
+import re
 import shutil
 import subprocess
 from copy import deepcopy
@@ -9,7 +10,7 @@ import pytest
 
 from kaist_rl_lab.apps.coffee_cloning import FEATURE_INDICES, FEATURE_SCALES
 from kaist_rl_lab.apps.coffee_cloning_demo import CLONING_DEMO_JAVASCRIPT
-from kaist_rl_lab.apps.coffee_finetuning_demo import FINETUNING_JAVASCRIPT
+from kaist_rl_lab.apps.coffee_finetuning_demo import FINETUNING_HTML, FINETUNING_JAVASCRIPT
 from kaist_rl_lab.apps.coffee_finetuning_runtime import FineTuningRuntime
 
 
@@ -44,7 +45,7 @@ def finetuning_snapshots():
         })
         state["progress"].update({"phase": "complete", "episode": 4, "completed_episodes": 4})
         baseline = {
-            "return": -30.25, "fill_ml": 702.0, "spill_ml": 0.05,
+            "return": -30.25, "raw_return": 12345.0, "fill_ml": 702.0, "spill_ml": 0.05,
             "seconds": 29.3, "success": True, "outcome": "success",
         }
         best = {**baseline, "return": -25.125, "seconds": 28.4, "episode": 2}
@@ -100,7 +101,7 @@ function node(selector){
   }
   return nodes.get(selector);
 }
-node('#ft-episodes').value='4';node('#ft-speed').value='0';
+node('#ft-episodes').value='100';node('#ft-speed').value='0';
 const stages=['baseline','training','update','evaluation'].map(stage=>{const item=node('#ft-stage-'+stage);item.setAttribute('data-ft-stage',stage);return item;});
 const element={querySelector:node,querySelectorAll:selector=>selector==='[data-ft-stage]'?stages:[]};
 const document={hidden:false,createElement:tag=>new Node(tag),createElementNS:(_,tag)=>new Node(tag),
@@ -167,13 +168,25 @@ assert.deepEqual(worker.messages,[{kind:'init',mode:'finetuning',bundle_url:'htt
 click('#ft-train');assert.equal(workers.length,1);assert.equal(beforeRunCount,1);
 worker.receive({loading:'Loading NumPy…'});assert.match(node('#ft-status').textContent,/NumPy/);
 worker.receive(fixtures.initial);assert.deepEqual(worker.messages.at(-1),{kind:'ft-load',model:fixtures.model});
-worker.receive(fixtures.loaded);assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:4,speed:0});
+worker.receive(fixtures.loaded);assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:100,speed:0});
 worker.receive(fixtures.training);assert.equal(node('#ft-scene').hidden,false);
 assert.equal(node('#ft-train').disabled,true);assert.equal(node('#ft-episodes').disabled,true);
 assert.equal(node('#ft-pause').disabled,false);assert.equal(node('#ft-stop').disabled,false);
 assert.equal(node('#ft-run-best').disabled,true);assert.match(node('#ft-status').textContent,/Checking original clone/);
 assert.equal(worker.messages.some(message=>message.kind==='ft-step'||message.kind==='save'),false);
 """)
+
+
+def test_iteration_selector_defaults_to_one_hundred_and_reward_is_explained_visibly():
+    options = re.search(r'<select id="ft-episodes">(.*?)</select>', FINETUNING_HTML, re.DOTALL).group(1)
+    assert re.findall(r'<option value="(\d+)"', options) == ["25", "50", "100"]
+    assert '<option value="100" selected>' in options
+    explanation = FINETUNING_HTML.split('id="ft-reward-explanation"', 1)[1].split('</section>', 1)[0]
+    assert 'hidden' not in explanation.split('>', 1)[0]
+    assert 'Earlier reward counts more.' in explanation
+    assert 'discounted return' in explanation
+    assert 'undiscounted total reward' in explanation
+    assert 'γ = 0.99<sup>1/32</sup>' in explanation
 
 
 def test_training_pause_resume_and_live_counters(tmp_path, finetuning_snapshots):
@@ -247,13 +260,28 @@ assert.deepEqual(cells('#ft-comparison'),[
   ['Original clone','-30.250','702.0 mL','0.1 mL','29.3 s','Success'],
   ['Best evaluated policy','-25.125','702.0 mL','0.1 mL','28.4 s','Success']]);
 assert.match(node('#ft-improvement').textContent,/increased by 5.125/);
-assert.match(node('#ft-improvement').textContent,/trial 2/);
+assert.match(node('#ft-improvement').textContent,/iteration 2/);
 const history=cells('#ft-history-rows');assert.equal(history.length,1);
 assert.deepEqual(history[0].slice(0,3),['1','-34.000','-25.125']);
 assert.equal(node('#ft-run-best').disabled,false);
 const retained=clone(fixtures.completed);retained.finetuning.result.best={...retained.finetuning.result.baseline,episode:0};
 retained.finetuning.result.improved=false;retained.finetuning.result.best_episode=0;
 latest().receive(retained);assert.match(node('#ft-improvement').textContent,/original cloned policy is retained/);
+""")
+
+
+def test_optional_exploration_summary_uses_observed_perturbations(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const frame=clone(fixtures.completed);
+frame.finetuning.result.history[0].update.exploration={
+  speed_min:.851,speed_max:1.146,std:.08,noise_std:.64,slower_decisions:57,faster_decisions:61};
+latest().receive(frame);
+assert.equal(node('#ft-exploration').hidden,false);
+assert.match(node('#ft-exploration').textContent,/85.1–114.6% of the clone/);
+assert.match(node('#ft-exploration').textContent,/57 slower \/ 61 faster adjustments than the current policy/);
+latest().receive(fixtures.completed);assert.equal(node('#ft-exploration').hidden,true);
+latest().receive(frame);demo.setModel(null);
+assert.equal(node('#ft-exploration').hidden,true);assert.equal(node('#ft-exploration').textContent,'');
 """)
 
 
@@ -364,7 +392,7 @@ enable();assert.equal(node('#ft-speed').value,'0');assert.equal(node('#ft-speed'
 node('#ft-speed').value='4';node('#ft-speed').listeners.change();assert.equal(workers.length,0);
 click('#ft-train');const worker=latest();assert.equal(node('#ft-speed').disabled,true);
 worker.receive(fixtures.initial);worker.receive(fixtures.loaded);
-assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:4,speed:4});
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-train',episodes:100,speed:4});
 const training=clone(fixtures.training);training.finetuning.playback_speed=4;worker.receive(training);
 assert.equal(node('#ft-speed').disabled,false);assert.match(node('#ft-progress').textContent,/4× requested/);
 const starts=kinds(worker).filter(kind=>kind==='ft-train').length;

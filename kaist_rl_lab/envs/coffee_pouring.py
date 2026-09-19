@@ -329,6 +329,28 @@ class CoffeePouringEnv(gym.Env):
             cls._point_segment_distance(second_end, first_start, first_end),
         )
 
+    @classmethod
+    def _segments_within_distance(
+        cls,
+        first_start: np.ndarray,
+        first_end: np.ndarray,
+        second_start: np.ndarray,
+        second_end: np.ndarray,
+        distance: float,
+    ) -> bool:
+        """Reject separated link bounds before the exact capsule contact test."""
+        # Retain a tiny conservative margin so floating-point near-contact
+        # configurations always go through the original distance calculation.
+        margin = distance + 1e-12
+        if (
+            max(first_start[0], first_end[0]) + margin < min(second_start[0], second_end[0])
+            or max(second_start[0], second_end[0]) + margin < min(first_start[0], first_end[0])
+            or max(first_start[1], first_end[1]) + margin < min(second_start[1], second_end[1])
+            or max(second_start[1], second_end[1]) + margin < min(first_start[1], first_end[1])
+        ):
+            return False
+        return cls._segment_distance(first_start, first_end, second_start, second_end) < distance
+
     @staticmethod
     def _point_in_convex_polygon(
         point: np.ndarray,
@@ -482,8 +504,11 @@ class CoffeePouringEnv(gym.Env):
 
         for cup_start, cup_end in pairwise(cup_arm):
             for pot_start, pot_end in pairwise(pot_arm):
-                if self._segment_distance(cup_start, cup_end, pot_start, pot_end) < (
-                    2.0 * self.LINK_COLLISION_RADIUS
+                # Most arm links are separated in at least one axis. This
+                # conservative broad phase avoids four point/segment distances
+                # while retaining the original exact test near contact.
+                if self._segments_within_distance(
+                    cup_start, cup_end, pot_start, pot_end, 2.0 * self.LINK_COLLISION_RADIUS,
                 ):
                     return True
             for pot_polygon in pot_polygons:

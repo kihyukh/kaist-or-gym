@@ -15,13 +15,18 @@ from kaist_rl_lab.apps.coffee_classroom import (
     fresh_classroom_seed,
 )
 from kaist_rl_lab.apps.coffee_cloning import NearestNeighborPolicy
-from kaist_rl_lab.apps.coffee_finetuning import FineTuningTrainer
+from kaist_rl_lab.apps.coffee_finetuning import (
+    DEFAULT_EPISODES,
+    MAX_EPISODES,
+    STEP_DISCOUNT,
+    FineTuningTrainer,
+)
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 
 TRIAL_SECONDS = 60
 TRIAL_STEPS = round(TRIAL_SECONDS / BROWSER_DT)
-DEFAULT_TRAINING_EPISODES = 8
-MAX_TRAINING_EPISODES = 12
+DEFAULT_TRAINING_EPISODES = DEFAULT_EPISODES
+MAX_TRAINING_EPISODES = MAX_EPISODES
 DEFAULT_CHUNK_STEPS = 32
 MAX_CHUNK_STEPS = 32
 
@@ -66,6 +71,8 @@ class FineTuningRuntime:
         self.rollout_done = False
         self.rollout_outcome = None
         self.playback_speed = 0
+        self.discounted_return = 0.0
+        self._discount_weight = 1.0
 
     def _dispose_training(self) -> None:
         if self.trainer is not None:
@@ -84,6 +91,8 @@ class FineTuningRuntime:
     def _replace_scene(self, seed=None) -> None:
         self.close()
         self.session = _new_session(seed)
+        self.discounted_return = 0.0
+        self._discount_weight = 1.0
         self.rollout_active = False
         self.rollout_done = False
         self.rollout_outcome = None
@@ -99,7 +108,9 @@ class FineTuningRuntime:
             )
         }
         self.progress["elapsed_seconds"] = self.result["episode_steps"] * BROWSER_DT
-        self.progress["reward"] = float(self.session.cumulative_reward)
+        self.discounted_return = float(self.trainer.discounted_return)
+        self.progress["reward"] = self.discounted_return
+        self.progress["raw_return"] = float(self.session.cumulative_reward)
         self.result["improved"] = bool(
             self.result["baseline"] is not None and self.result["best"] is not None
             and self.result["best"]["return"] > self.result["baseline"]["return"]
@@ -219,6 +230,8 @@ class FineTuningRuntime:
                 for index, direction in enumerate(action):
                     self.session.set_motor(index, float(direction))
                 self.session.advance()
+                self.discounted_return += self._discount_weight * self.session.trajectory[-1]["reward"]
+                self._discount_weight *= STEP_DISCOUNT
                 if not self.session.running:
                     self.rollout_active = False
                     self.rollout_done = True
@@ -254,7 +267,8 @@ class FineTuningRuntime:
                     "limit_seconds": TRIAL_SECONDS,
                     "done": self.rollout_done,
                     "outcome": self.rollout_outcome,
-                    "reward": float(self.session.cumulative_reward),
+                    "reward": float(self.discounted_return),
+                    "raw_return": float(self.session.cumulative_reward),
                 },
             },
         }, allow_nan=False, separators=(",", ":"))

@@ -213,7 +213,7 @@ const start=best.match(/^M\s+\S+\s+(\S+)/);
 const ys=[Number(start[1]),...Array.from(best.matchAll(/V\s+(\S+)/g),match=>Number(match[1]))];
 assert.ok(ys.length>=2);assert.equal(new Set(ys).size,1);
 node('#ft-chart-trial').value='0';fire(node('#ft-chart-trial'),'change');
-assert.match(node('#ft-chart-inspector').textContent,/Original clone · reward 5/);
+assert.match(node('#ft-chart-inspector').textContent,/Original clone · discounted return 5/);
 assertFiniteSvg();
 """)
 
@@ -259,8 +259,8 @@ def test_baseline_only_stop_keeps_the_original_result_available(tmp_path, learni
 viz.render(fixture);assert.equal(node('#ft-learning-viz').hidden,false);
 assert.equal(points('baseline').length,1);assert.equal(points('evaluation').length,0);
 assert.equal(points('exploration').length,0);assert.equal(selected(),'0');
-assert.match(node('#ft-learning-status').textContent,/stopped.*0 trials/i);
-assert.match(node('#ft-chart-inspector').textContent,/Original clone · reward 0.000/);
+assert.match(node('#ft-learning-status').textContent,/stopped.*0 iterations/i);
+assert.match(node('#ft-chart-inspector').textContent,/Original clone · discounted return 0.000/);
 assertFiniteSvg();
 """)
 
@@ -284,3 +284,42 @@ assert.equal(node('#ft-stage-training').getAttribute('aria-current'),null);
 assert.equal(node('#ft-stage-evaluation').getAttribute('aria-current'),'step');
 assert.equal(points('evaluation')[0],firstPoint);assertFiniteSvg();
 """)
+
+
+@pytest.mark.parametrize("width,ticks", [(360, [0, 20, 40, 60, 80, 100]), (680, list(range(0, 101, 10)))])
+def test_hundred_iterations_keep_current_evaluation_distinct_and_missing_results_absent(
+    tmp_path, learning_state, width, ticks,
+):
+    run_viz(tmp_path, learning_state, r"""
+const state=clone(fixture),history=[];
+for(let iteration=1;iteration<=100;iteration++)history.push({
+  episode:iteration,
+  training:{return:-10+iteration/100,raw_return:10000+iteration},
+  evaluation:iteration===100?null:{return:10+(iteration%7)/10,raw_return:20000+iteration},
+  update:{actor_change:.01}
+});
+Object.assign(state.result,{history,episodes:100,episode:100,phase:'evaluation',done:false,
+  baseline:{return:9,raw_return:9999},best:{return:10.6,raw_return:20006,episode:6}});
+Object.assign(state.progress,{episodes:100,episode:100,phase:'evaluation',completed_episodes:99});
+state.training_active=true;state.paused=false;svg().clientWidth=WIDTH;
+viz.render(state);
+assert.equal(numeric(svg(),'data-x-max'),100);
+assert.equal(points('exploration').length,100);assert.equal(points('evaluation').length,99);
+assert.equal(node('#ft-chart-trial').children.length,101);assert.equal(selected(),'100');
+assert.equal(node('#ft-chart-trial').children.at(-1).textContent,'Iteration 100');
+assert.equal(points('evaluation').at(-1).getAttribute('data-trial'),'99');
+assert.ok(numeric(svg(),'data-y-max')<20,'Raw, undiscounted returns must not enter this chart');
+assert.equal(numeric(points('evaluation')[6],'data-value'),10,'Show a worsening current policy, not best so far');
+assert.notEqual(path('evaluation').getAttribute('d'),path('best').getAttribute('d'));
+assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\) —/);
+assert.match(node('#ft-learning-status').textContent,/iteration 100 \/ 100/);
+const ticks=descendants().filter(item=>item.getAttribute('data-axis')==='trial').map(item=>Number(item.textContent));
+assert.deepEqual(ticks,TICKS);
+assert.ok(descendants().some(item=>item.textContent==='Discounted return'));
+const earlier=points('evaluation')[0];viz.render(state);
+assert.equal(points('evaluation')[0],earlier,'Unchanged history should not rebuild 100 iterations');
+state.result.history[99].evaluation={return:10.2,raw_return:20100};viz.render(state);
+assert.equal(points('evaluation').length,100);assert.equal(selected(),'100');
+assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\) 10.200/);
+assertFiniteSvg();
+""".replace("WIDTH", str(width)).replace("TICKS", json.dumps(ticks)))

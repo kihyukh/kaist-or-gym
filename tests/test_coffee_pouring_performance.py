@@ -29,6 +29,11 @@ def test_lightweight_info_preserves_every_transition_reward_and_rendered_scene()
     arrays, metadata = read_demonstration(load_examples()[0])
     full = CoffeePouringEnv(dt=metadata["dt"], horizon=None)
     fast = CoffeePouringEnv(dt=metadata["dt"], horizon=None, include_render_info=False)
+    # The reference performs all original link-distance checks without the
+    # new conservative bounding-box rejection.
+    full._segments_within_distance = lambda a, b, c, d, distance: (
+        full._segment_distance(a, b, c, d) < distance
+    )
     options = {"joint_angles": metadata["initial_joint_angles_rad"],
                "target_fill": metadata["target_fill_l"]}
     try:
@@ -147,3 +152,54 @@ def test_shallow_forecast_copy_cannot_poison_original_geometry_cache():
         assert env._cup_surface_world_y(tools, .4) == original_surface
     finally:
         env.close()
+
+
+def test_link_bounds_match_exact_distance_for_random_and_near_contact_segments():
+    rng = np.random.default_rng(2026)
+    for _ in range(1000):
+        points = rng.uniform(-1, 1, (4, 2))
+        distance = rng.uniform(0, .2)
+        assert CoffeePouringEnv._segments_within_distance(*points, distance) == (
+            CoffeePouringEnv._segment_distance(*points) < distance
+        )
+    for gap in [0, .058 - 1e-13, .058, .058 + 1e-13, .058 + 1e-10]:
+        first = (np.array([0., 0.]), np.array([.5, 0.]))
+        second = (np.array([0., gap]), np.array([.5, gap]))
+        assert CoffeePouringEnv._segments_within_distance(*first, *second, .058) == (
+            CoffeePouringEnv._segment_distance(*first, *second) < .058
+        )
+
+
+def test_separated_link_bounds_avoid_distance_work_but_near_contact_uses_it(monkeypatch):
+    calls = []
+    exact = CoffeePouringEnv._segment_distance
+
+    def distance(*points):
+        calls.append(1)
+        return exact(*points)
+
+    monkeypatch.setattr(CoffeePouringEnv, "_segment_distance", staticmethod(distance))
+    first = (np.array([0., 0.]), np.array([.5, 0.]))
+    assert not CoffeePouringEnv._segments_within_distance(
+        *first, np.array([0., .5]), np.array([.5, .5]), .058,
+    )
+    assert calls == []
+    assert CoffeePouringEnv._segments_within_distance(
+        *first, np.array([0., .057]), np.array([.5, .057]), .058,
+    )
+    assert calls == [1]
+
+
+def test_cross_robot_collision_matches_full_checks_at_arbitrary_joint_poses():
+    reference, accelerated = CoffeePouringEnv(), CoffeePouringEnv()
+    reference._segments_within_distance = lambda a, b, c, d, distance: (
+        reference._segment_distance(a, b, c, d) < distance
+    )
+    rng = np.random.default_rng(37)
+    try:
+        for _ in range(500):
+            angles = rng.uniform(reference.joint_low, reference.joint_high)
+            assert reference._cross_robot_collision(angles) == accelerated._cross_robot_collision(angles)
+    finally:
+        reference.close()
+        accelerated.close()

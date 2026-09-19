@@ -18,9 +18,9 @@ FINETUNING_HTML = """
           <b>15% of the cloned command at the current state</b>. This limits action changes;
           it does not guarantee that every new trajectory stays close or improves.</p>
         <div class="ft-training-controls">
-          <div><label for="ft-episodes">Exploratory trials</label>
-            <select id="ft-episodes"><option value="4">4 · quick demonstration</option>
-              <option value="8" selected>8 · more practice</option><option value="12">12 · longer experiment</option></select></div>
+          <div><label for="ft-episodes">Learning iterations</label>
+            <select id="ft-episodes"><option value="25">25 · quick demonstration</option>
+              <option value="50">50 · more practice</option><option value="100" selected>100 · full experiment</option></select></div>
           <div><label for="ft-speed">Training &amp; playback speed</label>
             <select id="ft-speed"><option value="4">4×</option><option value="8">8×</option>
               <option value="0" selected>Fastest available</option></select></div>
@@ -28,15 +28,18 @@ FINETUNING_HTML = """
           <button id="ft-pause" type="button" disabled>Pause</button>
           <button id="ft-stop" type="button" disabled>Stop training</button>
         </div>
+        <p class="hint">Each iteration explores once, updates the policy, then evaluates the current policy
+          without exploration noise from the same fixed starting pose.</p>
         <p id="ft-status" role="status" aria-live="polite">Train a behavior-cloning policy above to begin.</p>
         <p id="ft-progress" class="hint"></p>
+        <p id="ft-exploration" class="hint" hidden></p>
         <div class="ft-visual-grid">
           __LEARNING_VIZ__
         <div id="ft-scene" hidden>
           <div class="random-readout" aria-live="off">
             <span>Showing <strong id="ft-showing">—</strong></span>
             <span>Simulated time <strong id="ft-time">0.0 s</strong></span>
-            <span>Reward so far <strong id="ft-reward">0.000</strong></span>
+            <span>Discounted return so far <strong id="ft-reward">0.000</strong></span>
           </div>
           <div class="coffee-stage replay-stage"><div class="coffee-canvas-wrap">
             <canvas class="coffee-canvas" role="img" aria-label="Actor–critic coffee pouring training and evaluation"></canvas>
@@ -46,32 +49,57 @@ FINETUNING_HTML = """
               <span><span class="coffee-stat-label">In the pot</span><strong data-coffee-stat="remaining">—</strong></span>
             </div>
           </div></div>
-          <p class="hint">The scene shows the current trial. During training, the chart adds its total reward after the trial finishes.</p>
+          <p class="hint">The scene shows the current rollout. The chart adds its discounted return after the rollout finishes.</p>
         </div>
         </div>
         <div id="ft-results" hidden>
           <h3>Fixed starting pose · no exploration noise in evaluation</h3>
           <div class="table-scroll"><table>
-            <thead><tr><th>Policy</th><th>Total reward ↑</th><th>Cup</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
+            <thead><tr><th>Policy</th><th>Discounted return ↑</th><th>Cup</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
             <tbody id="ft-comparison"></tbody></table></div>
           <p id="ft-improvement" class="ft-improvement"></p>
-          <p class="hint">The best policy is the highest-reward evaluated checkpoint, including the original clone.
-            Exploratory training rewards include noise and are not the before/after comparison.</p>
+          <p class="hint">The best policy has the highest evaluated discounted return, including the original clone.
+            Exploration includes random actions. The evaluation curve tests every updated policy without that noise.</p>
         </div>
         <div class="button-row">
           <button id="ft-run-base" type="button" disabled>Watch original clone</button>
           <button id="ft-run-best" type="button" class="primary" disabled>Watch best policy</button>
           <button id="ft-reset" type="button" disabled>Reset displayed trial</button>
         </div>
-        <details id="ft-history" hidden><summary>Reward across training trials</summary>
+        <details id="ft-history" hidden><summary>Discounted return across learning iterations</summary>
           <div class="table-scroll"><table>
-            <thead><tr><th>Trial</th><th>Exploration reward</th><th>Reward without noise</th><th>Policy update</th></tr></thead>
+            <thead><tr><th>Iteration</th><th>Exploration return</th><th>Current policy return · no noise</th><th>Policy update</th></tr></thead>
             <tbody id="ft-history-rows"></tbody></table></div>
         </details>
+        <section id="ft-reward-explanation" class="ft-reward-explanation" aria-labelledby="ft-reward-title">
+          <h3 id="ft-reward-title">Reward used for fine-tuning</h3>
+          <p>Move closer to <b>700 mL</b>, avoid spilling, keep the cup upright, and use less time and motor effort.
+            Reaching the goal earns a success bonus. Overshooting the target loses accuracy reward.</p>
+          <p><b>Earlier reward counts more.</b> A reward earned one simulated second later receives 99% of its
+            earlier weight. This makes earlier success more valuable while preserving the costs of spills and poor control.
+            The chart and policy comparisons show this <b>discounted return</b>.</p>
+          <details class="ft-reward-formula"><summary>Exact reward and discount formula</summary>
+            <p>Every physics step lasts <b>dt = 1/32 second</b>. Let <b>e</b> be the absolute distance from
+              0.700 litres in the cup, <b>Δspill</b> the litres spilled in this step, <b>a₁ … a₆</b> the six
+              controls between −1 and 1, and <b>θ</b> the cup angle in radians.</p>
+            <p class="ft-equation">rₜ = 20(eₜ − eₜ₊₁) − 40Δspill − 0.024dt ∑ᵢ₌₁⁶ aᵢ² − 0.032dt |θ| − 0.008dt</p>
+            <p>At the final step, also add:</p>
+            <p class="ft-equation">(15 if successful, otherwise 0) − 10 × final error − 14 × total spill</p>
+            <p>Errors and spill volumes are in litres. The final penalty is in addition to the step penalties.</p>
+            <p><b>Success requires all five conditions:</b> the cup is within 40 mL of the 700 mL target,
+              total spill ≤20 mL, flow rate ≤8 mL/s, cup tilt ≤8°, and pot tilt ≤12°.
+              Each rollout has a 60-second time limit.</p>
+            <p class="ft-equation">G = ∑ₜ₌₀ᵀ⁻¹ γᵗ rₜ, with γ = 0.99<sup>1/32</sup></p>
+            <p>All terms, including the final bonus and penalties, use the same discount. The existing trajectory
+              library lists undiscounted total reward; fine-tuning compares discounted return.</p>
+          </details>
+        </section>
         <details><summary>What is being learned?</summary>
           <p class="hint">The starting behavior-cloning policy stays fixed. The learned actor adjusts its speed using the
-            current state; it does not invent a new direction of motion. Bounded random speed changes provide exploration.
-            The critic estimates returns, and the actor uses those estimates to improve expected reward.</p>
+            current state; it does not invent a new direction of motion. Exploration samples a new random speed
+            adjustment every 0.25 simulated seconds. Initially, about 95% of speed multipliers fall between 0.87 and 1.13;
+            all stay between 0.85 and 1.15. The critic estimates discounted returns, and the actor uses those estimates
+            to improve expected discounted return.</p>
           <p class="hint">Reward combines pouring accuracy, spilled coffee, vessel stability, elapsed time, and motor effort.
             Faster is not always better. Exploration, evaluation, and policy playback all reuse one fixed starting
             pose, with a 60-second time limit. Demonstrations use a wider range of random starting poses.</p>
@@ -95,6 +123,12 @@ FINETUNING_CSS = LEARNING_VIZ_CSS + """
 #ft-results {margin:18px 0;padding:16px;background:#f0f6f3;border:1px solid #d5e5dc;border-radius:10px;}
 #ft-results h3 {font-size:16px;margin:0 0 8px;}
 .ft-improvement {font-weight:700;color:var(--teal);}
+.ft-reward-explanation {margin:18px 0;padding:16px;background:#f5f8fb;border:1px solid var(--line);border-radius:10px;font-size:13px;}
+.ft-reward-explanation h3 {font-size:16px;margin:0 0 8px;}
+.ft-reward-explanation p {line-height:1.6;margin:8px 0;}
+.ft-reward-formula {margin-top:10px;}
+.ft-reward-formula summary {font-weight:700;cursor:pointer;}
+.ft-equation {font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;overflow-x:auto;padding:8px;background:#fff;border-radius:6px;}
 #ft-comparison td,#ft-history-rows td {white-space:nowrap;}
 @media(max-width:580px) {.ft-training-controls>div {flex-basis:100%;min-width:0;}#ft-train {flex-basis:100%;}#ft-results {padding:10px;}}
 """
@@ -134,6 +168,7 @@ function createFineTuningDemo(element,beforeRun) {
     $('#ft-results').hidden=true;$('#ft-history').hidden=true;$('#ft-scene').hidden=true;
     $('#ft-comparison').replaceChildren();$('#ft-history-rows').replaceChildren();
     $('#ft-progress').textContent='';$('#ft-improvement').textContent='';
+    $('#ft-exploration').hidden=true;$('#ft-exploration').textContent='';
     status(model?'Cloned policy ready. Start fine-tuning or watch the original clone.':'Train a behavior-cloning policy above to begin.');
     controls();
   }
@@ -152,17 +187,27 @@ function createFineTuningDemo(element,beforeRun) {
     $('#ft-comparison').replaceChildren();$('#ft-history-rows').replaceChildren();
     $('#ft-results').hidden=!result?.baseline;
     $('#ft-history').hidden=!(result?.history?.length);
+    $('#ft-exploration').hidden=true;$('#ft-exploration').textContent='';
     if(!result?.baseline)return;
     [['Original clone',result.baseline],['Best evaluated policy',result.best]].forEach(([label,value])=>{
       if(value)row($('#ft-comparison'),[label,number(value.return),number(value.fill_ml,1)+' mL',
         number(value.spill_ml,1)+' mL',number(value.seconds,1)+' s',value.success?'Success':'Attempt']);
     });
     const delta=(result.best?.return??result.baseline.return)-result.baseline.return;
-    $('#ft-improvement').textContent=delta>1e-8?'Best reward increased by '+number(delta)+
-      ' · checkpoint after trial '+result.best.episode+'.':
+    $('#ft-improvement').textContent=delta>1e-8?'Best discounted return increased by '+number(delta)+
+      ' · checkpoint after iteration '+result.best.episode+'.':
       'No better checkpoint yet. The original cloned policy is retained.';
     const history=result.history||[];
     $('#ft-history').hidden=!history.length;
+    const exploration=history.at(-1)?.update?.exploration;
+    if(Number.isFinite(exploration?.speed_min)&&Number.isFinite(exploration?.speed_max)) {
+      $('#ft-exploration').hidden=false;
+      $('#ft-exploration').textContent='Latest exploration · speed multipliers '+number(100*exploration.speed_min,1)+
+        '–'+number(100*exploration.speed_max,1)+'% of the clone'+
+        (Number.isInteger(exploration.slower_decisions)&&Number.isInteger(exploration.faster_decisions)?
+          ' · '+exploration.slower_decisions+' slower / '+exploration.faster_decisions+
+          ' faster adjustments than the policy being explored.':'.');
+    }
     history.forEach(item=>row($('#ft-history-rows'),[item.episode,number(item.training.return),
       number(item.evaluation?.return),item.update.actor_change>0?'Applied':'No change']));
   }
@@ -194,11 +239,11 @@ function createFineTuningDemo(element,beforeRun) {
     $('#ft-time').textContent=number(training?progress.elapsed_seconds:rollout.elapsed_seconds,1)+' s';
     $('#ft-reward').textContent=number(training?progress.reward:rollout.reward);
     $('#ft-progress').textContent=state.has_result||training?
-      'Completed '+(progress.completed_episodes||0)+' / '+(progress.episodes||0)+' exploratory trials · '+
+      'Completed '+(progress.completed_episodes||0)+' / '+(progress.episodes||0)+' learning iterations · '+
       (training?(state.playback_speed?state.playback_speed+'× requested':'fastest available')+' · fixed starting pose':'experiment stopped or completed'):'';
     const outcome={success:'Success',spill_or_overflow:'Too much spill or overflow',time_limit:'Time limit reached'}[rollout.outcome]||'Finished';
-    if(training)status((state.paused?'Paused · ':'')+phase+(progress.episode?' · trial '+progress.episode+' / '+progress.episodes:''));
-    else if(rollout.done)status(outcome+' · reward '+number(rollout.reward)+' · '+
+    if(training)status((state.paused?'Paused · ':'')+phase+(progress.episode?' · iteration '+progress.episode+' / '+progress.episodes:''));
+    else if(rollout.done)status(outcome+' · discounted return '+number(rollout.reward)+' · '+
       Math.round(displayState.fill*1000)+' mL in the cup, '+Math.round(displayState.spill*1000)+' mL spilled.');
     else if(rollout.active)status(state.paused?'Policy paused. Resume to continue.':'Watching the policy without exploration noise.');
     else if(state.has_result)status('Experiment ready to compare. Watch the original clone and the best evaluated policy.');

@@ -3,7 +3,7 @@
 LEARNING_VIZ_HTML = """
         <section id="ft-learning-viz" class="ft-learning-viz" aria-labelledby="ft-learning-title" hidden>
           <div class="ft-learning-heading"><h3 id="ft-learning-title">Watch learning unfold</h3>
-            <span class="hint">Higher reward is better</span></div>
+            <span class="hint">Higher discounted return is better</span></div>
           <ol class="ft-learning-flow" aria-label="Learning cycle">
             <li id="ft-stage-baseline"><span>1</span>Check clone</li>
             <li id="ft-stage-training"><span>2</span>Explore</li>
@@ -13,21 +13,22 @@ LEARNING_VIZ_HTML = """
           <p id="ft-learning-status" class="ft-learning-status" role="status" aria-live="polite"></p>
           <p id="ft-learning-updates" class="hint ft-learning-updates"></p>
           <div class="ft-chart-legend" aria-label="Chart legend">
-            <span><i class="ft-legend-exploration"></i>Exploration</span>
-            <span><i class="ft-legend-evaluation"></i>Evaluation</span>
+            <span><i class="ft-legend-exploration"></i>Exploration · noisy actions</span>
+            <span><i class="ft-legend-evaluation"></i>Current policy · no noise</span>
             <span><i class="ft-legend-best"></i>Best so far</span>
             <span><i class="ft-legend-baseline"></i>Original clone</span>
           </div>
           <svg id="ft-learning-chart" viewBox="0 0 680 255" role="group"
             aria-labelledby="ft-chart-title ft-chart-description"></svg>
           <div class="ft-chart-controls"><label class="ft-chart-zero-label">
-            <input id="ft-chart-zero" type="checkbox">Include zero on reward axis</label>
-            <span class="hint">Axis otherwise fits observed rewards.</span></div>
+            <input id="ft-chart-zero" type="checkbox">Include zero on return axis</label>
+            <span class="hint">Axis otherwise fits observed returns.</span></div>
           <div class="ft-chart-inspect-heading"><label for="ft-chart-trial">Inspect completed results</label>
             <select id="ft-chart-trial" disabled><option value="">No results yet</option></select></div>
           <div id="ft-chart-inspector" class="ft-chart-inspector" aria-live="polite"></div>
-          <p class="hint ft-chart-explanation">Exploration varies actions from one fixed starting pose. Evaluation uses the same
-            pose without action noise. Points appear only when a rollout finishes; inspecting a point shows its results.</p>
+          <p class="hint ft-chart-explanation">After every policy update, evaluation measures the current policy from the
+            fixed starting pose without exploration noise. This curve may rise or fall; best so far keeps the strongest
+            evaluated checkpoint. Returns discount later rewards by 1% per simulated second. Points appear after each rollout finishes.</p>
         </section>
 """
 
@@ -111,9 +112,9 @@ function createLearningVisualization(element) {
     const phaseLabel={baseline:'Checking the original clone',training:'Exploring nearby actions',evaluation:'Evaluating without noise'}[phase]||'Experiment ready';
     let label;
     if(current.training_active)label=(current.training_paused||current.paused?'Paused · ':'')+phaseLabel+
-      (phase!=='baseline'&&Number.isInteger(episode)?' · trial '+episode+(Number.isInteger(total)?' / '+total:''):'');
-    else if(result.done||phase==='complete')label='Experiment complete · '+count+' trial'+(count===1?'':'s')+' evaluated';
-    else label='Experiment stopped · '+count+' trial'+(count===1?'':'s')+' evaluated';
+      (phase!=='baseline'&&Number.isInteger(episode)?' · iteration '+episode+(Number.isInteger(total)?' / '+total:''):'');
+    else if(result.done||phase==='complete')label='Experiment complete · '+count+' iteration'+(count===1?'':'s')+' evaluated';
+    else label='Experiment stopped · '+count+' iteration'+(count===1?'':'s')+' evaluated';
     text($('#ft-learning-status'),label);
     text($('#ft-learning-updates'),'Actor updates: '+applied+' applied / '+attempted+' attempted · best evaluated policy retained');
     for(const key of ['baseline','training','update','evaluation']) {
@@ -134,14 +135,15 @@ function createLearningVisualization(element) {
       values.textContent='Waiting for the first completed rollout.';
       update.textContent='Live movement is shown beside this chart.';
     } else if(selected===0) {
-      values.textContent='Original clone · reward '+number(baseline);
+      values.textContent='Original clone · discounted return '+number(baseline);
       update.textContent='Before fine-tuning · tested without exploration noise.';
     } else {
       const item=history.find(row=>row.episode===selected);
       let best=baseline;
       for(const row of history)if(row.episode<=selected&&reward(row.evaluation)!==null)
         best=best===null?reward(row.evaluation):Math.max(best,reward(row.evaluation));
-      values.textContent='Exploration '+number(reward(item?.training))+' · Evaluation '+number(reward(item?.evaluation))+' · Best '+number(best);
+      values.textContent='Discounted returns · Exploration '+number(reward(item?.training))+
+        ' · Current policy (no noise) '+number(reward(item?.evaluation))+' · Best '+number(best);
       const changed=finite(item?.update?.actor_change)&&item.update.actor_change>0;
       update.textContent=(item?.update?(changed?'Actor update applied. ':'No actor change. '):'')+
         (reward(item?.evaluation)===null?'Evaluation has not finished.':
@@ -157,7 +159,7 @@ function createLearningVisualization(element) {
     select.replaceChildren();
     for(const trial of trials) {
       const option=document.createElement('option');option.value=String(trial);
-      option.textContent=trial===0?'Original clone':'Trial '+trial;
+      option.textContent=trial===0?'Original clone':'Iteration '+trial;
       select.append(option);
     }
     if(!trials.length) {
@@ -184,8 +186,8 @@ function createLearningVisualization(element) {
     svg.replaceChildren();svg.setAttribute('viewBox','0 0 '+width+' 255');
     svg.setAttribute('data-y-min',String(low));svg.setAttribute('data-y-max',String(high));
     svg.setAttribute('data-x-max',String(maxTrial));
-    svgNode('title',{id:'ft-chart-title'},'Fine-tuning reward by trial');
-    svgNode('desc',{id:'ft-chart-description'},'Actual completed exploration and evaluation rewards, original clone reference, and best evaluated reward so far. Select a point or use the trial menu to inspect results.');
+    svgNode('title',{id:'ft-chart-title'},'Discounted return by learning iteration');
+    svgNode('desc',{id:'ft-chart-description'},'Completed exploratory discounted returns, the current policy evaluated without noise after each update, the original clone, and the best evaluated return so far. Select a point or use the iteration menu to inspect results.');
     const digits=high-low<.05?4:high-low<1?3:high-low<10?2:1;
     for(let index=0;index<=4;index++) {
       const value=low+(high-low)*index/4,py=y(value);
@@ -194,12 +196,14 @@ function createLearningVisualization(element) {
     }
     svgNode('line',{x1:left,y1:bottom,x2:right,y2:bottom,class:'ft-chart-axis'});
     const tickLimit=width<440?6:12;
+    const tickStep=[1,2,5,10,20,25,50,100].find(value=>value>=maxTrial/tickLimit)||Math.ceil(maxTrial/tickLimit);
     for(let trial=0;trial<=maxTrial;trial++) {
-      if(maxTrial>tickLimit&&trial!==maxTrial&&trial%Math.ceil(maxTrial/tickLimit)!==0)continue;
+      if(trial!==maxTrial&&trial%tickStep!==0)continue;
+      if(trial!==maxTrial&&maxTrial-trial<tickStep/2)continue;
       svgNode('text',{x:x(trial),y:bottom+18,'text-anchor':'middle','data-axis':'trial'},String(trial));
     }
-    svgNode('text',{x:left,y:12},'Total reward');
-    svgNode('text',{x:(left+right)/2,y:251,'text-anchor':'middle'},width<430?'Trial (0 = clone)':'Exploratory trial (0 = original clone)');
+    svgNode('text',{x:left,y:12},'Discounted return');
+    svgNode('text',{x:(left+right)/2,y:251,'text-anchor':'middle'},width<430?'Iteration (0 = clone)':'Learning iteration (0 = original clone)');
     if(baseline!==null)svgNode('line',{x1:left,y1:y(baseline),x2:right,y2:y(baseline),class:'ft-chart-baseline','data-value':baseline});
     const path=(points,step=false)=>points.map((point,index)=>index===0?'M '+x(point.trial)+' '+y(point.value):
       step?'H '+x(point.trial)+' V '+y(point.value):'L '+x(point.trial)+' '+y(point.value)).join(' ');
@@ -214,7 +218,8 @@ function createLearningVisualization(element) {
         class:'ft-chart-point','data-trial':point.trial,'data-series':series,'data-value':point.value,
         fill:series==='exploration'?'#fff':'#153b57',stroke:series==='exploration'?'#ac6400':'#153b57',
         tabindex:'0',role:'button','aria-pressed':String(active),
-        'aria-label':(point.trial===0?'Original clone':'Trial '+point.trial+', '+series)+' reward '+number(point.value)});
+        'aria-label':(point.trial===0?'Original clone':'Iteration '+point.trial+', '+
+          (series==='evaluation'?'current policy without noise':series))+' discounted return '+number(point.value)});
       node.addEventListener('click',()=>choose(point.trial));
       node.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose(point.trial);select.focus();}});
     }

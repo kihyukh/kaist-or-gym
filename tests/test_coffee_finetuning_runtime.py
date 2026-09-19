@@ -50,6 +50,8 @@ class FakeTrainer:
         self.session.paused = False
         self.best_policy = NearestNeighborPolicy(model)
         self.calls = []
+        self.discounted_return = 0.0
+        self._discount_weight = 1.0
         self.done = False
         self.closed = False
         self.instances.append(self)
@@ -58,6 +60,8 @@ class FakeTrainer:
         self.calls.append(max_steps)
         for _ in range(max_steps):
             self.session.advance()
+            self.discounted_return += self._discount_weight * self.session.trajectory[-1]["reward"]
+            self._discount_weight *= module.STEP_DISCOUNT
         self.done = len(self.calls) >= 4
         if self.done:
             improved = deepcopy(self.model)
@@ -154,7 +158,8 @@ def test_training_runs_only_in_bounded_chunks_and_pause_freezes_it(runtime, mode
     assert second["finetuning"]["has_result"]
     assert second["finetuning"]["best_available"]
     assert second["finetuning"]["progress"]["elapsed_seconds"] == (1 + module.DEFAULT_CHUNK_STEPS) * BROWSER_DT
-    assert second["finetuning"]["progress"]["reward"] == runtime.session.cumulative_reward
+    assert second["finetuning"]["progress"]["reward"] == trainer.discounted_return
+    assert second["finetuning"]["progress"]["raw_return"] == runtime.session.cumulative_reward
     assert second["finetuning"]["progress"]["completed_episodes"] == 0
     with pytest.raises(ValueError, match="Stop"):
         call(runtime, "ft-train")
@@ -162,7 +167,7 @@ def test_training_runs_only_in_bounded_chunks_and_pause_freezes_it(runtime, mode
         call(runtime, "ft-run", policy="base")
 
 
-@pytest.mark.parametrize("value", [True, False, 0, -1, 13, 1.5, "4", None])
+@pytest.mark.parametrize("value", [True, False, 0, -1, 101, 1.5, "4", None])
 def test_invalid_episode_bounds_do_not_replace_the_loaded_model(runtime, model, value):
     before = call(runtime, "ft-load", model=model)
     with pytest.raises(ValueError, match="episodes"):
@@ -402,3 +407,94 @@ def test_invalid_playback_chunk_does_not_advance_the_scene(runtime, model, steps
     with pytest.raises(ValueError, match="Trial chunk"):
         call(runtime, "tick", max_steps=steps)
     assert call(runtime, "snapshot") == before
+
+
+def test_default_and_maximum_training_budget_use_the_core_100_trial_limit(runtime, model, fake_trainer):
+    assert module.DEFAULT_TRAINING_EPISODES == module.DEFAULT_EPISODES == 100
+    assert module.MAX_TRAINING_EPISODES == module.MAX_EPISODES == 100
+    call(runtime, "ft-load", model=model)
+    started = call(runtime, "ft-train", seed=12)
+    assert started["finetuning"]["progress"]["episodes"] == 100
+    assert fake_trainer.instances[-1].episodes == 100
+    call(runtime, "ft-stop")
+    started = call(runtime, "ft-train", episodes=100, seed=12)
+    assert started["finetuning"]["progress"]["episodes"] == 100
+
+
+def test_discounted_watch_return_uses_physics_time_independent_of_speed_pause_and_batching(
+    monkeypatch, runtime, model,
+):
+    monkeypatch.setattr(module, "TRIAL_STEPS", 9)
+    call(runtime, "ft-load", model=model)
+    call(runtime, "ft-run", policy="base", speed=4)
+    partial = call(runtime, "tick", max_steps=4)
+    partial_reward = partial["finetuning"]["rollout"]["reward"]
+    rewards = np.array([row["reward"] for row in runtime.session.trajectory])
+    assert partial_reward == pytest.approx(np.dot(module.STEP_DISCOUNT ** np.arange(4), rewards))
+    assert partial["finetuning"]["rollout"]["raw_return"] == pytest.approx(rewards.sum())
+    paused = call(runtime, "ft-pause", paused=True)
+    assert call(runtime, "tick", max_steps=32) == paused
+    faster = call(runtime, "ft-speed", speed=0)
+    assert faster["finetuning"]["rollout"]["reward"] == partial_reward
+    call(runtime, "ft-pause", paused=False)
+    completed = call(runtime, "tick", max_steps=32)
+    rewards = np.array([row["reward"] for row in runtime.session.trajectory])
+    rollout = completed["finetuning"]["rollout"]
+    assert rollout["done"] and len(rewards) == 9
+    assert rollout["reward"] == pytest.approx(np.dot(module.STEP_DISCOUNT ** np.arange(9), rewards))
+    assert rollout["raw_return"] == pytest.approx(rewards.sum())
+    assert rollout["reward"] != pytest.approx(rollout["raw_return"])
+    assert call(runtime, "tick", max_steps=32) == completed
+    restarted = call(runtime, "ft-run", policy="base", speed=8)
+    assert restarted["finetuning"]["rollout"]["reward"] == 0
+    assert restarted["finetuning"]["rollout"]["raw_return"] == 0
+    repeated = call(runtime, "tick", max_steps=4)
+    assert repeated["finetuning"]["rollout"]["reward"] == partial_reward
+
+
+def test_live_training_and_completed_scene_use_the_trainers_discounted_return(
+    monkeypatch, runtime, model,
+):
+    from kaist_rl_lab.apps import coffee_finetuning as core
+
+    monkeypatch.setattr(core, "TRIAL_STEPS", 8)
+    call(runtime, "ft-load", model=model)
+    call(runtime, "ft-train", episodes=1, seed=2026)
+    partial = call(runtime, "ft-step", max_steps=3)["finetuning"]
+    rewards = np.array([row["reward"] for row in runtime.session.trajectory])
+    expected = np.dot(module.STEP_DISCOUNT ** np.arange(3), rewards)
+    assert partial["progress"]["reward"] == pytest.approx(expected)
+    assert partial["progress"]["raw_return"] == pytest.approx(rewards.sum())
+    completed = call(runtime, "ft-step", max_steps=32)["finetuning"]
+    assert not completed["training_active"]
+    assert completed["progress"]["reward"] == runtime.trainer.discounted_return
+    assert completed["rollout"]["reward"] == runtime.trainer.discounted_return
+    assert completed["rollout"]["reward"] == completed["result"]["history"][-1]["evaluation"]["return"]
+    assert completed["rollout"]["raw_return"] == completed["result"]["history"][-1]["evaluation"]["raw_return"]
+
+
+def test_noise_free_watch_matches_evaluation_for_a_nonzero_learned_actor(runtime, model):
+    from kaist_rl_lab.apps.coffee_finetuning import FineTunedPolicy, FineTuningTrainer
+
+    moving = deepcopy(model)
+    moving["actions"][0] = [.08, -.04, .02, -.03, .01, .03]
+    trainer = FineTuningTrainer(moving, seed=8, episodes=1)
+    try:
+        # Exercise state-dependent, nonzero actor means over several 8-step
+        # training decisions. Evaluation and Watch both requery every step.
+        weights = np.array([.13, -.09, .04, .07, -.06])
+        trainer.policy = FineTunedPolicy(trainer.base, weights)
+        trainer.phase = "evaluation"
+        call(runtime, "ft-load", model=moving)
+        runtime.best_policy = FineTunedPolicy(runtime.base_policy, weights)
+        call(runtime, "ft-run", policy="best", speed=0)
+        for chunk in (3, 8, 1, 20):
+            trainer.step_chunk(max_steps=chunk)
+            current = call(runtime, "tick", max_steps=chunk)
+            np.testing.assert_array_equal(runtime.session.observation, trainer.session.observation)
+            assert current["finetuning"]["rollout"]["reward"] == trainer.discounted_return
+            assert current["finetuning"]["rollout"]["raw_return"] == trainer.session.cumulative_reward
+        for trained, watched in zip(trainer.session.trajectory, runtime.session.trajectory):
+            np.testing.assert_array_equal(trained["action"], watched["action"])
+    finally:
+        trainer.close()
