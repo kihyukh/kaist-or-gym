@@ -278,7 +278,7 @@ frame.finetuning.result.history[0].update.exploration={
 latest().receive(frame);
 assert.equal(node('#ft-exploration').hidden,false);
 assert.match(node('#ft-exploration').textContent,/85.1–114.6% of the clone/);
-assert.match(node('#ft-exploration').textContent,/57 slower \/ 61 faster adjustments than the current policy/);
+assert.match(node('#ft-exploration').textContent,/57 slower \/ 61 faster adjustments than the policy being explored/);
 latest().receive(fixtures.completed);assert.equal(node('#ft-exploration').hidden,true);
 latest().receive(frame);demo.setModel(null);
 assert.equal(node('#ft-exploration').hidden,true);assert.equal(node('#ft-exploration').textContent,'');
