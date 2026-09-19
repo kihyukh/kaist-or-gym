@@ -1,16 +1,41 @@
 {
-  "strategy": "policy_search",
-  "search_speed_bounds": [
-    0.7,
-    1.4
-  ],
+  "created_at_utc": "2026-09-19T12:34:13.938981+00:00",
+  "complete": true,
+  "expected_runs": 3,
   "iterations": 10,
+  "configurations": [
+    "policy-search"
+  ],
   "seeds": [
     7,
     99,
     2029
   ],
-  "archive_sha256": [
+  "search_cap": 1.4,
+  "environment": {
+    "python": "3.12.12 (main, Feb 12 2026, 00:42:34) [Clang 21.1.4 ]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "numpy": "2.5.3",
+    "gymnasium": "1.3.0",
+    "jobs": 3,
+    "dt": 0.03125,
+    "arm_base_distance_m": 1.28
+  },
+  "git_revision": "d1ec6ae887bb00311f94fc1480a3fa3e3c3a6165",
+  "git_dirty": true,
+  "reference_ppo_revision": "29b4adb6da78d5aab348b6e7e7d64c6706356de7",
+  "reference_ppo_sha256": "f50234730de6aedbea26163e107d7cd628ec295facc771c8ffb72ccd104d7aa1",
+  "source_sha256": {
+    "kaist_rl_lab/apps/coffee_finetuning.py": "33f4d5f3188ebcb0a7161d5fc4f0063b386a242a44e682118c6181a5699e47a9",
+    "kaist_rl_lab/apps/coffee_finetuning_reward.py": "9b91065767984aaae449cf7008c55239b52f2253b08ec4afcccfe4ad69956134",
+    "kaist_rl_lab/apps/coffee_finetuning_runtime.py": "d604008092154f2e3b61bfb1db83b6c45826ab8c92e25f8956c25cecf0b3ce96",
+    "kaist_rl_lab/apps/coffee_classroom.py": "d2e6623b235fa1d9d158d214220b7e48aa9be36d9578afd2f67166f5ac6b9922",
+    "kaist_rl_lab/apps/coffee_cloning.py": "0bc2c1d2ce2a8c688e88b8763f12aef4124728cc9cd1e306a2e2882dbc3e0f82",
+    "kaist_rl_lab/apps/coffee_pouring_app.py": "abe915644b705d3f2469b0233e841572987e0593006ede3a998579cb06f99328",
+    "kaist_rl_lab/envs/coffee_pouring.py": "4e196ae5fb6b484251099777b72cf615cf7f346761accdacadb72f88123e34bd",
+    "benchmarks/coffee_finetuning/benchmark.py": "a4ccf437aa61266390bfedf8bcc669aae171bd05d469634e9a3bb336ae3dcec9"
+  },
+  "archives_sha256": [
     "41f5a236d396af4960d426cecc907310f059dcc631a24a11f0154641747a5a5f",
     "12f419adaa6a1f1f340d2e6c01771287255ec393fb8b85d426fd692fa389c2e0",
     "8f7dd5e5fbc5999f72a671a69f4e1307cd7310dd5b0de4e811559e665ebfec58",
@@ -27,118 +52,117 @@
     "bee28878f8dd4665b823c9c17e9c2c148da8e2a6e56ddda1ff2f3bd54e050b2b",
     "561afb4aab0181af1cb52e112af658fade8d695a73b8a1667eb5da50be2bceea"
   ],
-  "archives_unchanged": true,
-  "wall_seconds": 57.85612329200376,
+  "model_metrics": {
+    "demonstrations": 15,
+    "total_steps": 17473,
+    "validation_trajectories": 1,
+    "validation_steps": 500,
+    "validation_total_steps": 1099,
+    "heldout_action_mae": 0.025416282819566142,
+    "training_samples": 11206
+  },
   "runs": [
     {
-      "summary": {
-        "seed": 7,
-        "baseline": {
-          "return": 51.00507314036755,
-          "raw_return": 27.388921410581382,
-          "fill_ml": 672.054436918263,
-          "spill_ml": 1.359212779235906e-05,
-          "seconds": 36.0625,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001
-        },
-        "best": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001,
-          "episode": 8
-        },
-        "final_evaluation": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001
-        },
-        "score_gain": 11.274188202876921,
-        "seconds_saved": 8.3125,
-        "time_reduction_percent": 23.05025996533796,
-        "training_successes": 9,
-        "evaluation_successes": 10,
-        "evaluated_scores": [
-          51.00507314036755,
-          54.97084190818363,
-          58.902608108103976,
-          58.902608108103976,
-          58.902608108103976,
-          60.408876804785976,
-          60.408876804785976,
-          62.27926134324447,
-          62.27926134324447,
-          62.27926134324447
-        ],
-        "evaluated_seconds": [
-          36.0625,
-          33.5625,
-          30.53125,
-          30.53125,
-          30.53125,
-          29.25,
-          29.25,
-          27.75,
-          27.75,
-          27.75
-        ],
-        "evaluated_fill_ml": [
-          672.054436918263,
-          679.7126010179843,
-          674.7989907348424,
-          674.7989907348424,
-          674.7989907348424,
-          670.3512630518603,
-          670.3512630518603,
-          666.3724895875611,
-          666.3724895875611,
-          666.3724895875611
-        ],
-        "candidate_speeds": [
-          0.8949961813358134,
-          1.1050038186641866,
-          1.2160312462739944,
-          0.9939763910543788,
-          1.1270229586743707,
-          1.305039533873618,
-          1.1900973960577677,
-          1.4,
-          1.319789387817377,
-          1.4
-        ],
-        "best_speed_multiplier": 1.4,
-        "wall_seconds": 28.925175999989733
-      },
-      "result": {
-        "algorithm": "bounded_paired_policy_search",
-        "strategy": "policy_search",
-        "speed_multiplier": 1.4,
-        "best_speed_multiplier": 1.4,
+      "configuration": "policy-search",
+      "seed": 7,
+      "iterations": 10,
+      "training_objective": "precision",
+      "parameters": {
+        "SPEED_BOUND": 0.5,
+        "LATENT_STD": 0.5,
+        "MAX_UPDATE_KL": 0.08,
+        "MAX_MEAN_CHANGE": 0.6,
+        "MAX_LATENT_MEAN": 1.25,
+        "DECISION_STEPS": 16,
+        "GAE_LAMBDA": 0.95,
+        "CRITIC_RETENTION": 0.95,
+        "ACTOR_LEARNING_RATE": 0.15,
+        "PPO_EPOCHS": 12,
         "search_speed_range": [
           0.7,
           1.4
         ],
         "search_radius_range": [
-          0.08,
-          0.12
+          0.12,
+          0.16
+        ],
+        "search_radius_floor": 0.001,
+        "search_parameterization": "approach_pour_and_return_gains"
+      },
+      "baseline": {
+        "return": 51.00518780937177,
+        "raw_return": 27.388921410581382,
+        "fill_ml": 672.054436918263,
+        "spill_ml": 1.359212779235906e-05,
+        "seconds": 36.0625,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 20.448061362569725,
+        "precision_discounted_return": 51.00518780937177
+      },
+      "best": {
+        "return": 753.0934209028507,
+        "raw_return": 28.08132766745246,
+        "fill_ml": 701.4293228603241,
+        "spill_ml": 0.00018158746872779573,
+        "seconds": 32.1875,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 21.81865654663131,
+        "precision_discounted_return": 753.0934209028507,
+        "episode": 3
+      },
+      "final": {
+        "return": 753.0934209028507,
+        "raw_return": 28.08132766745246,
+        "fill_ml": 701.4293228603241,
+        "spill_ml": 0.00018158746872779573,
+        "seconds": 32.1875,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 21.81865654663131,
+        "precision_discounted_return": 753.0934209028507
+      },
+      "successful_candidates": 9,
+      "successful_evaluations": 10,
+      "precise_candidates": 3,
+      "precise_evaluations": 8,
+      "first_precise_evaluation": 3,
+      "watch_best_exact": {
+        "precision_discounted_return": 753.0934209028507,
+        "raw_return": 28.08132766745246,
+        "seconds": 32.1875,
+        "fill_ml": 701.4293228603241,
+        "spill_ml": 0.00018158746872779573,
+        "success": true,
+        "outcome": "success"
+      },
+      "wall_seconds": 43.78036758408416,
+      "result": {
+        "algorithm": "bounded_paired_policy_search",
+        "strategy": "policy_search",
+        "parameterization": "phase_speeds",
+        "speed_multiplier": 1.2960312462739945,
+        "return_speed_multiplier": 1.0,
+        "best_speed_multiplier": 1.2960312462739945,
+        "best_return_speed_multiplier": 1.0,
+        "search_speed_range": [
+          0.7,
+          1.4
+        ],
+        "search_radius_range": [
+          0.12,
+          0.16
         ],
         "phase": "complete",
         "done": true,
         "episode": 10,
         "episodes": 10,
-        "total_steps": 21652,
-        "episode_steps": 888,
+        "total_steps": 23036,
+        "episode_steps": 1030,
         "seed": 7,
         "evaluation_seed": 7001,
         "arm_base_distance_m": 1.28,
@@ -151,59 +175,75 @@
         "limit_seconds": 60.0,
         "max_update_kl": 0.08,
         "baseline": {
-          "return": 51.00507314036755,
+          "return": 51.00518780937177,
           "raw_return": 27.388921410581382,
           "fill_ml": 672.054436918263,
           "spill_ml": 1.359212779235906e-05,
           "seconds": 36.0625,
           "success": true,
           "outcome": "success",
-          "initial_seed": 7001
+          "initial_seed": 7001,
+          "original_discounted_return": 20.448061362569725,
+          "precision_discounted_return": 51.00518780937177
         },
         "best": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
+          "return": 753.0934209028507,
+          "raw_return": 28.08132766745246,
+          "fill_ml": 701.4293228603241,
+          "spill_ml": 0.00018158746872779573,
+          "seconds": 32.1875,
           "success": true,
           "outcome": "success",
           "initial_seed": 7001,
-          "episode": 8
+          "original_discounted_return": 21.81865654663131,
+          "precision_discounted_return": 753.0934209028507,
+          "episode": 3
         },
         "history": [
           {
             "episode": 1,
             "training": {
-              "return": -88.54299420212158,
-              "raw_return": 11.675378513081641,
-              "fill_ml": 658.2172021235759,
-              "spill_ml": 6.487296762853675e-06,
+              "return": -89.66829741550319,
+              "raw_return": 11.025057278711023,
+              "fill_ml": 638.1077767727999,
+              "spill_ml": 0.0,
               "seconds": 60.0,
               "success": false,
               "outcome": "time_limit",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 8.851356361028982,
+              "precision_discounted_return": -89.66829741550319
             },
             "evaluation": {
-              "return": 51.00507314036755,
+              "return": 51.00518780937177,
               "raw_return": 27.388921410581382,
               "fill_ml": 672.054436918263,
               "spill_ml": 1.359212779235906e-05,
               "seconds": 36.0625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 20.448061362569725,
+              "precision_discounted_return": 51.00518780937177
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.0,
-              "candidate_speed": 0.8949961813358134,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                0.8549961813358133,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14500381866418668,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 0.8949961813358134,
-                "speed_max": 0.8949961813358134,
+                "speed_min": 0.8549961813358133,
+                "speed_max": 1.0,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -212,35 +252,47 @@
           {
             "episode": 2,
             "training": {
-              "return": 54.97084190818363,
-              "raw_return": 27.56852027673245,
-              "fill_ml": 679.7126010179843,
-              "spill_ml": 9.684106751411709e-05,
-              "seconds": 33.5625,
+              "return": 219.35816481827123,
+              "raw_return": 27.91414995908407,
+              "fill_ml": 691.429977980074,
+              "spill_ml": 0.00011653728041212544,
+              "seconds": 33.8125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.323494951593418,
+              "precision_discounted_return": 219.35816481827123
             },
             "evaluation": {
-              "return": 54.97084190818363,
-              "raw_return": 27.56852027673245,
-              "fill_ml": 679.7126010179843,
-              "spill_ml": 9.684106751411709e-05,
-              "seconds": 33.5625,
+              "return": 219.35816481827123,
+              "raw_return": 27.91414995908407,
+              "fill_ml": 691.429977980074,
+              "spill_ml": 0.00011653728041212544,
+              "seconds": 33.8125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.323494951593418,
+              "precision_discounted_return": 219.35816481827123
             },
             "update": {
-              "actor_change": 0.10500381866418662,
+              "actor_change": 0.14500381866418666,
               "accepted": true,
-              "pair_center": 1.0,
-              "candidate_speed": 1.1050038186641866,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1450038186641867,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14500381866418668,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.1050038186641866,
-                "speed_max": 1.1050038186641866,
+                "speed_min": 1.0,
+                "speed_max": 1.1450038186641867,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -249,35 +301,47 @@
           {
             "episode": 3,
             "training": {
-              "return": 58.902608108103976,
-              "raw_return": 27.373511053292372,
-              "fill_ml": 674.7989907348424,
-              "spill_ml": 0.00015000207177430716,
-              "seconds": 30.53125,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "evaluation": {
-              "return": 58.902608108103976,
-              "raw_return": 27.373511053292372,
-              "fill_ml": 674.7989907348424,
-              "spill_ml": 0.00015000207177430716,
-              "seconds": 30.53125,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
-              "actor_change": 0.11102742760980777,
+              "actor_change": 0.1510274276098078,
               "accepted": true,
-              "pair_center": 1.1050038186641866,
-              "candidate_speed": 1.2160312462739944,
+              "pair_center": [
+                1.1450038186641867,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2960312462739945,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.15102742760980775,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.2160312462739944,
-                "speed_max": 1.2160312462739944,
+                "speed_min": 1.0,
+                "speed_max": 1.2960312462739945,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -286,35 +350,47 @@
           {
             "episode": 4,
             "training": {
-              "return": 50.752515218022765,
-              "raw_return": 27.429737473532803,
-              "fill_ml": 673.2914428800404,
-              "spill_ml": 8.597449036023338e-07,
-              "seconds": 36.3125,
+              "return": 50.791372121123295,
+              "raw_return": 27.409150616170102,
+              "fill_ml": 672.6232198305829,
+              "spill_ml": 1.1094136910798836e-05,
+              "seconds": 36.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 20.429903118365672,
+              "precision_discounted_return": 50.791372121123295
             },
             "evaluation": {
-              "return": 58.902608108103976,
-              "raw_return": 27.373511053292372,
-              "fill_ml": 674.7989907348424,
-              "spill_ml": 0.00015000207177430716,
-              "seconds": 30.53125,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.1050038186641866,
-              "candidate_speed": 0.9939763910543788,
+              "pair_center": [
+                1.1450038186641867,
+                1.0
+              ],
+              "candidate_gains": [
+                0.9939763910543788,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.15102742760980775,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
                 "speed_min": 0.9939763910543788,
-                "speed_max": 0.9939763910543788,
+                "speed_max": 1.0,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -323,35 +399,47 @@
           {
             "episode": 5,
             "training": {
-              "return": 56.43445901754571,
-              "raw_return": 27.487834958032508,
-              "fill_ml": 677.4263007841853,
-              "spill_ml": 0.00014363062906665663,
-              "seconds": 32.40625,
+              "return": 325.8713693853533,
+              "raw_return": 27.95587194280756,
+              "fill_ml": 693.0269692872379,
+              "spill_ml": 0.0001439722681217563,
+              "seconds": 33.5625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.412601941045573,
+              "precision_discounted_return": 325.8713693853533
             },
             "evaluation": {
-              "return": 58.902608108103976,
-              "raw_return": 27.373511053292372,
-              "fill_ml": 674.7989907348424,
-              "spill_ml": 0.00015000207177430716,
-              "seconds": 30.53125,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.2160312462739944,
-              "candidate_speed": 1.1270229586743707,
+              "pair_center": [
+                1.2960312462739945,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1670229586743708,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12900828759962368,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.1270229586743707,
-                "speed_max": 1.1270229586743707,
+                "speed_min": 1.0,
+                "speed_max": 1.1670229586743708,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -360,35 +448,47 @@
           {
             "episode": 6,
             "training": {
-              "return": 60.408876804785976,
-              "raw_return": 27.209241061739164,
-              "fill_ml": 670.3512630518603,
-              "spill_ml": 0.00023469562577447316,
-              "seconds": 29.25,
+              "return": 337.3585961115557,
+              "raw_return": 27.877444439025364,
+              "fill_ml": 706.9450120614172,
+              "spill_ml": 0.0003079102021013929,
+              "seconds": 31.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.860881673136994,
+              "precision_discounted_return": 337.3585961115557
             },
             "evaluation": {
-              "return": 60.408876804785976,
-              "raw_return": 27.209241061739164,
-              "fill_ml": 670.3512630518603,
-              "spill_ml": 0.00023469562577447316,
-              "seconds": 29.25,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
-              "actor_change": 0.08900828759962365,
-              "accepted": true,
-              "pair_center": 1.2160312462739944,
-              "candidate_speed": 1.305039533873618,
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2960312462739945,
+                1.0
+              ],
+              "candidate_gains": [
+                1.4,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12900828759962368,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.305039533873618,
-                "speed_max": 1.305039533873618,
+                "speed_min": 1.0,
+                "speed_max": 1.4,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -397,35 +497,47 @@
           {
             "episode": 7,
             "training": {
-              "return": 58.21150459686332,
-              "raw_return": 27.393612631156987,
-              "fill_ml": 675.0827571615238,
-              "spill_ml": 8.030975925542719e-05,
-              "seconds": 31.03125,
+              "return": 53.38825701066419,
+              "raw_return": 27.44132213550758,
+              "fill_ml": 722.9534604245213,
+              "spill_ml": 0.0003231406489206312,
+              "seconds": 34.53125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.08085871114757,
+              "precision_discounted_return": 53.38825701066419
             },
             "evaluation": {
-              "return": 60.408876804785976,
-              "raw_return": 27.209241061739164,
-              "fill_ml": 670.3512630518603,
-              "spill_ml": 0.00023469562577447316,
-              "seconds": 29.25,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.305039533873618,
-              "candidate_speed": 1.1900973960577677,
+              "pair_center": [
+                1.2960312462739945,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2960312462739945,
+                0.8450578621841496
+              ],
+              "coordinate": "return",
+              "radius": 0.15494213781585048,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.1900973960577677,
-                "speed_max": 1.1900973960577677,
+                "speed_min": 0.8450578621841496,
+                "speed_max": 1.2960312462739945,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -434,35 +546,47 @@
           {
             "episode": 8,
             "training": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 63.164311038135196,
+              "raw_return": 27.619868950131785,
+              "fill_ml": 683.5828042786811,
+              "spill_ml": 0.0001156226960054388,
+              "seconds": 30.34375,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.659727310942642,
+              "precision_discounted_return": 63.164311038135196
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
-              "actor_change": 0.09496046612638187,
-              "accepted": true,
-              "pair_center": 1.305039533873618,
-              "candidate_speed": 1.4,
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2960312462739945,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2960312462739945,
+                1.1549421378158504
+              ],
+              "coordinate": "return",
+              "radius": 0.15494213781585048,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.4,
-                "speed_max": 1.4,
+                "speed_min": 1.1549421378158504,
+                "speed_max": 1.2960312462739945,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -471,35 +595,47 @@
           {
             "episode": 9,
             "training": {
-              "return": 60.72718921577348,
-              "raw_return": 27.185832791584843,
-              "fill_ml": 669.7874248534666,
-              "spill_ml": 0.00030651518132284594,
-              "seconds": 29.0,
+              "return": 733.9770142779618,
+              "raw_return": 28.090380245848106,
+              "fill_ml": 698.2515780289906,
+              "spill_ml": 0.00025836911421632026,
+              "seconds": 32.8125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.685854717338003,
+              "precision_discounted_return": 733.9770142779618
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.4,
-              "candidate_speed": 1.319789387817377,
+              "pair_center": [
+                1.2960312462739945,
+                1.0
+              ],
+              "candidate_gains": [
+                1.235925940182683,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.06010530609131149,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.319789387817377,
-                "speed_max": 1.319789387817377,
+                "speed_min": 1.0,
+                "speed_max": 1.235925940182683,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -508,37 +644,49 @@
           {
             "episode": 10,
             "training": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 566.4424145033258,
+              "raw_return": 27.978428904558424,
+              "fill_ml": 704.2455257377358,
+              "spill_ml": 0.00040891970304594697,
+              "seconds": 31.625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.866451081406836,
+              "precision_discounted_return": 566.4424145033258
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 753.0934209028507,
+              "raw_return": 28.08132766745246,
+              "fill_ml": 701.4293228603241,
+              "spill_ml": 0.00018158746872779573,
+              "seconds": 32.1875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.81865654663131,
+              "precision_discounted_return": 753.0934209028507
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.4,
-              "candidate_speed": 1.4,
+              "pair_center": [
+                1.2960312462739945,
+                1.0
+              ],
+              "candidate_gains": [
+                1.356136552365306,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.06010530609131149,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.4,
-                "speed_max": 1.4,
+                "speed_min": 1.0,
+                "speed_max": 1.356136552365306,
                 "slower_decisions": 0,
-                "faster_decisions": 0
+                "faster_decisions": 1
               }
             }
           }
@@ -546,136 +694,138 @@
         "latest_update": {
           "actor_change": 0.0,
           "accepted": false,
-          "pair_center": 1.4,
-          "candidate_speed": 1.4,
+          "pair_center": [
+            1.2960312462739945,
+            1.0
+          ],
+          "candidate_gains": [
+            1.356136552365306,
+            1.0
+          ],
+          "coordinate": "approach_pour",
+          "radius": 0.06010530609131149,
           "exploration": {
-            "kind": "paired_parameter",
+            "kind": "paired_phase_parameter",
             "decisions": 1,
-            "speed_min": 1.4,
-            "speed_max": 1.4,
+            "speed_min": 1.0,
+            "speed_max": 1.356136552365306,
             "slower_decisions": 0,
-            "faster_decisions": 0
+            "faster_decisions": 1
           }
         },
         "improved": true,
         "completed_episodes": 10,
         "actor_weights": [
-          1.4
+          1.2960312462739945,
+          1.0
         ],
         "best_weights": [
-          1.4
+          1.2960312462739945,
+          1.0
         ]
       }
     },
     {
-      "summary": {
-        "seed": 99,
-        "baseline": {
-          "return": 51.00507314036755,
-          "raw_return": 27.388921410581382,
-          "fill_ml": 672.054436918263,
-          "spill_ml": 1.359212779235906e-05,
-          "seconds": 36.0625,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001
-        },
-        "best": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001,
-          "episode": 7
-        },
-        "final_evaluation": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001
-        },
-        "score_gain": 11.274188202876921,
-        "seconds_saved": 8.3125,
-        "time_reduction_percent": 23.05025996533796,
-        "training_successes": 9,
-        "evaluation_successes": 10,
-        "evaluated_scores": [
-          51.00507314036755,
-          54.81071791316532,
-          54.81071791316532,
-          57.817281314627984,
-          57.817281314627984,
-          60.71858771680622,
-          62.27926134324447,
-          62.27926134324447,
-          62.27926134324447,
-          62.27926134324447
-        ],
-        "evaluated_seconds": [
-          36.0625,
-          33.6875,
-          33.6875,
-          31.15625,
-          31.15625,
-          29.0,
-          27.75,
-          27.75,
-          27.75,
-          27.75
-        ],
-        "evaluated_fill_ml": [
-          672.054436918263,
-          679.9166424425729,
-          679.9166424425729,
-          672.1686986830674,
-          672.1686986830674,
-          669.666960632415,
-          666.3724895875611,
-          666.3724895875611,
-          666.3724895875611,
-          666.3724895875611
-        ],
-        "candidate_speeds": [
-          0.8997587730180643,
-          1.1002412269819357,
-          0.9997645885942537,
-          1.2007178653696178,
-          1.0818304104841692,
-          1.3196053202550664,
-          1.4,
-          1.2168739803392834,
-          1.3085285310852346,
-          1.4
-        ],
-        "best_speed_multiplier": 1.4,
-        "wall_seconds": 28.910978583968244
-      },
-      "result": {
-        "algorithm": "bounded_paired_policy_search",
-        "strategy": "policy_search",
-        "speed_multiplier": 1.4,
-        "best_speed_multiplier": 1.4,
+      "configuration": "policy-search",
+      "seed": 99,
+      "iterations": 10,
+      "training_objective": "precision",
+      "parameters": {
+        "SPEED_BOUND": 0.5,
+        "LATENT_STD": 0.5,
+        "MAX_UPDATE_KL": 0.08,
+        "MAX_MEAN_CHANGE": 0.6,
+        "MAX_LATENT_MEAN": 1.25,
+        "DECISION_STEPS": 16,
+        "GAE_LAMBDA": 0.95,
+        "CRITIC_RETENTION": 0.95,
+        "ACTOR_LEARNING_RATE": 0.15,
+        "PPO_EPOCHS": 12,
         "search_speed_range": [
           0.7,
           1.4
         ],
         "search_radius_range": [
-          0.08,
-          0.12
+          0.12,
+          0.16
+        ],
+        "search_radius_floor": 0.001,
+        "search_parameterization": "approach_pour_and_return_gains"
+      },
+      "baseline": {
+        "return": 51.00518780937177,
+        "raw_return": 27.388921410581382,
+        "fill_ml": 672.054436918263,
+        "spill_ml": 1.359212779235906e-05,
+        "seconds": 36.0625,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 20.448061362569725,
+        "precision_discounted_return": 51.00518780937177
+      },
+      "best": {
+        "return": 769.0040420686851,
+        "raw_return": 28.101194344466535,
+        "fill_ml": 699.0843321826077,
+        "spill_ml": 0.0003968416796978258,
+        "seconds": 32.3125,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 21.80185497444097,
+        "precision_discounted_return": 769.0040420686851,
+        "episode": 4
+      },
+      "final": {
+        "return": 769.0040420686851,
+        "raw_return": 28.101194344466535,
+        "fill_ml": 699.0843321826077,
+        "spill_ml": 0.0003968416796978258,
+        "seconds": 32.3125,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 21.80185497444097,
+        "precision_discounted_return": 769.0040420686851
+      },
+      "successful_candidates": 9,
+      "successful_evaluations": 10,
+      "precise_candidates": 3,
+      "precise_evaluations": 7,
+      "first_precise_evaluation": 4,
+      "watch_best_exact": {
+        "precision_discounted_return": 769.0040420686851,
+        "raw_return": 28.101194344466535,
+        "seconds": 32.3125,
+        "fill_ml": 699.0843321826077,
+        "spill_ml": 0.0003968416796978258,
+        "success": true,
+        "outcome": "success"
+      },
+      "wall_seconds": 43.854732666979544,
+      "result": {
+        "algorithm": "bounded_paired_policy_search",
+        "strategy": "policy_search",
+        "parameterization": "phase_speeds",
+        "speed_multiplier": 1.2807178653696178,
+        "return_speed_multiplier": 1.0,
+        "best_speed_multiplier": 1.2807178653696178,
+        "best_return_speed_multiplier": 1.0,
+        "search_speed_range": [
+          0.7,
+          1.4
+        ],
+        "search_radius_range": [
+          0.12,
+          0.16
         ],
         "phase": "complete",
         "done": true,
         "episode": 10,
         "episodes": 10,
-        "total_steps": 21816,
-        "episode_steps": 888,
+        "total_steps": 23183,
+        "episode_steps": 1034,
         "seed": 99,
         "evaluation_seed": 7001,
         "arm_base_distance_m": 1.28,
@@ -688,59 +838,75 @@
         "limit_seconds": 60.0,
         "max_update_kl": 0.08,
         "baseline": {
-          "return": 51.00507314036755,
+          "return": 51.00518780937177,
           "raw_return": 27.388921410581382,
           "fill_ml": 672.054436918263,
           "spill_ml": 1.359212779235906e-05,
           "seconds": 36.0625,
           "success": true,
           "outcome": "success",
-          "initial_seed": 7001
+          "initial_seed": 7001,
+          "original_discounted_return": 20.448061362569725,
+          "precision_discounted_return": 51.00518780937177
         },
         "best": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
+          "return": 769.0040420686851,
+          "raw_return": 28.101194344466535,
+          "fill_ml": 699.0843321826077,
+          "spill_ml": 0.0003968416796978258,
+          "seconds": 32.3125,
           "success": true,
           "outcome": "success",
           "initial_seed": 7001,
-          "episode": 7
+          "original_discounted_return": 21.80185497444097,
+          "precision_discounted_return": 769.0040420686851,
+          "episode": 4
         },
         "history": [
           {
             "episode": 1,
             "training": {
-              "return": -88.49534121975441,
-              "raw_return": 11.698051037158455,
-              "fill_ml": 659.1723884408553,
-              "spill_ml": 5.8463535504694035e-06,
+              "return": -89.68117154411107,
+              "raw_return": 11.016226701138711,
+              "fill_ml": 637.9268875720211,
+              "spill_ml": 7.2390598484869845e-06,
               "seconds": 60.0,
               "success": false,
               "outcome": "time_limit",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 8.854947259638877,
+              "precision_discounted_return": -89.68117154411107
             },
             "evaluation": {
-              "return": 51.00507314036755,
+              "return": 51.00518780937177,
               "raw_return": 27.388921410581382,
               "fill_ml": 672.054436918263,
               "spill_ml": 1.359212779235906e-05,
               "seconds": 36.0625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 20.448061362569725,
+              "precision_discounted_return": 51.00518780937177
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.0,
-              "candidate_speed": 0.8997587730180643,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                0.8597587730180642,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14024122698193578,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 0.8997587730180643,
-                "speed_max": 0.8997587730180643,
+                "speed_min": 0.8597587730180642,
+                "speed_max": 1.0,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -749,146 +915,194 @@
           {
             "episode": 2,
             "training": {
-              "return": 54.81071791316532,
-              "raw_return": 27.575978984385188,
-              "fill_ml": 679.9166424425729,
-              "spill_ml": 0.00013507686774337076,
-              "seconds": 33.6875,
-              "success": true,
-              "outcome": "success",
-              "initial_seed": 7001
-            },
-            "evaluation": {
-              "return": 54.81071791316532,
-              "raw_return": 27.575978984385188,
-              "fill_ml": 679.9166424425729,
-              "spill_ml": 0.00013507686774337076,
-              "seconds": 33.6875,
-              "success": true,
-              "outcome": "success",
-              "initial_seed": 7001
-            },
-            "update": {
-              "actor_change": 0.10024122698193572,
-              "accepted": true,
-              "pair_center": 1.0,
-              "candidate_speed": 1.1002412269819357,
-              "exploration": {
-                "kind": "paired_parameter",
-                "decisions": 1,
-                "speed_min": 1.1002412269819357,
-                "speed_max": 1.1002412269819357,
-                "slower_decisions": 0,
-                "faster_decisions": 1
-              }
-            }
-          },
-          {
-            "episode": 3,
-            "training": {
-              "return": 50.906315522918064,
-              "raw_return": 27.678920043374305,
-              "fill_ml": 681.7149640684494,
-              "spill_ml": 1.9300700061326703e-05,
-              "seconds": 36.625,
-              "success": true,
-              "outcome": "success",
-              "initial_seed": 7001
-            },
-            "evaluation": {
-              "return": 54.81071791316532,
-              "raw_return": 27.575978984385188,
-              "fill_ml": 679.9166424425729,
-              "spill_ml": 0.00013507686774337076,
-              "seconds": 33.6875,
-              "success": true,
-              "outcome": "success",
-              "initial_seed": 7001
-            },
-            "update": {
-              "actor_change": 0.0,
-              "accepted": false,
-              "pair_center": 1.1002412269819357,
-              "candidate_speed": 0.9997645885942537,
-              "exploration": {
-                "kind": "paired_parameter",
-                "decisions": 1,
-                "speed_min": 0.9997645885942537,
-                "speed_max": 0.9997645885942537,
-                "slower_decisions": 1,
-                "faster_decisions": 0
-              }
-            }
-          },
-          {
-            "episode": 4,
-            "training": {
-              "return": 57.817281314627984,
-              "raw_return": 27.306605385278335,
-              "fill_ml": 672.1686986830674,
-              "spill_ml": 8.590268081269648e-05,
-              "seconds": 31.15625,
-              "success": true,
-              "outcome": "success",
-              "initial_seed": 7001
-            },
-            "evaluation": {
-              "return": 57.817281314627984,
-              "raw_return": 27.306605385278335,
-              "fill_ml": 672.1686986830674,
-              "spill_ml": 8.590268081269648e-05,
-              "seconds": 31.15625,
-              "success": true,
-              "outcome": "success",
-              "initial_seed": 7001
-            },
-            "update": {
-              "actor_change": 0.10047663838768206,
-              "accepted": true,
-              "pair_center": 1.1002412269819357,
-              "candidate_speed": 1.2007178653696178,
-              "exploration": {
-                "kind": "paired_parameter",
-                "decisions": 1,
-                "speed_min": 1.2007178653696178,
-                "speed_max": 1.2007178653696178,
-                "slower_decisions": 0,
-                "faster_decisions": 1
-              }
-            }
-          },
-          {
-            "episode": 5,
-            "training": {
-              "return": 54.46539285946945,
-              "raw_return": 27.563043883987376,
-              "fill_ml": 679.3060439978641,
-              "spill_ml": 2.895060343098697e-05,
+              "return": 261.40085047292575,
+              "raw_return": 27.936154810505755,
+              "fill_ml": 692.1283987298616,
+              "spill_ml": 0.00018186561680411955,
               "seconds": 33.90625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.32253800852381,
+              "precision_discounted_return": 261.40085047292575
             },
             "evaluation": {
-              "return": 57.817281314627984,
-              "raw_return": 27.306605385278335,
-              "fill_ml": 672.1686986830674,
-              "spill_ml": 8.590268081269648e-05,
-              "seconds": 31.15625,
+              "return": 261.40085047292575,
+              "raw_return": 27.936154810505755,
+              "fill_ml": 692.1283987298616,
+              "spill_ml": 0.00018186561680411955,
+              "seconds": 33.90625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.32253800852381,
+              "precision_discounted_return": 261.40085047292575
+            },
+            "update": {
+              "actor_change": 0.14024122698193575,
+              "accepted": true,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1402412269819358,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14024122698193578,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1402412269819358,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 3,
+            "training": {
+              "return": 51.75143936484126,
+              "raw_return": 27.67806623779825,
+              "fill_ml": 681.6887418609246,
+              "spill_ml": 1.7423096273292356e-05,
+              "seconds": 36.625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "original_discounted_return": 20.592551753653893,
+              "precision_discounted_return": 51.75143936484126
+            },
+            "evaluation": {
+              "return": 261.40085047292575,
+              "raw_return": 27.936154810505755,
+              "fill_ml": 692.1283987298616,
+              "spill_ml": 0.00018186561680411955,
+              "seconds": 33.90625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "original_discounted_return": 21.32253800852381,
+              "precision_discounted_return": 261.40085047292575
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.2007178653696178,
-              "candidate_speed": 1.0818304104841692,
+              "pair_center": [
+                1.1402412269819358,
+                1.0
+              ],
+              "candidate_gains": [
+                0.9997645885942537,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14047663838768207,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.0818304104841692,
-                "speed_max": 1.0818304104841692,
+                "speed_min": 0.9997645885942537,
+                "speed_max": 1.0,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 4,
+            "training": {
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
+            },
+            "evaluation": {
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
+            },
+            "update": {
+              "actor_change": 0.1404766383876821,
+              "accepted": true,
+              "pair_center": [
+                1.1402412269819358,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2807178653696178,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14047663838768207,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.2807178653696178,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 5,
+            "training": {
+              "return": 209.92686193845995,
+              "raw_return": 27.91507709363261,
+              "fill_ml": 691.279488858355,
+              "spill_ml": 8.743914547000915e-05,
+              "seconds": 34.1875,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "original_discounted_return": 21.247768795731492,
+              "precision_discounted_return": 209.92686193845995
+            },
+            "evaluation": {
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2807178653696178,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1218304104841694,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.15888745488544853,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1218304104841694,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -897,35 +1111,47 @@
           {
             "episode": 6,
             "training": {
-              "return": 60.71858771680622,
-              "raw_return": 27.182656647696,
-              "fill_ml": 669.666960632415,
-              "spill_ml": 0.00013786755693872296,
-              "seconds": 29.0,
+              "return": 337.3585961115557,
+              "raw_return": 27.877444439025364,
+              "fill_ml": 706.9450120614172,
+              "spill_ml": 0.0003079102021013929,
+              "seconds": 31.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.860881673136994,
+              "precision_discounted_return": 337.3585961115557
             },
             "evaluation": {
-              "return": 60.71858771680622,
-              "raw_return": 27.182656647696,
-              "fill_ml": 669.666960632415,
-              "spill_ml": 0.00013786755693872296,
-              "seconds": 29.0,
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
             },
             "update": {
-              "actor_change": 0.1188874548854486,
-              "accepted": true,
-              "pair_center": 1.2007178653696178,
-              "candidate_speed": 1.3196053202550664,
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2807178653696178,
+                1.0
+              ],
+              "candidate_gains": [
+                1.4,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.15888745488544853,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.3196053202550664,
-                "speed_max": 1.3196053202550664,
+                "speed_min": 1.0,
+                "speed_max": 1.4,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -934,35 +1160,47 @@
           {
             "episode": 7,
             "training": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 60.32984784225628,
+              "raw_return": 27.590336051504295,
+              "fill_ml": 682.3372334956654,
+              "spill_ml": 0.00022552651704788198,
+              "seconds": 30.90625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.557796066353166,
+              "precision_discounted_return": 60.32984784225628
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
             },
             "update": {
-              "actor_change": 0.08039467974493353,
-              "accepted": true,
-              "pair_center": 1.3196053202550664,
-              "candidate_speed": 1.4,
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2807178653696178,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2807178653696178,
+                1.142731339915783
+              ],
+              "coordinate": "return",
+              "radius": 0.14273133991578305,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.4,
-                "speed_max": 1.4,
+                "speed_min": 1.142731339915783,
+                "speed_max": 1.2807178653696178,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -971,35 +1209,47 @@
           {
             "episode": 8,
             "training": {
-              "return": 58.18296789201447,
-              "raw_return": 27.268100695828927,
-              "fill_ml": 671.1022654012735,
-              "spill_ml": 6.030920612154684e-05,
-              "seconds": 30.84375,
+              "return": 54.402962201733125,
+              "raw_return": 27.56825180678627,
+              "fill_ml": 718.8833317301219,
+              "spill_ml": 0.00043956129901944813,
+              "seconds": 34.40625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.173253704729753,
+              "precision_discounted_return": 54.402962201733125
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.3196053202550664,
-              "candidate_speed": 1.2168739803392834,
+              "pair_center": [
+                1.2807178653696178,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2807178653696178,
+                0.857268660084217
+              ],
+              "coordinate": "return",
+              "radius": 0.14273133991578305,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.2168739803392834,
-                "speed_max": 1.2168739803392834,
+                "speed_min": 0.857268660084217,
+                "speed_max": 1.2807178653696178,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -1008,35 +1258,47 @@
           {
             "episode": 9,
             "training": {
-              "return": 60.458011532751144,
-              "raw_return": 27.208714813716732,
-              "fill_ml": 670.4314557651702,
-              "spill_ml": 0.00019678160907020897,
-              "seconds": 29.21875,
+              "return": 675.7599487246182,
+              "raw_return": 28.068044397977978,
+              "fill_ml": 697.2769632029949,
+              "spill_ml": 0.0001332899019621902,
+              "seconds": 33.03125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.619159435593364,
+              "precision_discounted_return": 675.7599487246182
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.4,
-              "candidate_speed": 1.3085285310852346,
+              "pair_center": [
+                1.2807178653696178,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2149821309122353,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.06573573445738264,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.3085285310852346,
-                "speed_max": 1.3085285310852346,
+                "speed_min": 1.0,
+                "speed_max": 1.2149821309122353,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -1045,37 +1307,49 @@
           {
             "episode": 10,
             "training": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 727.469999916999,
+              "raw_return": 28.048295253281808,
+              "fill_ml": 702.0594804030939,
+              "spill_ml": 0.00029167156022626395,
+              "seconds": 31.65625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.908205874313936,
+              "precision_discounted_return": 727.469999916999
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 769.0040420686851,
+              "raw_return": 28.101194344466535,
+              "fill_ml": 699.0843321826077,
+              "spill_ml": 0.0003968416796978258,
+              "seconds": 32.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.80185497444097,
+              "precision_discounted_return": 769.0040420686851
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.4,
-              "candidate_speed": 1.4,
+              "pair_center": [
+                1.2807178653696178,
+                1.0
+              ],
+              "candidate_gains": [
+                1.3464535998270004,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.06573573445738264,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.4,
-                "speed_max": 1.4,
+                "speed_min": 1.0,
+                "speed_max": 1.3464535998270004,
                 "slower_decisions": 0,
-                "faster_decisions": 0
+                "faster_decisions": 1
               }
             }
           }
@@ -1083,136 +1357,138 @@
         "latest_update": {
           "actor_change": 0.0,
           "accepted": false,
-          "pair_center": 1.4,
-          "candidate_speed": 1.4,
+          "pair_center": [
+            1.2807178653696178,
+            1.0
+          ],
+          "candidate_gains": [
+            1.3464535998270004,
+            1.0
+          ],
+          "coordinate": "approach_pour",
+          "radius": 0.06573573445738264,
           "exploration": {
-            "kind": "paired_parameter",
+            "kind": "paired_phase_parameter",
             "decisions": 1,
-            "speed_min": 1.4,
-            "speed_max": 1.4,
+            "speed_min": 1.0,
+            "speed_max": 1.3464535998270004,
             "slower_decisions": 0,
-            "faster_decisions": 0
+            "faster_decisions": 1
           }
         },
         "improved": true,
         "completed_episodes": 10,
         "actor_weights": [
-          1.4
+          1.2807178653696178,
+          1.0
         ],
         "best_weights": [
-          1.4
+          1.2807178653696178,
+          1.0
         ]
       }
     },
     {
-      "summary": {
-        "seed": 2029,
-        "baseline": {
-          "return": 51.00507314036755,
-          "raw_return": 27.388921410581382,
-          "fill_ml": 672.054436918263,
-          "spill_ml": 1.359212779235906e-05,
-          "seconds": 36.0625,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001
-        },
-        "best": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001,
-          "episode": 7
-        },
-        "final_evaluation": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
-          "success": true,
-          "outcome": "success",
-          "initial_seed": 7001
-        },
-        "score_gain": 11.274188202876921,
-        "seconds_saved": 8.3125,
-        "time_reduction_percent": 23.05025996533796,
-        "training_successes": 9,
-        "evaluation_successes": 10,
-        "evaluated_scores": [
-          51.00507314036755,
-          55.38808662825969,
-          58.04641241025859,
-          58.04641241025859,
-          58.04641241025859,
-          60.69084977688205,
-          62.27926134324447,
-          62.27926134324447,
-          62.27926134324447,
-          62.27926134324447
-        ],
-        "evaluated_seconds": [
-          36.0625,
-          33.25,
-          31.03125,
-          31.03125,
-          31.03125,
-          29.03125,
-          27.75,
-          27.75,
-          27.75,
-          27.75
-        ],
-        "evaluated_fill_ml": [
-          672.054436918263,
-          679.4219989836074,
-          672.9018159433559,
-          672.9018159433559,
-          672.9018159433559,
-          669.9113417643973,
-          666.3724895875611,
-          666.3724895875611,
-          666.3724895875611,
-          666.3724895875611
-        ],
-        "candidate_speeds": [
-          0.8880352929394628,
-          1.1119647070605372,
-          1.2086195002152618,
-          1.0153099139058126,
-          1.0987055595422106,
-          1.318533440888313,
-          1.4,
-          1.227419941583021,
-          1.4,
-          1.3033137898185154
-        ],
-        "best_speed_multiplier": 1.4,
-        "wall_seconds": 28.796615250059403
-      },
-      "result": {
-        "algorithm": "bounded_paired_policy_search",
-        "strategy": "policy_search",
-        "speed_multiplier": 1.4,
-        "best_speed_multiplier": 1.4,
+      "configuration": "policy-search",
+      "seed": 2029,
+      "iterations": 10,
+      "training_objective": "precision",
+      "parameters": {
+        "SPEED_BOUND": 0.5,
+        "LATENT_STD": 0.5,
+        "MAX_UPDATE_KL": 0.08,
+        "MAX_MEAN_CHANGE": 0.6,
+        "MAX_LATENT_MEAN": 1.25,
+        "DECISION_STEPS": 16,
+        "GAE_LAMBDA": 0.95,
+        "CRITIC_RETENTION": 0.95,
+        "ACTOR_LEARNING_RATE": 0.15,
+        "PPO_EPOCHS": 12,
         "search_speed_range": [
           0.7,
           1.4
         ],
         "search_radius_range": [
-          0.08,
-          0.12
+          0.12,
+          0.16
+        ],
+        "search_radius_floor": 0.001,
+        "search_parameterization": "approach_pour_and_return_gains"
+      },
+      "baseline": {
+        "return": 51.00518780937177,
+        "raw_return": 27.388921410581382,
+        "fill_ml": 672.054436918263,
+        "spill_ml": 1.359212779235906e-05,
+        "seconds": 36.0625,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 20.448061362569725,
+        "precision_discounted_return": 51.00518780937177
+      },
+      "best": {
+        "return": 781.5914806493107,
+        "raw_return": 28.126194860251545,
+        "fill_ml": 699.9474613451326,
+        "spill_ml": 0.00015269855187074557,
+        "seconds": 32.25,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 21.83610518744969,
+        "precision_discounted_return": 781.5914806493107,
+        "episode": 3
+      },
+      "final": {
+        "return": 781.5914806493107,
+        "raw_return": 28.126194860251545,
+        "fill_ml": 699.9474613451326,
+        "spill_ml": 0.00015269855187074557,
+        "seconds": 32.25,
+        "success": true,
+        "outcome": "success",
+        "initial_seed": 7001,
+        "original_discounted_return": 21.83610518744969,
+        "precision_discounted_return": 781.5914806493107
+      },
+      "successful_candidates": 9,
+      "successful_evaluations": 10,
+      "precise_candidates": 3,
+      "precise_evaluations": 8,
+      "first_precise_evaluation": 3,
+      "watch_best_exact": {
+        "precision_discounted_return": 781.5914806493107,
+        "raw_return": 28.126194860251545,
+        "seconds": 32.25,
+        "fill_ml": 699.9474613451326,
+        "spill_ml": 0.00015269855187074557,
+        "success": true,
+        "outcome": "success"
+      },
+      "wall_seconds": 43.86320737504866,
+      "result": {
+        "algorithm": "bounded_paired_policy_search",
+        "strategy": "policy_search",
+        "parameterization": "phase_speeds",
+        "speed_multiplier": 1.2886195002152618,
+        "return_speed_multiplier": 1.0,
+        "best_speed_multiplier": 1.2886195002152618,
+        "best_return_speed_multiplier": 1.0,
+        "search_speed_range": [
+          0.7,
+          1.4
+        ],
+        "search_radius_range": [
+          0.12,
+          0.16
         ],
         "phase": "complete",
         "done": true,
         "episode": 10,
         "episodes": 10,
-        "total_steps": 21646,
-        "episode_steps": 888,
+        "total_steps": 23053,
+        "episode_steps": 1032,
         "seed": 2029,
         "evaluation_seed": 7001,
         "arm_base_distance_m": 1.28,
@@ -1225,59 +1501,75 @@
         "limit_seconds": 60.0,
         "max_update_kl": 0.08,
         "baseline": {
-          "return": 51.00507314036755,
+          "return": 51.00518780937177,
           "raw_return": 27.388921410581382,
           "fill_ml": 672.054436918263,
           "spill_ml": 1.359212779235906e-05,
           "seconds": 36.0625,
           "success": true,
           "outcome": "success",
-          "initial_seed": 7001
+          "initial_seed": 7001,
+          "original_discounted_return": 20.448061362569725,
+          "precision_discounted_return": 51.00518780937177
         },
         "best": {
-          "return": 62.27926134324447,
-          "raw_return": 27.045129820437545,
-          "fill_ml": 666.3724895875611,
-          "spill_ml": 0.0002249447277340522,
-          "seconds": 27.75,
+          "return": 781.5914806493107,
+          "raw_return": 28.126194860251545,
+          "fill_ml": 699.9474613451326,
+          "spill_ml": 0.00015269855187074557,
+          "seconds": 32.25,
           "success": true,
           "outcome": "success",
           "initial_seed": 7001,
-          "episode": 7
+          "original_discounted_return": 21.83610518744969,
+          "precision_discounted_return": 781.5914806493107,
+          "episode": 3
         },
         "history": [
           {
             "episode": 1,
             "training": {
-              "return": -88.59571233007745,
-              "raw_return": 11.651452539167801,
-              "fill_ml": 657.1332448745169,
-              "spill_ml": 8.751019092662548e-06,
+              "return": -89.80244238757439,
+              "raw_return": 10.953884552300007,
+              "fill_ml": 635.5831660944988,
+              "spill_ml": 5.153962472898536e-07,
               "seconds": 60.0,
               "success": false,
               "outcome": "time_limit",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 8.784878753310705,
+              "precision_discounted_return": -89.80244238757439
             },
             "evaluation": {
-              "return": 51.00507314036755,
+              "return": 51.00518780937177,
               "raw_return": 27.388921410581382,
               "fill_ml": 672.054436918263,
               "spill_ml": 1.359212779235906e-05,
               "seconds": 36.0625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 20.448061362569725,
+              "precision_discounted_return": 51.00518780937177
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.0,
-              "candidate_speed": 0.8880352929394628,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                0.8480352929394628,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.1519647070605372,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 0.8880352929394628,
-                "speed_max": 0.8880352929394628,
+                "speed_min": 0.8480352929394628,
+                "speed_max": 1.0,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -1286,35 +1578,47 @@
           {
             "episode": 2,
             "training": {
-              "return": 55.38808662825969,
-              "raw_return": 27.556227652354757,
-              "fill_ml": 679.4219989836074,
-              "spill_ml": 9.457023028506876e-05,
-              "seconds": 33.25,
+              "return": 214.5695145560371,
+              "raw_return": 27.909646895112218,
+              "fill_ml": 691.3389416988526,
+              "spill_ml": 0.00017538131250386876,
+              "seconds": 33.71875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.339564400314842,
+              "precision_discounted_return": 214.5695145560371
             },
             "evaluation": {
-              "return": 55.38808662825969,
-              "raw_return": 27.556227652354757,
-              "fill_ml": 679.4219989836074,
-              "spill_ml": 9.457023028506876e-05,
-              "seconds": 33.25,
+              "return": 214.5695145560371,
+              "raw_return": 27.909646895112218,
+              "fill_ml": 691.3389416988526,
+              "spill_ml": 0.00017538131250386876,
+              "seconds": 33.71875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.339564400314842,
+              "precision_discounted_return": 214.5695145560371
             },
             "update": {
-              "actor_change": 0.11196470706053718,
+              "actor_change": 0.15196470706053722,
               "accepted": true,
-              "pair_center": 1.0,
-              "candidate_speed": 1.1119647070605372,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1519647070605372,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.1519647070605372,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.1119647070605372,
-                "speed_max": 1.1119647070605372,
+                "speed_min": 1.0,
+                "speed_max": 1.1519647070605372,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -1323,35 +1627,47 @@
           {
             "episode": 3,
             "training": {
-              "return": 58.04641241025859,
-              "raw_return": 27.323711301934644,
-              "fill_ml": 672.9018159433559,
-              "spill_ml": 0.00018822489770794056,
-              "seconds": 31.03125,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "evaluation": {
-              "return": 58.04641241025859,
-              "raw_return": 27.323711301934644,
-              "fill_ml": 672.9018159433559,
-              "spill_ml": 0.00018822489770794056,
-              "seconds": 31.03125,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
-              "actor_change": 0.09665479315472458,
+              "actor_change": 0.13665479315472462,
               "accepted": true,
-              "pair_center": 1.1119647070605372,
-              "candidate_speed": 1.2086195002152618,
+              "pair_center": [
+                1.1519647070605372,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2886195002152618,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13665479315472465,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.2086195002152618,
-                "speed_max": 1.2086195002152618,
+                "speed_min": 1.0,
+                "speed_max": 1.2886195002152618,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -1360,34 +1676,46 @@
           {
             "episode": 4,
             "training": {
-              "return": 52.027986396500815,
-              "raw_return": 27.63266403552968,
-              "fill_ml": 680.8024160355139,
-              "spill_ml": 3.2111512921989175e-05,
-              "seconds": 35.75,
+              "return": 52.89412917735683,
+              "raw_return": 27.668016166758292,
+              "fill_ml": 681.9659608461229,
+              "spill_ml": 2.5399972187532414e-05,
+              "seconds": 35.9375,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 20.718434205563476,
+              "precision_discounted_return": 52.89412917735683
             },
             "evaluation": {
-              "return": 58.04641241025859,
-              "raw_return": 27.323711301934644,
-              "fill_ml": 672.9018159433559,
-              "spill_ml": 0.00018822489770794056,
-              "seconds": 31.03125,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.1119647070605372,
-              "candidate_speed": 1.0153099139058126,
+              "pair_center": [
+                1.1519647070605372,
+                1.0
+              ],
+              "candidate_gains": [
+                1.0153099139058126,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13665479315472465,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.0153099139058126,
+                "speed_min": 1.0,
                 "speed_max": 1.0153099139058126,
                 "slower_decisions": 1,
                 "faster_decisions": 0
@@ -1397,35 +1725,47 @@
           {
             "episode": 5,
             "training": {
-              "return": 55.12189419283377,
-              "raw_return": 27.558438342376505,
-              "fill_ml": 679.3362205352901,
-              "spill_ml": 0.00010838515846513007,
-              "seconds": 33.4375,
+              "return": 242.6159927887916,
+              "raw_return": 27.927262755749076,
+              "fill_ml": 691.832442541898,
+              "spill_ml": 0.00014833088706485677,
+              "seconds": 33.9375,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.31082198268024,
+              "precision_discounted_return": 242.6159927887916
             },
             "evaluation": {
-              "return": 58.04641241025859,
-              "raw_return": 27.323711301934644,
-              "fill_ml": 672.9018159433559,
-              "spill_ml": 0.00018822489770794056,
-              "seconds": 31.03125,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.2086195002152618,
-              "candidate_speed": 1.0987055595422106,
+              "pair_center": [
+                1.2886195002152618,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1387055595422106,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.1499139406730511,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.0987055595422106,
-                "speed_max": 1.0987055595422106,
+                "speed_min": 1.0,
+                "speed_max": 1.1387055595422106,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -1434,35 +1774,47 @@
           {
             "episode": 6,
             "training": {
-              "return": 60.69084977688205,
-              "raw_return": 27.189808330583432,
-              "fill_ml": 669.9113417643973,
-              "spill_ml": 0.000149041754085499,
-              "seconds": 29.03125,
+              "return": 337.3585961115557,
+              "raw_return": 27.877444439025364,
+              "fill_ml": 706.9450120614172,
+              "spill_ml": 0.0003079102021013929,
+              "seconds": 31.3125,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.860881673136994,
+              "precision_discounted_return": 337.3585961115557
             },
             "evaluation": {
-              "return": 60.69084977688205,
-              "raw_return": 27.189808330583432,
-              "fill_ml": 669.9113417643973,
-              "spill_ml": 0.000149041754085499,
-              "seconds": 29.03125,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
-              "actor_change": 0.10991394067305116,
-              "accepted": true,
-              "pair_center": 1.2086195002152618,
-              "candidate_speed": 1.318533440888313,
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2886195002152618,
+                1.0
+              ],
+              "candidate_gains": [
+                1.4,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.1499139406730511,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.318533440888313,
-                "speed_max": 1.318533440888313,
+                "speed_min": 1.0,
+                "speed_max": 1.4,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -1471,35 +1823,47 @@
           {
             "episode": 7,
             "training": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 66.72034660331137,
+              "raw_return": 27.66252991779655,
+              "fill_ml": 684.8200536587747,
+              "spill_ml": 0.0001083227182011344,
+              "seconds": 30.6875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.645814597549254,
+              "precision_discounted_return": 66.72034660331137
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
-              "actor_change": 0.08146655911168699,
-              "accepted": true,
-              "pair_center": 1.318533440888313,
-              "candidate_speed": 1.4,
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2886195002152618,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2886195002152618,
+                1.131113499305292
+              ],
+              "coordinate": "return",
+              "radius": 0.13111349930529206,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.4,
-                "speed_max": 1.4,
+                "speed_min": 1.131113499305292,
+                "speed_max": 1.2886195002152618,
                 "slower_decisions": 0,
                 "faster_decisions": 1
               }
@@ -1508,35 +1872,47 @@
           {
             "episode": 8,
             "training": {
-              "return": 58.65224694249194,
-              "raw_return": 27.345578831379196,
-              "fill_ml": 673.876541596081,
-              "spill_ml": 0.00011667082236255645,
-              "seconds": 30.65625,
+              "return": 55.56305401101239,
+              "raw_return": 27.60067162119455,
+              "fill_ml": 717.7545579135844,
+              "spill_ml": 0.0002718875780887949,
+              "seconds": 34.15625,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.23203105406635,
+              "precision_discounted_return": 55.56305401101239
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.318533440888313,
-              "candidate_speed": 1.227419941583021,
+              "pair_center": [
+                1.2886195002152618,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2886195002152618,
+                0.868886500694708
+              ],
+              "coordinate": "return",
+              "radius": 0.13111349930529206,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.227419941583021,
-                "speed_max": 1.227419941583021,
+                "speed_min": 0.868886500694708,
+                "speed_max": 1.2886195002152618,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -1545,72 +1921,96 @@
           {
             "episode": 9,
             "training": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 599.2362009130227,
+              "raw_return": 27.98927224405881,
+              "fill_ml": 703.8622302419116,
+              "spill_ml": 0.0004461241114876803,
+              "seconds": 31.59375,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.87891348878945,
+              "precision_discounted_return": 599.2362009130227
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.4,
-              "candidate_speed": 1.4,
+              "pair_center": [
+                1.2886195002152618,
+                1.0
+              ],
+              "candidate_gains": [
+                1.356962605306004,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.0683431050907422,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.4,
-                "speed_max": 1.4,
+                "speed_min": 1.0,
+                "speed_max": 1.356962605306004,
                 "slower_decisions": 0,
-                "faster_decisions": 0
+                "faster_decisions": 1
               }
             }
           },
           {
             "episode": 10,
             "training": {
-              "return": 60.314341394519936,
-              "raw_return": 27.190469032674514,
-              "fill_ml": 669.6804702528497,
-              "spill_ml": 0.0002731976249788918,
-              "seconds": 29.28125,
+              "return": 604.2181998505724,
+              "raw_return": 28.03721655412877,
+              "fill_ml": 696.313404657883,
+              "spill_ml": 0.00022247476295271003,
+              "seconds": 32.96875,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.607905720454028,
+              "precision_discounted_return": 604.2181998505724
             },
             "evaluation": {
-              "return": 62.27926134324447,
-              "raw_return": 27.045129820437545,
-              "fill_ml": 666.3724895875611,
-              "spill_ml": 0.0002249447277340522,
-              "seconds": 27.75,
+              "return": 781.5914806493107,
+              "raw_return": 28.126194860251545,
+              "fill_ml": 699.9474613451326,
+              "spill_ml": 0.00015269855187074557,
+              "seconds": 32.25,
               "success": true,
               "outcome": "success",
-              "initial_seed": 7001
+              "initial_seed": 7001,
+              "original_discounted_return": 21.83610518744969,
+              "precision_discounted_return": 781.5914806493107
             },
             "update": {
               "actor_change": 0.0,
               "accepted": false,
-              "pair_center": 1.4,
-              "candidate_speed": 1.3033137898185154,
+              "pair_center": [
+                1.2886195002152618,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2202763951245197,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.0683431050907422,
               "exploration": {
-                "kind": "paired_parameter",
+                "kind": "paired_phase_parameter",
                 "decisions": 1,
-                "speed_min": 1.3033137898185154,
-                "speed_max": 1.3033137898185154,
+                "speed_min": 1.0,
+                "speed_max": 1.2202763951245197,
                 "slower_decisions": 1,
                 "faster_decisions": 0
               }
@@ -1620,13 +2020,21 @@
         "latest_update": {
           "actor_change": 0.0,
           "accepted": false,
-          "pair_center": 1.4,
-          "candidate_speed": 1.3033137898185154,
+          "pair_center": [
+            1.2886195002152618,
+            1.0
+          ],
+          "candidate_gains": [
+            1.2202763951245197,
+            1.0
+          ],
+          "coordinate": "approach_pour",
+          "radius": 0.0683431050907422,
           "exploration": {
-            "kind": "paired_parameter",
+            "kind": "paired_phase_parameter",
             "decisions": 1,
-            "speed_min": 1.3033137898185154,
-            "speed_max": 1.3033137898185154,
+            "speed_min": 1.0,
+            "speed_max": 1.2202763951245197,
             "slower_decisions": 1,
             "faster_decisions": 0
           }
@@ -1634,12 +2042,15 @@
         "improved": true,
         "completed_episodes": 10,
         "actor_weights": [
-          1.4
+          1.2886195002152618,
+          1.0
         ],
         "best_weights": [
-          1.4
+          1.2886195002152618,
+          1.0
         ]
       }
     }
-  ]
+  ],
+  "wall_seconds": 44.06182637508027
 }

@@ -3,7 +3,7 @@
 LEARNING_VIZ_HTML = """
         <section id="ft-learning-viz" class="ft-learning-viz" aria-labelledby="ft-learning-title" hidden>
           <div class="ft-learning-heading"><h3 id="ft-learning-title">Watch learning unfold</h3>
-            <span class="hint">Higher RL time score is better</span></div>
+            <span class="hint">Higher score is better</span></div>
           <ol class="ft-learning-flow" aria-label="Learning cycle">
             <li id="ft-stage-baseline"><span>1</span>Check clone</li>
             <li id="ft-stage-training"><span>2</span>Explore</li>
@@ -30,7 +30,7 @@ LEARNING_VIZ_HTML = """
           <div id="ft-chart-inspector" class="ft-chart-inspector" aria-live="polite"></div>
           <p class="hint ft-chart-explanation">After every policy update, evaluation measures the current policy from the
             fixed starting pose without exploration noise. This curve may rise or fall; best so far keeps the strongest
-            evaluated checkpoint. RL time scores reward quick success and discount later reward by 1% per simulated second. Points appear after each rollout finishes.</p>
+            evaluated checkpoint. Scores strongly reward 700 mL accuracy, especially within ±5 mL, while also valuing speed. Points appear after each rollout finishes.</p>
         </section>
 """
 
@@ -142,14 +142,14 @@ function createLearningVisualization(element) {
       values.textContent='Waiting for the first completed rollout.';
       update.textContent='Live movement is shown beside this chart.';
     } else if(selected===0) {
-      values.textContent='Original clone · RL time score '+number(baseline);
+      values.textContent='Original clone · Accuracy / speed score '+number(baseline);
       update.textContent='Before fine-tuning · tested without exploration noise.';
     } else {
       const item=history.find(row=>row.episode===selected);
       let best=baseline;
       for(const row of history)if(row.episode<=selected&&reward(row.evaluation)!==null)
         best=best===null?reward(row.evaluation):Math.max(best,reward(row.evaluation));
-      values.textContent='RL time scores · Candidate / exploration '+number(reward(item?.training))+
+      values.textContent='Accuracy / speed scores · Candidate / exploration '+number(reward(item?.training))+
         ' · Current policy (no noise) '+number(reward(item?.evaluation))+' · Best '+number(best);
       update.textContent=(item?.update?(changed(item.update)?'Policy update applied. ':'Policy unchanged. '):'')+
         (reward(item?.evaluation)===null?'Evaluation has not finished.':
@@ -199,8 +199,8 @@ function createLearningVisualization(element) {
     svg.replaceChildren();svg.setAttribute('viewBox','0 0 '+width+' 255');
     svg.setAttribute('data-y-min',String(low));svg.setAttribute('data-y-max',String(high));
     svg.setAttribute('data-x-max',String(maxTrial));
-    svgNode('title',{id:'ft-chart-title'},'RL time score by learning iteration');
-    svgNode('desc',{id:'ft-chart-description'},'Completed candidate or exploratory RL time scores, the current policy evaluated without noise after each update, the original clone, and the best evaluated score so far. Select a point or use the iteration menu to inspect results.');
+    svgNode('title',{id:'ft-chart-title'},'Accuracy / speed score by learning iteration');
+    svgNode('desc',{id:'ft-chart-description'},'Completed candidate or exploratory Accuracy / speed scores, the current policy evaluated without noise after each update, the original clone, and the best evaluated score so far. Select a point or use the iteration menu to inspect results.');
     const digits=high-low<.05?4:high-low<1?3:high-low<10?2:1;
     for(let index=0;index<=4;index++) {
       const value=low+(high-low)*index/4,py=y(value);
@@ -215,7 +215,7 @@ function createLearningVisualization(element) {
       if(trial!==maxTrial&&maxTrial-trial<tickStep/2)continue;
       svgNode('text',{x:x(trial),y:bottom+18,'text-anchor':'middle','data-axis':'trial'},String(trial));
     }
-    svgNode('text',{x:left,y:12},'RL time score');
+    svgNode('text',{x:left,y:12},'Accuracy / speed score');
     svgNode('text',{x:(left+right)/2,y:251,'text-anchor':'middle'},width<430?'Iteration (0 = clone)':'Learning iteration (0 = original clone)');
     if(baseline!==null)svgNode('line',{x1:left,y1:y(baseline),x2:right,y2:y(baseline),class:'ft-chart-baseline','data-value':baseline});
     const path=(points,step=false)=>points.map((point,index)=>index===0?'M '+x(point.trial)+' '+y(point.value):
@@ -232,7 +232,7 @@ function createLearningVisualization(element) {
         fill:series==='exploration'?'#fff':'#153b57',stroke:series==='exploration'?'#ac6400':'#153b57',
         tabindex:'0',role:'button','aria-pressed':String(active),
         'aria-label':(point.trial===0?'Original clone':'Iteration '+point.trial+', '+
-          (series==='evaluation'?'current policy without noise':series))+' RL time score '+number(point.value)});
+          (series==='evaluation'?'current policy without noise':series))+' Accuracy / speed score '+number(point.value)});
       node.addEventListener('click',()=>choose(point.trial));
       node.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose(point.trial);select.focus();}});
     }

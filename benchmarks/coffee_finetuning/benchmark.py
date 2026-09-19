@@ -59,7 +59,7 @@ class MeasuredSession(InteractiveSession):
 
     def _reset_measurements(self):
         self.original_discounted_return = 0.0
-        self.time_discounted_return = 0.0
+        self.precision_discounted_return = 0.0
         self.measurement_discount = 1.0
 
     def restart(self, *args, **kwargs):
@@ -72,7 +72,7 @@ class MeasuredSession(InteractiveSession):
             self.original_discounted_return += (
                 self.measurement_discount * self.trajectory[-1]["reward"]
             )
-            self.time_discounted_return += (
+            self.precision_discounted_return += (
                 self.measurement_discount * fine_tuning_reward(self.info, self.env.dt)
             )
             self.measurement_discount *= 0.99**self.env.dt
@@ -105,7 +105,7 @@ def watch_best(model, policy, result):
             state = json.loads(runtime.dispatch('{"kind":"tick","max_steps":32}'))
         rollout = state["finetuning"]["rollout"]
         actual = {
-            "time_discounted_return": rollout["reward"], "raw_return": rollout["raw_return"],
+            "precision_discounted_return": rollout["reward"], "raw_return": rollout["raw_return"],
             "seconds": rollout["elapsed_seconds"], "fill_ml": runtime.session.env.fill * 1000,
             "spill_ml": runtime.session.env.spill * 1000,
             "success": bool(runtime.session.info["is_success"]), "outcome": rollout["outcome"],
@@ -136,10 +136,10 @@ def run_case(name, seed, iterations, model, prior_source, search_cap):
             metrics = super()._metrics()
             metrics.update(
                 original_discounted_return=self.session.original_discounted_return,
-                time_discounted_return=self.session.time_discounted_return,
+                precision_discounted_return=self.session.precision_discounted_return,
             )
             selected = (metrics["original_discounted_return"] if name == "prior-original"
-                        else metrics["time_discounted_return"])
+                        else metrics["precision_discounted_return"])
             if metrics["return"] != selected:
                 raise AssertionError("The independent reward measurement disagrees with training.")
             return metrics
@@ -165,15 +165,21 @@ def run_case(name, seed, iterations, model, prior_source, search_cap):
         parameters.update(
             ACTOR_LEARNING_RATE=0.025 if is_prior else learner.ACTOR_LEARNING_RATE,
             PPO_EPOCHS=4 if is_prior else learner.PPO_EPOCHS,
-            search_speed_range=[0.7, search_cap], search_radius_range=[0.08, 0.12],
+            search_speed_range=[0.7, search_cap],
+            search_radius_range=[current.SEARCH_RADIUS_MIN, current.SEARCH_RADIUS_MAX],
+            search_radius_floor=current.SEARCH_RADIUS_FLOOR,
+            search_parameterization="approach_pour_and_return_gains",
         )
         return {
             "configuration": name, "seed": seed, "iterations": iterations,
-            "training_objective": "original" if name == "prior-original" else "time",
+            "training_objective": "original" if name == "prior-original" else "precision",
             "parameters": parameters, "baseline": result["baseline"], "best": result["best"],
             "final": result["history"][-1]["evaluation"],
             "successful_candidates": sum(row["training"]["success"] for row in result["history"]),
             "successful_evaluations": sum(row["evaluation"]["success"] for row in result["history"]),
+            "precise_candidates": sum(row["training"]["success"] and abs(row["training"]["fill_ml"] - 700) <= 5 for row in result["history"]),
+            "precise_evaluations": sum(row["evaluation"]["success"] and abs(row["evaluation"]["fill_ml"] - 700) <= 5 for row in result["history"]),
+            "first_precise_evaluation": next((row["episode"] for row in result["history"] if row["evaluation"]["success"] and abs(row["evaluation"]["fill_ml"] - 700) <= 5), None),
             "watch_best_exact": replay, "wall_seconds": time.perf_counter() - started,
             "result": result,
         }
@@ -196,30 +202,31 @@ def write_results(output: Path, report):
         (f"Completed runs: {len(report['runs'])}/{report['expected_runs']}. "
         f"Iterations per run: {report['iterations']}. "
         f"Search speed ceiling: {report['search_cap']:.2f}×."), "",
-        ("| Configuration | Seed | Best / final seconds | Best fill (mL) | Best time reward | "
-        "Best original reward | Successful exploration / evaluation |"),
-        "|---|---:|---:|---:|---:|---:|---:|",
+        ("| Configuration | Seed | Best / final seconds | Best fill (mL) | Best precision reward | "
+        "Best original reward | First ±5 mL evaluation | ±5 mL exploration / evaluation |"),
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for run in report["runs"]:
         best, final = run["best"], run["final"]
         lines.append(
             f"| {run['configuration']} | {run['seed']} | {best['seconds']:.3f} / "
-            f"{final['seconds']:.3f} | {best['fill_ml']:.3f} | {best['time_discounted_return']:.6f} "
-            f"| {best['original_discounted_return']:.6f} | {run['successful_candidates']} / "
-            f"{run['successful_evaluations']} |"
+            f"{final['seconds']:.3f} | {best['fill_ml']:.3f} | {best['precision_discounted_return']:.6f} "
+            f"| {best['original_discounted_return']:.6f} | {run['first_precise_evaluation'] or '—'} | {run['precise_candidates']} / "
+            f"{run['precise_evaluations']} |"
         )
     if report["runs"]:
         baseline = report["runs"][0]["baseline"]
         lines.extend([
             "", (f"Shared BC baseline: {baseline['seconds']:.5f} s, {baseline['fill_ml']:.5f} mL, "
-            f"time reward {baseline['time_discounted_return']:.6f}, original reward "
+            f"precision reward {baseline['precision_discounted_return']:.6f}, original reward "
             f"{baseline['original_discounted_return']:.6f}."),
         ])
     lines.extend([
         "", ("The specified search/training seeds use the same fixed classroom starting pose. "
         "They measure optimization-seed variability, not generalization to unseen poses. "
         "The environment's success criterion remains unchanged, including its ±40 mL volume tolerance. "
-        "Faster completion does not necessarily mean a more accurate final volume."), "",
+        "The RL objective separately emphasizes ±5 mL, with a smooth reward peak at exactly 700 mL. "
+        "The table reports precision explicitly rather than conflating it with environment success."), "",
         ("The controlled algorithm comparison is prior-new-objective versus tuned-ppo versus "
         "policy-search. Prior-original additionally shows the original algorithm and original objective. "
         "Best checkpoints are selected using each configuration's own training objective; both "
@@ -278,7 +285,7 @@ def main():
             write_results(args.output, report)
             print(json.dumps({"configuration": run["configuration"], "seed": run["seed"],
                               "best_seconds": run["best"]["seconds"],
-                              "best_time_reward": run["best"]["time_discounted_return"]}), flush=True)
+                              "best_time_reward": run["best"]["precision_discounted_return"]}), flush=True)
     report["complete"] = True
     report["wall_seconds"] = time.perf_counter() - started
     write_results(args.output, report)

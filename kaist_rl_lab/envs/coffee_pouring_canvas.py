@@ -883,8 +883,8 @@ function drawFrame(state) {
   context.textAlign = "right";
   context.fillStyle = amber;
   const timeText = state.horizon === null
-    ? "decision " + state.step + " · " + state.elapsedTime.toFixed(2) + " s"
-    : "decision " + state.step + "/" + state.horizon + " · " +
+    ? state.elapsedTime.toFixed(1) + " s elapsed"
+    : state.elapsedTime.toFixed(1) + " / " + (state.horizon * state.dt).toFixed(0) + " s · " +
       Math.max(0, (state.horizon - state.step) * state.dt).toFixed(1) + " s left";
   context.fillText(timeText, width - 40, height - 26);
 

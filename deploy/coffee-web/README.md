@@ -40,6 +40,14 @@ trials support the lecture. Backgrounding the page pauses the experiment. These
 trials never upload as student submissions and do not change the policy: the demo
 illustrates that experience without a feedback-driven update is not learning.
 
+Student demonstrations stop automatically after **60 simulated seconds**, or
+**1,920 physics steps at 32 Hz**. The toolbar shows time remaining. Pausing or
+backgrounding the page pauses the countdown; this is not a 60-second wall-clock
+deadline. A timed-out attempt remains downloadable and can be submitted, labeled
+**Time limit** and unsuccessful. The default successful-only cloning filter excludes
+it. New submissions longer than 60 simulated seconds are rejected; older saved
+recordings remain available for replay and download.
+
 ## Behavior cloning from demonstrations
 
 After selecting a class, use **Behavior cloning** on the instructor page:
@@ -99,7 +107,7 @@ moves outward by 6 cm while link lengths stay the same. Students, generated exam
 cloned-policy playback, and every fine-tuning/evaluation rollout share this geometry.
 Wider spacing increases reach demands, but does not by itself guarantee a larger
 fine-tuning gain. The environment reward and 700 mL goal remain the same. Fine-tuning uses the
-separate time-focused score described below.
+separate accuracy-first score described below.
 
 Seed, exact initial joints, and arm spacing are preserved in every new recording.
 Recordings made with different arm spacing remain available for replay and download,
@@ -118,25 +126,32 @@ method. Both start by evaluating the original clone, then complete one explorato
 or candidate trial per iteration and evaluate the resulting current policy without
 exploration noise. All trials use the same fixed starting pose and 1.28 m arm spacing.
 
-The comparison reports the **RL time score**, fill, target error, spill, duration,
-and success. The score emphasizes completing a successful pour quickly; a faster
-valid pour can outrank a slower pour that is closer to exactly 700 mL. Read the
-accuracy and time columns together. The goal remains 700 mL with its unchanged
-±40 mL success tolerance; optimizing speed may move final fill toward that tolerance's
-edge. No particular gain is guaranteed.
+The comparison reports the **Accuracy / speed score**, fill, target error,
+whether the **±5 mL precision goal** is met, spill, duration, and success. Accuracy
+comes first: **exactly 700 mL** earns the highest precision component, and pours
+within ±5 mL receive a strong bonus. Speed still matters among accurate pours.
+The environment's original ±40 mL completion tolerance remains distinct from the
+stricter precision goal. No particular learning gain is guaranteed.
 
-**Policy search** explores the parameters of a policy, rather than adding random
-noise to every control. It tests paired faster/slower settings around a shared
-starting multiplier, with a random radius from 0.08 to 0.12. Pair order is random.
-A candidate replaces the current policy only if its completed score improves.
-The second candidate still uses the pair's original center even if the first was
-accepted. The overall multiplier stays between 0.7 and 1.4 times the cloned policy's
-commands; each motor command is clipped to `[-1, 1]`. A fresh deterministic rollout
-of the current accepted policy supplies each navy evaluation point. Rejected
-candidates still count as completed iterations but do not count as applied updates.
+**Policy search** learns two positive speed multipliers: one for approaching and
+pouring, and one for returning the pot. It always queries the clone with the real
+current observation. If the sum of the clone's three pot-control commands is less
+than `-1e-4`, it uses the return multiplier; otherwise it uses the approach/pour
+multiplier. It scales all six commands by that multiplier and clips to `[-1, 1]`.
+Both gains remain between **0.7 and 1.4**. No liquid reading, target value, or
+recorded trajectory is changed.
+
+The search tests paired faster/slower candidates along one parameter at a time,
+from shared starting settings and with a seeded initial radius. Improvements are
+retained. After a pair fails to improve, it halves that coordinate's radius and
+rotates to the other coordinate. The second candidate still uses the pair's
+original center even if the first was accepted. A fresh deterministic rollout of
+the current policy supplies each navy evaluation point. Rejected candidates count
+as completed iterations but not as applied updates. The visible diagnostic lists
+both candidate multipliers and both shared pair-center values.
 
 **Actor–critic (PPO)** explores state-dependent speed adjustments during a trial.
-A critic learns to estimate future RL time scores from observed rollouts, and the
+A critic learns to estimate future Accuracy / speed scores from observed rollouts, and the
 actor uses estimated advantages for clipped policy-gradient updates. Its speed
 multiplier is `1 + 0.5 * tanh(z)`, bounded between 0.5 and 1.5. Gaussian latent
 noise has standard deviation 0.5 and is resampled every 0.5 simulated seconds.
@@ -171,10 +186,10 @@ the full renderer.
 
 ### Reward used for fine-tuning
 
-The instructor page visibly explains the **RL time score**, a fine-tuning objective
+The instructor page visibly explains the **Accuracy / speed score**, a fine-tuning objective
 separate from the environment reward stored in demonstration archives. The original
 clone, candidate trials, current-policy evaluations, and policy playback all use
-the same time-score helper. Archived rewards and submitted trajectories are unchanged.
+the same accuracy-and-speed reward helper. Archived rewards and submitted trajectories are unchanged.
 
 For each physics step, `dt = 1/32` seconds and `gamma = 0.99 ** dt`. With error and
 spill in litres and cup angle in radians, the fine-tuning step reward is:
@@ -185,8 +200,16 @@ spill in litres and cup angle in radians, the fine-tuning step reward is:
 - `-0.032 * dt * abs(cup angle)`;
 - `gamma * Phi(next) - Phi(current)`, where `Phi = -20 * absolute target error`.
 
-At success, failure, or timeout, it also adds
-`(100 if success else -100) - 100 * final absolute target error - 14 * total spill`.
+At success, failure, or timeout, it also adds:
+
+`(100 + A(error) if success else -100) - 100 * final absolute target error - 14 * total spill`
+
+The continuous precision bonus is `A(error) = 1000 * exp(-0.5 * (error / 0.005)**2)`,
+where error is in litres. It is awarded **only on success**: exactly 700 mL gives
+1,000 points, and the bonus is at least 606.53 points within ±5 mL. It decreases
+smoothly toward zero as accuracy worsens. A failure cannot earn this bonus merely
+by briefly reaching the target fill with unsafe spill or tilt.
+
 The potential `Phi(next)` is **zero at every terminal state, including timeout**.
 Consequently its discounted sum is the same 14 points for every rollout from an
 empty cup with a 700 mL target. This provides intermediate filling feedback without
@@ -196,12 +219,17 @@ The displayed score is `sum(gamma**t * fine_tuning_reward_t)` from step zero. Al
 terms, including terminal rewards, use the same discount of **0.99 per simulated
 second**. Success still requires being within 40 mL of 700 mL, at most 20 mL spilled,
 flow at most 8 mL/s, cup tilt at most 8°, and pot tilt at most 12°. Trials have a
-60-second limit. With bounded controls and those success tolerances, even a slow
-successful trial scores above any failed trial. Animation speed has no effect.
+60-second limit. Within those limits, even a worst-case successful pour within
+±5 mL at 60 seconds scores at least 343.39, while a successful pour at least 10 mL
+off target cannot score above 248.34 even before time and control costs. Thus
+accuracy takes priority over a fast but inaccurate pour. At equal time and other
+costs, exactly 700 mL uniquely maximizes the score. Discounting and elapsed-time
+cost still favor faster completion when accuracy is comparable. Animation speed
+has no effect.
 
 The trajectory library continues to show **undiscounted recorded environment
 reward**, including its original success bonus and penalties. Those numbers use a
-different reward function and should not be compared directly with RL time scores.
+different reward function and should not be compared directly with Accuracy / speed scores.
 
 The best completed evaluation is retained, including the original clone. The
 comparison measures refinement on one fixed pose, not average performance across

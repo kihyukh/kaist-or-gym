@@ -75,8 +75,10 @@ steps**, with **11,206 unique training samples**. The separate whole-trajectory
 held-out action MAE is **0.02542**. From the canonical policy pose (seed 7001), the
 clone succeeds with **672.054 mL**, less than 0.001 mL spilled, and **36.0625
 seconds**. Under the original environment reward, its undiscounted total is
-**27.38892** and discounted return is **20.44806**. The separate RL time score used
-for fine-tuning is **51.00507**; it uses a different reward function. Its imperfect pouring accuracy is inherited from the practice data.
+**27.38892** and discounted return is **20.44806**. Fine-tuning uses a separate
+accuracy-and-speed reward, so its scores are not directly comparable. The clone's
+imperfect pouring accuracy is inherited from the practice data; it does not meet
+the **±5 mL precision goal** around 700 mL.
 
 The same clone was run closed-loop on twenty unseen classroom starts, seeds
 **12000–12019**, at 32 Hz, with the same 1.28 m geometry, 700 mL target, and
@@ -85,28 +87,38 @@ The same clone was run closed-loop on twenty unseen classroom starts, seeds
 from **34.41 to 38.75 seconds**. Discounted returns of the original environment
 reward ranged from **19.89630 to 21.03761**. These are new rollouts, not predictions on stored demonstration frames.
 
-The current **10-iteration policy-search** benchmark was run with seeds **2026,
-2027, and 2028**, the fixed canonical pose, and the new RL time score. All three
-runs reached the 1.4× speed limit, at iterations **10, 10, and 8**, respectively.
-The best policy finished in **27.75 seconds**, compared with the clone's
-**36.0625 seconds**: **23.05% faster**. Its RL time score increased from **51.00507
-to 62.27926** (**22.10%**).
+Fine-tuning now prioritizes **exactly 700 mL**, with a strong continuous precision
+bonus within **±5 mL**, while retaining discounted reward and elapsed-time cost.
+The original ±40 mL environment completion tolerance is not the precision goal.
+These deliberately early-return examples leave an accuracy gap for reward-based
+learning to address.
 
-That faster policy poured **666.372 mL**, with less than 0.001 mL spilled. Its target
-error was **33.63 mL**, compared with the clone's **27.95 mL**. This is a real tradeoff:
-the unchanged task still accepts ±40 mL, and the time-focused objective prefers the
-faster successful pour despite its lower accuracy. All **30 current-policy
-evaluations succeeded**; **29 of 30 exploratory candidates succeeded**. The failed
-candidate remains in the recorded benchmark. Replaying each best policy through
-the instructor runtime reproduced its evaluation metrics exactly.
+The current **10-iteration, two-phase policy-search** benchmark uses these fifteen
+recordings and one fixed canonical starting pose. All three primary training seeds
+reach the ±5 mL goal by iteration **3 or 4**, while also finishing faster than the
+clone's 36.0625 seconds. The clone's starting accuracy/speed score is **51.00519**.
+
+| Training seed | First evaluation within ±5 mL | Best policy fill | Absolute error | Duration | Accuracy / speed score |
+|---|---:|---:|---:|---:|---:|
+| 2026 | 4 | 699.873 mL | 0.127 mL | 32.500 s | 779.224 |
+| 2027 | 3 | 699.385 mL | 0.615 mL | 32.719 s | 772.110 |
+| 2028 | 3 | 702.075 mL | 2.075 mL | 32.312 s | 721.311 |
+
+Three additional optimization seeds, **7, 99, and 2029**, also reach ±5 mL by
+iteration 3 or 4. Their best policies pour **699.084–701.429 mL** in
+**32.188–32.313 seconds**. These are new optimization seeds at the same starting
+pose, not tests on unseen starting poses. Every best policy's metrics were
+reproduced exactly by the instructor's policy-playback runtime. The histories
+retain failed exploration too: across all six runs, **54/60 candidates** meet the
+environment's original completion condition; every final best policy meets the
+stricter precision goal.
 
 The [reproducible fine-tuning benchmark](../../../benchmarks/coffee_finetuning/README.md)
-compares both current methods and the earlier PPO baseline over these same seeds,
-including complete candidate/evaluation histories and both reward objectives.
+contains full candidate/evaluation histories, objective definitions, and comparisons
+with PPO. Scores from an earlier reward are kept separate from the current
+accuracy-and-speed objective. These measurements do not promise a particular gain
+for every training seed or student dataset.
 
-These measurements show improved speed and RL time score from imperfect recorded
-behavior. They do not promise a particular gain on every training seed or student
-dataset.
 Generated examples are only a proxy for a small class's data. Fifteen human
 demonstrations may have different coverage, quality, and consistency, and the
 held-out check does not establish robustness outside the tested start range.

@@ -376,7 +376,7 @@ function trajectoryActions(row,item,source='students') {
 }
 function trajectoryOutcome(row,item) {
   const outcome=cell(row,'');const badge=document.createElement('span');badge.className='badge'+(item.success?'':' closed');
-  badge.textContent=item.success?'Success':'Attempt';outcome.append(badge);
+  badge.textContent=item.success?'Success':item.termination_reason==='time_limit'?'Time limit':'Attempt';outcome.append(badge);
 }
 async function loadExamples() {
   if(!authenticated)return;

@@ -157,6 +157,32 @@ assert.equal(read('saving'),false);
 """)
 
 
+def test_deadline_countdown_and_timeout_leave_submission_available(tmp_path, recording):
+    runtime = BrowserRuntime(seed=33)
+    try:
+        runtime.session.paused = False
+        for _ in range(1920):
+            runtime.session.advance()
+        timeout = json.loads(runtime.snapshot())
+        saved = json.loads(runtime.dispatch('{"kind":"save","participant":"20260001"}'))
+    finally:
+        runtime.session.close()
+    run_controller(tmp_path, {**recording, "timeout": timeout, "timeout_saved": saved}, r"""
+receive(fixtures.initial);assert.match(node('.coffee-time').textContent,/60.0 s left/);
+receive(fixtures.timeout);
+assert.match(node('.coffee-time').textContent,/60.00 s simulated.*0.0 s left/);
+assert.match(node('.coffee-status').textContent,/60-second limit reached.*incomplete/);
+assert.equal(node('[data-command="pause"]').disabled,true);
+assert.equal(node('[data-command="save"]').disabled,false);
+assert.equal(node('[data-command="reset"]').disabled,false);
+assert.equal(read('dirty'),true);
+const count=sent.length;evaluate('sendControl("motor",0,1)');assert.equal(sent.length,count);
+node('.coffee-participant').value='20260001';clickSave();
+assert.equal(sent.at(-1).kind,'save');receive(fixtures.timeout_saved);
+assert.equal(requests.length,1);assert.equal(node('.coffee-download').hidden,false);
+""")
+
+
 def test_failed_upload_retries_same_archive_and_requires_matching_receipt(tmp_path, recording):
     run_controller(tmp_path, recording, """
 begin();
@@ -282,6 +308,8 @@ def test_exported_student_page_is_usable_on_phones(browser, website, recording, 
     page, errors = open_student_page(browser, website, recording, width, height)
     try:
         assert page.locator("#class-name").inner_text() == "Fall 2026 · RL Lab"
+        assert page.locator(".collection-limit-note").is_visible()
+        assert "60 seconds of simulation time" in page.locator(".collection-limit-note").inner_text()
         assert page.locator(".coffee-participant").get_attribute("required") is not None
         assert page.evaluate("window.workerUrl") == "/coffee-worker.js"
         assert page.evaluate("window.workerMessages[0].bundle_url") == \
@@ -314,6 +342,21 @@ def test_exported_student_page_is_usable_on_phones(browser, website, recording, 
         page.evaluate("window.dispatchEvent(new Event('pagehide'))")
         assert page.evaluate("window.workerMessages.at(-1).motors") == [0] * 6
         assert page.evaluate("window.workerMessages.at(-1).paused")
+        assert not errors
+    finally:
+        page.close()
+
+
+def test_practice_page_keeps_the_collection_limit_notice(browser, website, recording):
+    page, errors = open_student_page(browser, website, recording, 390, 844)
+    try:
+        page.goto("http://coffee.test/")
+        page.wait_for_function("document.querySelector('#save-heading').textContent === 'Finish & save'")
+        notice = page.locator(".collection-limit-note")
+        assert notice.is_visible()
+        assert "60 seconds of simulation time" in notice.inner_text()
+        assert "Pausing also pauses the countdown" in notice.inner_text()
+        assert "No recording is sent" in page.locator(".save-note").inner_text()
         assert not errors
     finally:
         page.close()

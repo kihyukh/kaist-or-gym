@@ -54,6 +54,10 @@ def archive():
         # Boundary tests vary the metadata accepted by the existing collector;
         # physics correctness and successful examples have their own rollout tests.
         metadata.update(episode_id=str(uuid4()), success=success, dt=dt, target_fill_l=target)
+        if success:
+            arrays["terminated"][-1] = True
+            arrays["truncated"][-1] = False
+            metadata.update(termination_reason="success", manual_finish=False)
         if arm_base_distance is None:
             metadata.pop("arm_base_distance_m", None)
             metadata["schema_version"] = 1

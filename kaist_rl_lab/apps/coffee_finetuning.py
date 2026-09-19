@@ -1,9 +1,9 @@
 """Two small reward learners that refine a frozen behavior-cloned policy.
 
-Paired policy search tests coherent faster/slower versions of the current
-policy. PPO instead learns a state-dependent speed actor with a linear critic.
+Paired policy search adjusts approach/pouring and returning speeds separately.
+PPO instead learns a state-dependent speed actor with a linear critic.
 Both query BC at each physical step, preserve motor directions, and use the same
-time-focused discounted objective. Every exploration trial is followed by a
+accuracy-first discounted objective. Every exploration trial is followed by a
 separate noise-free evaluation; only evaluated checkpoints are offered for replay.
 """
 
@@ -40,8 +40,10 @@ CRITIC_RETENTION = 0.95
 STRATEGIES = ("policy_search", "ppo")
 SEARCH_SPEED_MIN = 0.7
 SEARCH_SPEED_MAX = 1.4
-SEARCH_RADIUS_MIN = 0.08
-SEARCH_RADIUS_MAX = 0.12
+SEARCH_RADIUS_MIN = 0.12
+SEARCH_RADIUS_MAX = 0.16
+SEARCH_RADIUS_FLOOR = 0.001
+SEARCH_COORDINATES = ("approach_pour", "return")
 
 
 def actor_features(observation: np.ndarray) -> np.ndarray:
@@ -171,17 +173,30 @@ class FineTunedPolicy:
 
 
 class ScaledClonedPolicy:
-    """A state-feedback clone with one learned global speed parameter."""
+    """A state-feedback clone with separate move/pour and return speed gains.
 
-    def __init__(self, base: NearestNeighborPolicy, multiplier=1.0):
-        if not np.isfinite(multiplier) or not SEARCH_SPEED_MIN <= multiplier <= SEARCH_SPEED_MAX:
+    Phase is inferred only from the clone's current motor commands: a negative
+    sum of the three pot joint commands requests rotation toward upright. The
+    environment state, target volume, and inputs to BC are never modified.
+    """
+
+    def __init__(self, base: NearestNeighborPolicy, multiplier=1.0, return_multiplier=None):
+        if return_multiplier is None:
+            return_multiplier = multiplier
+        gains = np.asarray([multiplier, return_multiplier], dtype=np.float64)
+        if not np.isfinite(gains).all() or np.any(
+            (gains < SEARCH_SPEED_MIN) | (gains > SEARCH_SPEED_MAX)
+        ):
             raise ValueError("Invalid policy-search speed multiplier.")
         self.base = base
         self.multiplier = float(multiplier)
-        self.weights = np.array([self.multiplier])
+        self.return_multiplier = float(return_multiplier)
+        self.weights = gains
 
     def predict(self, observation: np.ndarray) -> np.ndarray:
-        return np.clip(self.base.predict(observation) * self.multiplier, -1, 1).astype(np.float32)
+        action = self.base.predict(observation)
+        gain = self.return_multiplier if float(np.sum(action[3:])) < -1e-4 else self.multiplier
+        return np.clip(action * gain, -1, 1).astype(np.float32)
 
 
 class FineTuningTrainer:
@@ -207,7 +222,12 @@ class FineTuningTrainer:
                        else FineTunedPolicy(self.base))
         self.best_policy = deepcopy(self.policy)
         self.search_proposals = []
-        self.search_center = 1.0
+        self.search_center = np.ones(2)
+        self.search_coordinate = 0
+        self.search_radius_scales = np.ones(2)
+        self.search_radius = 0.0
+        self.search_pair_started = False
+        self.search_pair_improved = False
         self.candidate_policy = None
         self.rng = np.random.default_rng(seed)
         # Demonstrations cover varied poses; this experiment changes only the
@@ -250,13 +270,30 @@ class FineTuningTrainer:
         self.latent = 0.0
         if self.strategy == "policy_search" and self.phase == "training":
             if not self.search_proposals:
-                self.search_center = self.policy.multiplier
-                radius = float(self.rng.uniform(SEARCH_RADIUS_MIN, SEARCH_RADIUS_MAX))
-                self.search_proposals = [
-                    float(np.clip(self.search_center + sign * radius, SEARCH_SPEED_MIN, SEARCH_SPEED_MAX))
-                    for sign in self.rng.permutation([-1, 1])
-                ]
-            self.candidate_policy = ScaledClonedPolicy(self.base, self.search_proposals.pop(0))
+                # Complete both trials and their fresh evaluations before
+                # adapting the search. A useful coordinate keeps its turn; a
+                # failed pair narrows that coordinate and tries the other one.
+                # Only measured reward decides improvement, never fill error.
+                if self.search_pair_started and not self.search_pair_improved:
+                    self.search_radius_scales[self.search_coordinate] *= 0.5
+                    self.search_coordinate = 1 - self.search_coordinate
+                self.search_center = self.policy.weights.copy()
+                self.search_radius = max(
+                    SEARCH_RADIUS_FLOOR,
+                    float(self.rng.uniform(SEARCH_RADIUS_MIN, SEARCH_RADIUS_MAX))
+                    * self.search_radius_scales[self.search_coordinate],
+                )
+                self.search_proposals = []
+                for sign in self.rng.permutation([-1, 1]):
+                    proposal = self.search_center.copy()
+                    proposal[self.search_coordinate] = np.clip(
+                        proposal[self.search_coordinate] + sign * self.search_radius,
+                        SEARCH_SPEED_MIN, SEARCH_SPEED_MAX,
+                    )
+                    self.search_proposals.append(proposal)
+                self.search_pair_started = True
+                self.search_pair_improved = False
+            self.candidate_policy = ScaledClonedPolicy(self.base, *self.search_proposals.pop(0))
 
     def _begin_decision(self):
         if self.strategy == "policy_search":
@@ -314,20 +351,24 @@ class FineTuningTrainer:
             self.phase = "training"
         elif self.phase == "training":
             if self.strategy == "policy_search":
-                old_speed = self.policy.multiplier
-                candidate_speed = self.candidate_policy.multiplier
+                old_gains = self.policy.weights.copy()
+                candidate_gains = self.candidate_policy.weights
+                candidate_change = candidate_gains[self.search_coordinate] - self.search_center[self.search_coordinate]
                 accepted = metrics["return"] > self.best["return"]
                 if accepted:
                     self.policy = self.candidate_policy
+                    self.search_pair_improved = True
                 self.update = {
-                    "actor_change": abs(self.policy.multiplier - old_speed),
-                    "accepted": accepted, "pair_center": self.search_center,
-                    "candidate_speed": candidate_speed,
+                    "actor_change": float(np.linalg.norm(self.policy.weights - old_gains)),
+                    "accepted": accepted, "pair_center": self.search_center.tolist(),
+                    "candidate_gains": candidate_gains.tolist(),
+                    "coordinate": SEARCH_COORDINATES[self.search_coordinate],
+                    "radius": self.search_radius,
                     "exploration": {
-                        "kind": "paired_parameter", "decisions": 1,
-                        "speed_min": candidate_speed, "speed_max": candidate_speed,
-                        "slower_decisions": int(candidate_speed < self.search_center),
-                        "faster_decisions": int(candidate_speed > self.search_center),
+                        "kind": "paired_phase_parameter", "decisions": 1,
+                        "speed_min": float(candidate_gains.min()), "speed_max": float(candidate_gains.max()),
+                        "slower_decisions": int(candidate_change < 0),
+                        "faster_decisions": int(candidate_change > 0),
                     },
                 }
             else:
@@ -412,8 +453,11 @@ class FineTuningTrainer:
             "algorithm": ("bounded_paired_policy_search" if self.strategy == "policy_search"
                           else "bounded_speed_ppo_actor_critic"),
             "strategy": self.strategy,
+            "parameterization": "phase_speeds" if self.strategy == "policy_search" else "state_speed_actor",
             "speed_multiplier": getattr(self.policy, "multiplier", None),
+            "return_speed_multiplier": getattr(self.policy, "return_multiplier", None),
             "best_speed_multiplier": getattr(self.best_policy, "multiplier", None),
+            "best_return_speed_multiplier": getattr(self.best_policy, "return_multiplier", None),
             "search_speed_range": [SEARCH_SPEED_MIN, SEARCH_SPEED_MAX],
             "search_radius_range": [SEARCH_RADIUS_MIN, SEARCH_RADIUS_MAX],
             "phase": self.phase,

@@ -259,7 +259,7 @@ const start=best.match(/^M\s+\S+\s+(\S+)/);
 const ys=[Number(start[1]),...Array.from(best.matchAll(/V\s+(\S+)/g),match=>Number(match[1]))];
 assert.ok(ys.length>=2);assert.equal(new Set(ys).size,1);
 node('#ft-chart-trial').value='0';fire(node('#ft-chart-trial'),'change');
-assert.match(node('#ft-chart-inspector').textContent,/Original clone · RL time score 5/);
+assert.match(node('#ft-chart-inspector').textContent,/Original clone · Accuracy \/ speed score 5/);
 assertFiniteSvg();
 """)
 
@@ -307,7 +307,7 @@ viz.render(fixture);assert.equal(node('#ft-learning-viz').hidden,false);
 assert.equal(points('baseline').length,1);assert.equal(points('evaluation').length,0);
 assert.equal(points('exploration').length,0);assert.equal(selected(),'0');
 assert.match(node('#ft-learning-status').textContent,/stopped.*0 iterations/i);
-assert.match(node('#ft-chart-inspector').textContent,/Original clone · RL time score 0.000/);
+assert.match(node('#ft-chart-inspector').textContent,/Original clone · Accuracy \/ speed score 0.000/);
 assertFiniteSvg();
 """)
 
@@ -363,7 +363,7 @@ assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\
 assert.match(node('#ft-learning-status').textContent,/iteration 100 \/ 100/);
 const ticks=descendants().filter(item=>item.getAttribute('data-axis')==='trial').map(item=>Number(item.textContent));
 assert.deepEqual(ticks,TICKS);
-assert.ok(descendants().some(item=>item.textContent==='RL time score'));
+assert.ok(descendants().some(item=>item.textContent==='Accuracy / speed score'));
 const earlier=points('evaluation')[0];viz.render(state);
 assert.equal(points('evaluation')[0],earlier,'Unchanged history should not rebuild 100 iterations');
 state.result.history[99].evaluation={return:10.2,raw_return:20100};viz.render(state);

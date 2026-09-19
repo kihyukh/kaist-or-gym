@@ -37,6 +37,8 @@ STUDENT_HTML = """<!doctype html>
   __CANVAS__
   <section class="coffee-save" aria-labelledby="save-heading">
     <h2 id="save-heading">Finish &amp; submit</h2>
+    <p class="collection-limit-note">Each attempt stops after 60 seconds of simulation time.
+      Pausing also pauses the countdown. You can still save or submit an unfinished attempt.</p>
     <label><span id="participant-label">Student ID</span>
       <input class="coffee-participant" maxlength="64" autocomplete="off" autocapitalize="off"
         spellcheck="false" aria-describedby="participant-note" /></label>
@@ -70,7 +72,7 @@ h1 {font-size:clamp(24px,4vw,36px); line-height:1.1; margin:0 0 8px; letter-spac
 .coffee-save input {margin-top:6px;}
 .coffee-save button {background:#123c51; color:white; min-width:190px; font-size:16px;}
 .coffee-submission {overflow-wrap:anywhere; font-weight:650;}
-.coffee-save .save-note, #participant-note {font-size:12px; color:#52656f; font-weight:400;}
+.coffee-save .save-note, .collection-limit-note, #participant-note {font-size:12px; color:#52656f; font-weight:400;}
 footer {font-size:11px; color:#607586; padding:16px 0; text-align:center;}
 button:focus-visible, summary:focus-visible, a:focus-visible, input:focus-visible {outline:3px solid #0099aa; outline-offset:3px;}
 @media(max-width:600px) {

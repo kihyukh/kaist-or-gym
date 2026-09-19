@@ -13,7 +13,7 @@ from kaist_rl_lab.apps.coffee_browser import (
     CONTROLLER_JAVASCRIPT,
     browser_bundle,
 )
-from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, BrowserRuntime
+from kaist_rl_lab.apps.coffee_browser_runtime import BROWSER_DT, COLLECTION_STEPS, BrowserRuntime
 from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M, classroom_layout
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
 from kaist_rl_lab.envs import CoffeePouringEnv
@@ -79,7 +79,7 @@ def test_authoritative_motion_hold_reversal_pause_and_reset():
 
 def test_recording_replays_the_displayed_python_physics_exactly():
     runtime = BrowserRuntime()
-    reference = CoffeePouringEnv(arm_base_distance=ARM_BASE_DISTANCE_M, dt=BROWSER_DT, horizon=None)
+    reference = CoffeePouringEnv(arm_base_distance=ARM_BASE_DISTANCE_M, dt=BROWSER_DT, horizon=COLLECTION_STEPS)
     rng = np.random.default_rng(88)
     rendered = []
     try:
@@ -96,6 +96,7 @@ def test_recording_replays_the_displayed_python_physics_exactly():
             "joint_angles": metadata["initial_joint_angles_rad"],
         })
         assert metadata["dt"] == BROWSER_DT
+        assert metadata["horizon_steps"] == COLLECTION_STEPS
         assert metadata["physics_substep"] == 1/64
         assert len(arrays["actions"]) == len(rendered) == 160
         for i, action in enumerate(arrays["actions"]):
@@ -110,6 +111,47 @@ def test_recording_replays_the_displayed_python_physics_exactly():
     finally:
         runtime.session.close()
         reference.close()
+
+
+def test_student_deadline_counts_only_simulated_time_and_stops_at_sixty_seconds():
+    runtime = BrowserRuntime(seed=33)
+    try:
+        initial = call(runtime, "snapshot")
+        assert initial["collection"] == {
+            "limit_seconds": 60, "remaining_seconds": 60, "timed_out": False,
+        }
+        assert runtime.session.env.horizon == COLLECTION_STEPS == 1920
+        control(runtime, 1, [0] * 6)
+        for _ in range(COLLECTION_STEPS - 1):
+            runtime.session.advance()
+        paused = control(runtime, 2, [0] * 6, paused=True)
+        assert paused["collection"]["remaining_seconds"] == BROWSER_DT
+        for _ in range(4):
+            assert call(runtime, "tick") == paused
+        control(runtime, 3, [0] * 6)
+        ended = call(runtime, "tick")
+        assert ended["collection"]["remaining_seconds"] == 0
+        assert ended["collection"]["timed_out"]
+        assert not runtime.session.running
+        assert not runtime.session.manual_finish
+        assert not runtime.session.info["is_success"]
+        assert runtime.session.info["termination_reason"] == "time_limit"
+        assert len(runtime.session.trajectory) == COLLECTION_STEPS
+        assert runtime.session.trajectory[-1]["truncated"]
+        assert not runtime.session.trajectory[-1]["terminated"]
+        assert call(runtime, "tick") == ended
+        saved = call(runtime, "save", participant="deadline")
+        arrays, metadata = read_demonstration(base64.b64decode(saved["archive"]))
+        assert len(arrays["actions"]) == COLLECTION_STEPS
+        assert metadata["horizon_steps"] == COLLECTION_STEPS
+        assert metadata["termination_reason"] == "time_limit"
+        assert not metadata["manual_finish"] and not metadata["success"]
+        restarted = control(runtime, 4, [0] * 6, kind="reset")
+        assert restarted["collection"] == initial["collection"]
+        assert runtime.session.env.horizon == COLLECTION_STEPS
+        assert runtime.session.env.elapsed_steps == 0
+    finally:
+        runtime.session.close()
 
 
 def test_bundle_contains_installed_physics_source():

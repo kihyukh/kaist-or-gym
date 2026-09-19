@@ -27,7 +27,11 @@ from zlib import error as ZlibError
 
 import numpy as np
 
-from kaist_rl_lab.apps.coffee_demonstrations import MAX_ARCHIVE_BYTES, read_demonstration
+from kaist_rl_lab.apps.coffee_demonstrations import (
+    MAX_ARCHIVE_BYTES,
+    read_demonstration,
+    validate_collection_duration,
+)
 from kaist_rl_lab.envs import CoffeePouringEnv
 
 COOKIE_NAME = "coffee_instructor"
@@ -104,7 +108,8 @@ class ClassroomStore:
                     participant TEXT NOT NULL, received_at TEXT NOT NULL, steps INTEGER NOT NULL,
                     success INTEGER NOT NULL, fill_ml REAL NOT NULL, spill_ml REAL NOT NULL,
                     duration_seconds REAL NOT NULL, sha256 TEXT NOT NULL, receipt TEXT NOT NULL,
-                    total_reward REAL, reward_checked INTEGER NOT NULL DEFAULT 0
+                    total_reward REAL, reward_checked INTEGER NOT NULL DEFAULT 0,
+                    termination_reason TEXT
                 );
                 CREATE INDEX IF NOT EXISTS submissions_session ON submissions(session_id);
                 CREATE TABLE IF NOT EXISTS instructor_sessions (
@@ -120,6 +125,8 @@ class ClassroomStore:
                 db.execute("ALTER TABLE submissions ADD COLUMN total_reward REAL")
             if "reward_checked" not in columns:
                 db.execute("ALTER TABLE submissions ADD COLUMN reward_checked INTEGER NOT NULL DEFAULT 0")
+            if "termination_reason" not in columns:
+                db.execute("ALTER TABLE submissions ADD COLUMN termination_reason TEXT")
 
     @contextmanager
     def connect(self):
@@ -183,6 +190,7 @@ class ClassroomStore:
                     raise ValueError("A different recording already uses this episode ID.")
                 return {"status": "saved", "episode_id": episode_id,
                         "receipt": existing["receipt"], "duplicate": True}
+            validate_collection_duration(arrays, metadata)
             if not classroom["open"]:
                 raise ValueError("Submissions for this classroom are closed.")
             if classroom["participant_required"] and not metadata["participant"].strip():
@@ -209,12 +217,13 @@ class ClassroomStore:
                 db.execute(
                     "INSERT INTO submissions (episode_id, session_id, participant, received_at, "
                     "steps, success, fill_ml, spill_ml, duration_seconds, sha256, receipt, "
-                    "total_reward, reward_checked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                    "total_reward, reward_checked, termination_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
                     (episode_id, classroom["id"], metadata["participant"].strip(), received,
                      len(arrays["actions"]), int(metadata["success"]),
                      float(arrays["next_observations"][-1, 12]) * 1000,
                      float(arrays["next_observations"][-1, 13]) * 1000,
-                     len(arrays["actions"]) * metadata["dt"], digest, receipt, total_reward),
+                     len(arrays["actions"]) * metadata["dt"], digest, receipt, total_reward,
+                     metadata.get("termination_reason")),
                 )
                 db.commit()
             except Exception:
@@ -230,7 +239,7 @@ def _replay_events(data: bytes):
     arrays, metadata = _validated_archive(data)
     total_reward, cumulative_rewards = _recorded_rewards(arrays)
     env = CoffeePouringEnv(
-        dt=metadata["dt"], horizon=None,
+        dt=metadata["dt"], horizon=metadata.get("horizon_steps"),
         arm_base_distance=metadata.get(
             "arm_base_distance_m", CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE,
         ),
@@ -503,7 +512,7 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
         store.backfill_rewards(session)
         with store.connect() as db:
             rows = db.execute("""SELECT episode_id, participant, received_at, steps, success,
-                                 fill_ml, spill_ml, duration_seconds, total_reward FROM submissions
+                                 fill_ml, spill_ml, duration_seconds, total_reward, termination_reason FROM submissions
                                  WHERE session_id=? ORDER BY received_at DESC""", (session,))
             return [{**dict(row), "success": bool(row["success"])} for row in rows]
 

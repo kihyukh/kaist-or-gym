@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from kaist_rl_lab.apps.coffee_browser_runtime import BrowserRuntime
 from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
+from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession
 from kaist_rl_lab.apps.coffee_web import COOKIE_NAME, create_app
 
 PASSWORD = "test-instructor-password-only"
@@ -170,6 +171,76 @@ def test_missing_secrets_and_unsafe_public_origin_are_rejected(tmp_path):
         create_app(password="", session_secret="")
     with pytest.raises(ValueError, match="HTTPS"):
         create_app(password=PASSWORD, session_secret=SECRET, public_base_url="http://coffee.example")
+
+
+def test_timed_out_submission_is_replayable_and_excluded_by_successful_only_cloning(setup):
+    client, _ = setup
+    classroom, token = new_class(client)
+    runtime = BrowserRuntime(seed=33)
+    try:
+        runtime.session.paused = False
+        for _ in range(1921):
+            runtime.session.advance()
+        data = runtime.session.save_demonstration("deadline-student").read_bytes()
+    finally:
+        runtime.session.close()
+    response = upload(client, token, data)
+    assert response.status_code == 200, response.text
+    episode = response.json()["episode_id"]
+    rows = client.get("/api/instructor/submissions", params={"session": classroom["id"]}).json()
+    assert len(rows) == 1
+    assert rows[0]["termination_reason"] == "time_limit"
+    assert rows[0]["duration_seconds"] == 60
+    assert rows[0]["steps"] == 1920
+    assert rows[0]["success"] is False
+    replay = client.get(f"/api/instructor/submissions/{episode}/replay")
+    assert replay.status_code == 200, replay.text
+    result = replay.json()
+    assert result["metadata"]["termination_reason"] == "time_limit"
+    assert result["frames"][-1]["time"] == 60
+    assert result["frames"][-1]["snapshot"]["state"]["termination_reason"] == "time_limit"
+    filtered = client.post("/api/instructor/cloning/train", json={
+        "source": "students", "session_id": classroom["id"], "successful_only": True,
+    })
+    assert filtered.status_code == 409
+    assert "no successful" in filtered.json()["detail"]
+    arrays, metadata = read_demonstration(data)
+    metadata["success"] = True
+    invalid = BytesIO()
+    np.savez_compressed(invalid, **arrays, metadata=np.asarray(json.dumps(metadata)))
+    assert upload(client, token, invalid.getvalue()).status_code == 400
+    metadata.pop("termination_reason")
+    invalid = BytesIO()
+    np.savez_compressed(invalid, **arrays, metadata=np.asarray(json.dumps(metadata)))
+    assert upload(client, token, invalid.getvalue()).status_code == 400
+
+
+def test_new_overlong_upload_is_rejected_but_legacy_archive_can_still_replay(setup):
+    from kaist_rl_lab.apps.coffee_classroom import ARM_BASE_DISTANCE_M, classroom_layout
+    from kaist_rl_lab.apps.coffee_web import _replay
+
+    client, _ = setup
+    _, token = new_class(client)
+    session = InteractiveSession(33, 700, dt=1 / 32, horizon=None,
+                                 arm_base_distance=ARM_BASE_DISTANCE_M,
+                                 reset_options=classroom_layout(33))
+    try:
+        for _ in range(1921):
+            session.advance()
+        data = session.save_demonstration("legacy-long-attempt").read_bytes()
+    finally:
+        session.close()
+    arrays, metadata = read_demonstration(data)
+    # An old recording predates the horizon/outcome metadata entirely.
+    metadata.pop("horizon_steps")
+    metadata.pop("termination_reason")
+    legacy = BytesIO()
+    np.savez_compressed(legacy, **arrays, metadata=np.asarray(json.dumps(metadata)))
+    response = upload(client, token, legacy.getvalue())
+    assert response.status_code == 409
+    assert "60 simulated seconds" in response.json()["detail"]
+    replay = _replay(legacy.getvalue())
+    assert replay["frames"][-1]["time"] == 1921 / 32
 
 
 @pytest.mark.parametrize("custom_origin", [None, "https://coffee.example"])

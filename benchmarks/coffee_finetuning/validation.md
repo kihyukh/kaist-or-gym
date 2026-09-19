@@ -2,22 +2,13 @@
 
 Every result below was recomputed from real environment steps. Each training iteration contains an exploration/candidate rollout and a fresh evaluation without noise. Watch best was also replayed through the instructor runtime and matched exactly.
 
-Completed runs: 12/12. Iterations per run: 10. Search speed ceiling: 1.40×.
+Completed runs: 3/3. Iterations per run: 10. Search speed ceiling: 1.40×.
 
 | Configuration | Seed | Best / final seconds | Best fill (mL) | Best precision reward | Best original reward | First ±5 mL evaluation | ±5 mL exploration / evaluation |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| prior-original | 2026 | 35.812 / 36.000 | 686.027 | 66.362120 | 20.796980 | — | 0 / 0 |
-| prior-original | 2027 | 35.500 / 35.500 | 682.768 | 54.352971 | 20.771355 | — | 0 / 0 |
-| prior-original | 2028 | 36.062 / 35.906 | 686.584 | 71.033397 | 20.778795 | — | 0 / 0 |
-| prior-new-objective | 2026 | 35.500 / 35.500 | 683.362 | 55.307795 | 20.778269 | — | 0 / 0 |
-| prior-new-objective | 2027 | 36.125 / 35.750 | 685.845 | 64.523297 | 20.749336 | — | 0 / 0 |
-| prior-new-objective | 2028 | 35.969 / 36.250 | 686.150 | 67.132572 | 20.777823 | — | 0 / 0 |
-| tuned-ppo | 2026 | 31.812 / 33.281 | 675.284 | 57.123251 | 21.159579 | — | 0 / 0 |
-| tuned-ppo | 2027 | 35.906 / 35.469 | 684.067 | 56.392735 | 20.773209 | — | 1 / 0 |
-| tuned-ppo | 2028 | 35.156 / 34.375 | 687.076 | 78.157873 | 20.954498 | — | 0 / 0 |
-| policy-search | 2026 | 32.500 / 32.500 | 699.873 | 779.223704 | 21.786943 | 4 | 2 / 7 |
-| policy-search | 2027 | 32.719 / 32.719 | 699.385 | 772.109611 | 21.732436 | 3 | 3 / 8 |
-| policy-search | 2028 | 32.312 / 32.312 | 702.075 | 721.311014 | 21.781120 | 3 | 3 / 8 |
+| policy-search | 7 | 32.188 / 32.188 | 701.429 | 753.093421 | 21.818657 | 3 | 3 / 8 |
+| policy-search | 99 | 32.312 / 32.312 | 699.084 | 769.004042 | 21.801855 | 4 | 3 / 7 |
+| policy-search | 2029 | 32.250 / 32.250 | 699.947 | 781.591481 | 21.836105 | 3 | 3 / 8 |
 
 Shared BC baseline: 36.06250 s, 672.05444 mL, precision reward 51.005188, original reward 20.448061.
 

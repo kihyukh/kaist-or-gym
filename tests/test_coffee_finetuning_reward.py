@@ -1,4 +1,4 @@
-"""The RL objective rewards speed without making deliberate failure attractive."""
+"""The RL objective prioritizes accurate completion, then rewards speed."""
 
 from itertools import pairwise
 
@@ -59,3 +59,34 @@ def test_final_accuracy_and_spill_are_penalized():
     spilled = score_path(np.linspace(.7, 0, 30 * 32 + 1), success=True, spill=.02)
     assert accurate > underfilled
     assert accurate > spilled
+
+
+def test_precision_peak_is_strictly_centered_on_exact_target():
+    errors_ml = (0, 1, 2, 5, 10, 20, 40)
+    scores = [score_path(np.linspace(.7, error / 1000, 30 * 32 + 1), success=True)
+              for error in errors_ml]
+    assert all(closer > farther for closer, farther in pairwise(scores))
+    # The 5 mL band earns a substantial bonus even at its edge.
+    assert scores[3] - scores[4] > 300
+    assert scores[0] - scores[3] > 250
+
+
+def test_slow_precision_band_beats_a_fast_pour_that_misses_by_ten_ml():
+    slow_precise = score_path(np.linspace(.7, .005, 60 * 32 + 1), success=True,
+                              spill=.02, control=.024 * 6, tilt=.032 * np.pi)
+    # Even a physically implausible one-step completion cannot make 690 mL
+    # preferable to a safely completed, costly 695 mL pour at the time limit.
+    fastest_miss = score_path([.7, .01], success=True)
+    assert slow_precise > fastest_miss
+
+
+def test_timeout_at_exact_target_does_not_collect_precision_bonus():
+    exact_timeout = score_path(np.linspace(.7, 0, 60 * 32 + 1), success=False)
+    imprecise_success = score_path(np.linspace(.7, .04, 60 * 32 + 1), success=True)
+    assert imprecise_success > exact_timeout
+
+
+def test_precision_reward_still_prefers_faster_equally_accurate_completion():
+    scores = [score_path(np.linspace(.7, .001, seconds * 32 + 1), success=True)
+              for seconds in (20, 30, 40, 60)]
+    assert all(earlier > later for earlier, later in pairwise(scores))

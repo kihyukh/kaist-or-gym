@@ -24,6 +24,7 @@ from kaist_rl_lab.version import __version__
 MAX_ARCHIVE_BYTES = 12 * 1024 * 1024
 MAX_EXPANDED_BYTES = 64 * 1024 * 1024
 MAX_TRANSITIONS = 30_000
+MAX_COLLECTION_SECONDS = 60
 ARRAY_NAMES = {"observations", "actions", "rewards", "next_observations", "terminated", "truncated"}
 
 
@@ -53,12 +54,16 @@ def encode_demonstration(session: Any, participant: str = "") -> bytes:
         "seed": session.seed,
         "initial_joint_angles_rad": session.initial_joint_angles.tolist(),
         "dt": session.env.dt,
+        "horizon_steps": session.env.horizon,
         "physics_substep": session.env.LIQUID_SUBSTEP,
         "steps_per_update": session.steps_per_update,
         "target_fill_l": session.env.target_fill,
         "joint_names": list(CoffeePouringEnv.JOINT_NAMES),
         "observation_names": list(CoffeePouringEnv.OBSERVATION_NAMES),
         "manual_finish": session.manual_finish,
+        "termination_reason": session.info.get("termination_reason") or (
+            "manual_finish" if session.manual_finish else None
+        ),
         "success": bool(session.info["is_success"]),
         "fill_l": float(session.info["fill"]),
         "spill_l": float(session.info["spill"]),
@@ -127,6 +132,11 @@ def read_demonstration(data: bytes) -> tuple[dict[str, np.ndarray], dict[str, An
     count = len(arrays["observations"])
     if not 1 <= count <= MAX_TRANSITIONS:
         raise ValueError("Invalid number of trajectory transitions.")
+    horizon = metadata.get("horizon_steps")
+    if horizon is not None and (
+        type(horizon) is not int or not count <= horizon <= MAX_TRANSITIONS
+    ):
+        raise ValueError("Invalid recorded time horizon.")
     widths = {"observations": 16, "next_observations": 16, "actions": 6}
     for key, value in arrays.items():
         expected = (count, widths[key]) if key in widths else (count,)
@@ -146,7 +156,23 @@ def read_demonstration(data: bytes) -> tuple[dict[str, np.ndarray], dict[str, An
         raise ValueError("A submitted attempt must end at its last transition.")
     if not np.array_equal(arrays["observations"][1:], arrays["next_observations"][:-1]):
         raise ValueError("Trajectory observations are not consecutive.")
+    if metadata.get("success") is True and arrays["truncated"][-1]:
+        raise ValueError("A truncated recording cannot be marked successful.")
+    reason = metadata.get("termination_reason")
+    if reason not in (None, "manual_finish", "success", "spill_or_overflow", "time_limit"):
+        raise ValueError("Invalid recorded outcome.")
+    if reason == "time_limit" and (
+        horizon != count or metadata.get("success") is not False
+        or not arrays["truncated"][-1] or arrays["terminated"][-1]
+    ):
+        raise ValueError("A timed-out recording must be truncated and unsuccessful.")
     return arrays, metadata
+
+
+def validate_collection_duration(arrays: dict[str, np.ndarray], metadata: dict[str, Any]) -> None:
+    """Bound new submissions without preventing access to older saved archives."""
+    if len(arrays["actions"]) * metadata["dt"] > MAX_COLLECTION_SECONDS:
+        raise ValueError(f"Student recordings are limited to {MAX_COLLECTION_SECONDS} simulated seconds.")
 
 
 class TrajectoryCollector:
@@ -172,6 +198,7 @@ class TrajectoryCollector:
             raise ValueError("Trajectory upload is too large.")
         data = base64.b64decode(encoded_archive, validate=True)
         arrays, metadata = read_demonstration(data)
+        validate_collection_duration(arrays, metadata)
         episode_id = str(UUID(metadata["episode_id"]))
         path = self.directory / f"coffee_{episode_id}.npz"
         with self._lock:

@@ -181,6 +181,24 @@ assert.equal(get('#replay-position').value,'0');
     )
 
 
+def test_timed_out_submission_is_marked_and_still_replayable(tmp_path):
+    run_instructor(
+        tmp_path,
+        r"""
+const incomplete={...row,episode_id:'timed-out',participant:'Incomplete attempt',
+  termination_reason:'time_limit',duration_seconds:60,steps:1920,success:false};
+studentRows.push(incomplete);await login();
+const rendered=findRow('#submission-rows',incomplete.participant);
+assert.equal(rendered.children[4].children[0].textContent,'Time limit');
+assert.equal(rendered.children.at(-1).children[1].textContent,'Download');
+await replayButton(rendered).listeners.click();
+assert.equal(requests.at(-1).path,replayPath(incomplete,'submissions'));
+assert.equal(get('#replay-panel').hidden,false);
+assert.equal(get('#play-replay').disabled,false);
+""",
+    )
+
+
 def test_switching_trajectories_rejects_an_older_replay_response(tmp_path):
     run_instructor(
         tmp_path,

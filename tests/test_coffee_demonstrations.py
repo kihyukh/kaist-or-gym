@@ -10,6 +10,7 @@ from kaist_rl_lab.apps.coffee_demonstrations import (
     TrajectoryCollector,
     load_behavior_cloning_data,
     read_demonstration,
+    validate_collection_duration,
 )
 from kaist_rl_lab.apps.coffee_pouring_app import InteractiveSession, build_app
 
@@ -66,6 +67,26 @@ def test_empty_attempt_does_not_finish():
         session.save_demonstration()
     assert session.running and session.paused
     session.close()
+
+
+@pytest.mark.parametrize("dt", [1 / 32, .125])
+def test_collection_limit_uses_duration_not_just_a_frame_count(tmp_path, dt):
+    count = round(60 / dt)
+    validate_collection_duration({"actions": np.zeros((count, 6))}, {"dt": dt})
+    with pytest.raises(ValueError, match="60 simulated seconds"):
+        validate_collection_duration({"actions": np.zeros((count + 1, 6))}, {"dt": dt})
+    session = InteractiveSession(seed=7001, target_ml=700, dt=dt, horizon=None)
+    try:
+        for _ in range(count + 1):
+            session.advance()
+        archive = session.save_demonstration("too-long").read_bytes()
+    finally:
+        session.close()
+    assert len(read_demonstration(archive)[0]["actions"]) == count + 1
+    collector = TrajectoryCollector(tmp_path, "lecture-code-123")
+    with pytest.raises(ValueError, match="60 simulated seconds"):
+        collector.receive("lecture-code-123", base64.b64encode(archive).decode())
+    assert not list(tmp_path.glob("*.npz"))
 
 
 def test_collector_authentication_duplicates_and_dataset_loading(recorded_session, tmp_path):

@@ -12,7 +12,7 @@ FINETUNING_HTML = """
       <section id="finetuning-panel" class="panel" aria-labelledby="finetuning-title">
         <div class="heading-row"><div><p class="eyebrow">IMPROVE WITH REWARD</p>
           <h2 id="finetuning-title">Fine-tune with reinforcement learning</h2></div>
-          <span class="badge">Small changes · reward feedback</span></div>
+          <span class="badge">700 mL · ±5 mL precision goal</span></div>
         <p>Start with imitation, try nearby speed adjustments, and use reward to choose what to keep.</p>
         <div class="ft-training-controls">
           <div><label for="ft-strategy">Learning method</label>
@@ -29,8 +29,8 @@ FINETUNING_HTML = """
           <button id="ft-pause" type="button" disabled>Pause</button>
           <button id="ft-stop" type="button" disabled>Stop training</button>
         </div>
-        <p id="ft-method-description" class="hint">Policy search tests paired faster/slower settings around a shared
-          starting setting, keeping a candidate only when its score improves.</p>
+        <p id="ft-method-description" class="hint">Policy search tests paired faster/slower settings for approaching/pouring and
+          returning the pot, keeping a candidate only when its score improves.</p>
         <p class="hint">Each iteration completes one exploratory or candidate trial, decides how to update the policy,
           then evaluates the current policy without exploration noise from the same fixed starting pose.
           The arm bases are <b>__ARM_SPACING__ m apart</b>; demonstrations and policy trials use this same spacing.</p>
@@ -43,7 +43,7 @@ FINETUNING_HTML = """
           <div class="random-readout" aria-live="off">
             <span>Showing <strong id="ft-showing">—</strong></span>
             <span>Simulated time <strong id="ft-time">0.0 s</strong></span>
-            <span>RL time score so far <strong id="ft-reward">0.000</strong></span>
+            <span>Accuracy / speed score so far <strong id="ft-reward">0.000</strong></span>
           </div>
           <div class="coffee-stage replay-stage"><div class="coffee-canvas-wrap">
             <canvas class="coffee-canvas" role="img" aria-label="Reinforcement learning coffee pouring trials and evaluation"></canvas>
@@ -53,19 +53,19 @@ FINETUNING_HTML = """
               <span><span class="coffee-stat-label">In the pot</span><strong data-coffee-stat="remaining">—</strong></span>
             </div>
           </div></div>
-          <p class="hint">The scene shows the current rollout. The chart adds its RL time score after the rollout finishes.</p>
+          <p class="hint">The scene shows the current rollout. The chart adds its Accuracy / speed score after the rollout finishes.</p>
         </div>
         </div>
         <div id="ft-results" hidden>
           <h3>Fixed starting pose · no exploration noise in evaluation</h3>
           <div class="table-scroll"><table>
-            <thead><tr><th>Policy</th><th>RL time score ↑</th><th>Cup</th><th>Target error ↓</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
+            <thead><tr><th>Policy</th><th>Accuracy / speed score ↑</th><th>Cup</th><th>Target error ↓</th><th>Within ±5 mL</th><th>Spilled</th><th>Time</th><th>Result</th></tr></thead>
             <tbody id="ft-comparison"></tbody></table></div>
           <p id="ft-improvement" class="ft-improvement"></p>
-          <p class="hint">The best policy has the highest evaluated RL time score, including the original clone.
+          <p class="hint">The best policy has the highest evaluated Accuracy / speed score, including the original clone.
             Candidate or exploratory trials are shown separately from the current policy's evaluation without noise.
-            The target remains 700 mL with the same ±40 mL success tolerance. A faster policy may finish nearer
-            that tolerance's edge; check its cup amount and target error as well as time.</p>
+            Aim for <b>exactly 700 mL</b>; <b>within ±5 mL</b> is the precision goal.
+            The original environment's wider ±40 mL completion tolerance is not the precision goal.</p>
         </div>
         <div class="ft-playback-controls">
           <div><label for="ft-playback-speed">Policy playback speed</label>
@@ -75,17 +75,20 @@ FINETUNING_HTML = """
           <button id="ft-run-best" type="button" class="primary" disabled>Watch best policy</button>
           <button id="ft-reset" type="button" disabled>Reset displayed trial</button>
         </div>
-        <details id="ft-history" hidden><summary>RL time scores across learning iterations</summary>
+        <details id="ft-history" hidden><summary>Accuracy / speed scores across learning iterations</summary>
           <div class="table-scroll"><table>
             <thead><tr><th>Iteration</th><th>Candidate / exploration score</th><th>Current policy score · no noise</th><th>Policy update</th></tr></thead>
             <tbody id="ft-history-rows"></tbody></table></div>
         </details>
         <section id="ft-reward-explanation" class="ft-reward-explanation" aria-labelledby="ft-reward-title">
           <h3 id="ft-reward-title">Reward used for fine-tuning</h3>
-          <p><b>Finish a successful pour quickly.</b> Each simulated second costs 1 point. Success earns 100 points;
-            failure or timeout loses 100 points. Target error, spilling, motor effort, and cup tilt also cost points.</p>
+          <p><b>Accuracy comes first: aim for exactly 700 mL, within ±5 mL.</b> A successful pour earns a precision
+            bonus that peaks at 1,000 points exactly at 700 mL and is still at least 606.5 points within ±5 mL.
+            A quick pour far from the target cannot make up for missing that precision.</p>
+          <p>Success also earns 100 points; failure or timeout loses 100 points and earns no precision bonus.
+            Each simulated second costs 1 point. Target error, spilling, motor effort, and cup tilt also cost points.</p>
           <p><b>Earlier reward counts more.</b> Reward one simulated second later receives 99% of its earlier weight.
-            The chart and policy comparisons use this discounted <b>RL time score</b>, with the same scoring rule
+            The chart and policy comparisons use this discounted <b>Accuracy / speed score</b>, with the same scoring rule
             for the original clone and every new policy. The trajectory library keeps its original
             <b>undiscounted recorded reward</b>; those values use a different reward function.</p>
           <details class="ft-reward-formula"><summary>Exact reward and discount formula</summary>
@@ -94,7 +97,10 @@ FINETUNING_HTML = """
               controls between −1 and 1, and <b>θ</b> the cup angle in radians.</p>
             <p class="ft-equation">rₜ = −dt − 40Δspill − 0.024dt ∑ᵢ₌₁⁶ aᵢ² − 0.032dt |θ| + γΦₜ₊₁ − Φₜ</p>
             <p>At the final step, also add:</p>
-            <p class="ft-equation">(100 if successful, otherwise −100) − 100 × final error − 14 × total spill</p>
+            <p class="ft-equation">(100 + A(e) if successful, otherwise −100) − 100 × final error − 14 × total spill</p>
+            <p class="ft-equation">A(e) = 1000 exp[−½(e / 0.005)²]</p>
+            <p>Here e is in litres: 0.005 L is 5 mL. The precision bonus is awarded only on success;
+              it is largest at zero error and decreases continuously as the pour misses 700 mL.</p>
             <p class="ft-equation">Φₜ = −20eₜ; Φ = 0 at every terminal state, including timeout</p>
             <p>The Φ term provides feedback while filling. Its discounted total is the same 14 points for
               every trial starting with an empty cup, so it does not change which completed policy scores best.
@@ -103,24 +109,25 @@ FINETUNING_HTML = """
               total spill ≤20 mL, flow rate ≤8 mL/s, cup tilt ≤8°, and pot tilt ≤12°.
               Each rollout has a 60-second time limit. A fast failed attempt still scores below a slow success.</p>
             <p class="ft-equation">G = ∑ₜ₌₀ᵀ⁻¹ γᵗ rₜ, with γ = 0.99<sup>1/32</sup></p>
-            <p>All terms use the same discount. Faster valid pours can score higher even when their final fill
-              is farther from 700 mL; compare target error and completion time alongside the score.
-              Animation speed does not affect the score.</p>
+            <p>All terms use the same discount. Even a successful pour within ±5 mL that takes the full
+              60 seconds outranks a successful pour at least 10 mL off target, however fast it finishes.
+              Speed still matters among accurate pours. Animation speed does not affect the score.</p>
           </details>
         </section>
         <details><summary>What is being learned?</summary>
           <p class="hint">The behavior-cloning policy stays fixed. Both methods adjust its speed and continue to choose
             controls from the current state. Zero commands remain zero and motion directions stay those of the clone.
             They do not call the demonstration-generating controller.</p>
-          <p class="hint"><b>Policy search</b> tries paired faster/slower settings around the same starting multiplier,
-            0.08–0.12 on either side. It retains improvements and keeps the multiplier between 0.7 and 1.4 times
-            the clone's commands. The second candidate in a pair still uses that pair's original center.
-            Controls are always clipped to −1…1.</p>
+          <p class="hint"><b>Policy search</b> learns two speed settings: one for approaching and pouring,
+            another for returning the pot. It tries paired faster/slower adjustments to one setting at a time,
+            shrinking the search range when a pair fails to improve. Both multipliers stay between 0.7 and 1.4
+            times the clone's commands. Paired candidates share the same starting settings even if the first
+            is accepted. Controls are always clipped to −1…1; liquid measurements and the 700 mL target stay real.</p>
           <p class="hint"><b>Actor–critic (PPO)</b> explores speed changes during a trial. A critic estimates future
-            RL time scores, and the actor uses those estimates to update its state-dependent speed policy.
+            Accuracy / speed scores, and the actor uses those estimates to update its state-dependent speed policy.
             Speed multipliers stay between 0.5 and 1.5 times the clone; exploration is resampled every
             0.5 simulated seconds. An explored trajectory or policy update can still be worse.</p>
-          <p class="hint">Both methods use the same RL time score, fixed starting pose, and 60-second limit.
+          <p class="hint">Both methods use the same Accuracy / speed score, fixed starting pose, and 60-second limit.
             Demonstrations use a wider range of random starting poses. Improvement is not guaranteed.</p>
           <p class="hint">Training defaults to the fastest available speed; policy playback defaults to 4×.
             Both controls also offer 8×. Speed changes how quickly the simulation is shown; every physics step and policy decision is still computed. Switching away pauses it.
@@ -212,21 +219,30 @@ function createFineTuningDemo(element,beforeRun) {
     $('#ft-history').hidden=!(result?.history?.length);
     $('#ft-exploration').hidden=true;$('#ft-exploration').textContent='';
     if(!result?.baseline)return;
-    [['Original clone',result.baseline],['Best evaluated policy',result.best]].forEach(([label,value])=>{
+    const history=Array.isArray(result.history)?result.history:[];
+    const latestEvaluation=[...history].reverse().find(item=>item.evaluation)?.evaluation;
+    [['Original clone',result.baseline],['Latest evaluated policy',latestEvaluation],['Best evaluated policy',result.best]].forEach(([label,value])=>{
       if(value)row($('#ft-comparison'),[label,number(value.return),number(value.fill_ml,1)+' mL',
-        number(Math.abs(value.fill_ml-700),1)+' mL',number(value.spill_ml,1)+' mL',
+        number(Math.abs(value.fill_ml-700),1)+' mL',
+        Number.isFinite(value.fill_ml)?(Math.abs(value.fill_ml-700)<=5?'Yes':'No'):'—',number(value.spill_ml,1)+' mL',
         number(value.seconds,1)+' s',value.success?'Success':'Attempt']);
     });
     const delta=(result.best?.return??result.baseline.return)-result.baseline.return;
-    $('#ft-improvement').textContent=delta>1e-8?'Best RL time score increased by '+number(delta)+
+    $('#ft-improvement').textContent=delta>1e-8?'Best accuracy / speed score increased by '+number(delta)+
       ' · checkpoint after iteration '+result.best.episode+'.':
       'No better checkpoint yet. The original cloned policy is retained.';
-    const history=result.history||[];
     $('#ft-history').hidden=!history.length;
     const latestUpdate=history.at(-1)?.update,exploration=latestUpdate?.exploration;
     if(Number.isFinite(exploration?.speed_min)&&Number.isFinite(exploration?.speed_max)) {
       $('#ft-exploration').hidden=false;
-      if(exploration.kind==='paired_parameter') {
+      const pair=value=>Array.isArray(value)&&value.length===2&&value.every(Number.isFinite);
+      if(exploration.kind==='paired_phase_parameter'&&pair(latestUpdate.candidate_gains)) {
+        const gains=latestUpdate.candidate_gains,center=latestUpdate.pair_center;
+        const coordinate=latestUpdate.coordinate==='return'?'return speed':'approach/pour speed';
+        $('#ft-exploration').textContent='Candidate: approach/pour '+number(100*gains[0],1)+
+          '% · return '+number(100*gains[1],1)+'% of cloned speed · exploring '+coordinate+
+          (pair(center)?' · pair center '+number(100*center[0],1)+'% / '+number(100*center[1],1)+'%':'')+'.';
+      } else if(exploration.kind==='paired_parameter') {
         const candidate=Number.isFinite(latestUpdate.candidate_speed)?latestUpdate.candidate_speed:exploration.speed_min;
         $('#ft-exploration').textContent='Candidate: '+number(100*candidate,1)+'% of cloned speed'+
           (Number.isFinite(latestUpdate.pair_center)?' · pair centered at '+number(100*latestUpdate.pair_center,1)+'%':'')+'.';
@@ -274,8 +290,9 @@ function createFineTuningDemo(element,beforeRun) {
       (training?(state.playback_speed?state.playback_speed+'× requested':'fastest available')+' · fixed starting pose':'experiment stopped or completed'):'';
     const outcome={success:'Success',spill_or_overflow:'Too much spill or overflow',time_limit:'Time limit reached'}[rollout.outcome]||'Finished';
     if(training)status((state.paused?'Paused · ':'')+phase+(progress.episode?' · iteration '+progress.episode+' / '+progress.episodes:''));
-    else if(rollout.done)status(outcome+' · RL time score '+number(rollout.reward)+' · '+
-      Math.round(displayState.fill*1000)+' mL in the cup, '+Math.round(displayState.spill*1000)+' mL spilled.');
+    else if(rollout.done)status(outcome+' · Accuracy / speed score '+number(rollout.reward)+' · '+
+      Math.round(displayState.fill*1000)+' mL in the cup, '+Math.round(displayState.spill*1000)+' mL spilled · '+
+      (Math.abs(displayState.fill*1000-700)<=5?'within ±5 mL precision goal.':'outside ±5 mL precision goal.'));
     else if(rollout.active)status(state.paused?'Policy paused. Resume to continue.':'Watching the policy without exploration noise.');
     else if(state.has_result)status('Experiment ready to compare. Watch the original clone and the best evaluated policy.');
     else status('Cloned policy loaded. Start fine-tuning when ready.');
@@ -306,7 +323,7 @@ function createFineTuningDemo(element,beforeRun) {
   $('#ft-strategy').addEventListener('change',()=>{
     $('#ft-method-description').textContent=$('#ft-strategy').value==='ppo'?
       'Actor–critic explores speed changes during a trial. A critic learns to predict future score and guides the policy update.':
-      'Policy search tests paired faster/slower settings around a shared starting setting, keeping a candidate only when its score improves.';
+      'Policy search tests paired faster/slower settings for approaching/pouring and returning the pot, keeping a candidate only when its score improves.';
   });
   $('#ft-run-base').addEventListener('click',()=>startAction({kind:'ft-run',policy:'base'}));
   $('#ft-run-best').addEventListener('click',()=>startAction({kind:'ft-run',policy:'best'}));

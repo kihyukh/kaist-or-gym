@@ -19,6 +19,8 @@ TOOLBAR_HTML = """
 """
 SAVE_HTML = """
 <details class="coffee-save"><summary>Save your demonstration</summary>
+  <p>Each attempt allows 60 seconds of simulation time. Pausing pauses the countdown.
+    At the limit, the attempt stops automatically and can still be submitted or saved.</p>
   <p>Saving ends this attempt. Submit before resetting. Keep this tab open until you have a receipt or download.</p>
   <label>Participant code (optional) <input class="coffee-participant" maxlength="64" /></label>
   <button type="button" disabled data-command="save">Save trajectory</button>
@@ -281,10 +283,15 @@ worker.onmessage=({data})=>{
   }
   episodeId=data.episode_id; displayState=next; ready=true; resetting=false;
   desiredMotors=next.motors.slice(); desiredPaused=next.paused;
-  if (next.running && next.step>0) dirty=true;
+  if (next.step>0 && !archive) dirty=true;
+  const remaining=data.collection?.remaining_seconds;
   $('.coffee-time').textContent=(next.running ? (next.paused?'Paused':'Running'):'Stopped')+
-    ' · Step '+next.step+' · '+next.elapsedTime.toFixed(2)+' s simulated';
-  status(next.paused ? 'Time is paused. Set your joint commands, then resume when ready.' :
+    ' · '+next.elapsedTime.toFixed(2)+' s simulated'+
+    (Number.isFinite(remaining)?' · '+remaining.toFixed(1)+' s left':'');
+  status(next.terminationReason==='time_limit'?
+    '60-second limit reached. This attempt is incomplete. '+(config.collecting?'Submit':'Save')+
+      ' it or reset to try again.':
+    next.paused ? 'Time is paused. Set your joint commands, then resume when ready.' :
     next.running ? 'Joint commands stay selected until changed.' : 'Attempt ended. Save your trajectory or reset to start again.');
   if (data.archive) {
     saving=false; archive=data.archive;

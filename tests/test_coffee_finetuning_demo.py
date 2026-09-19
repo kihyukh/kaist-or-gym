@@ -190,10 +190,13 @@ def test_ten_iteration_default_and_time_objective_are_explained_visibly():
     explanation = FINETUNING_HTML.split('id="ft-reward-explanation"', 1)[1].split('</section>', 1)[0]
     assert 'hidden' not in explanation.split('>', 1)[0]
     assert 'Earlier reward counts more.' in explanation
-    assert 'RL time score' in explanation
+    assert 'Accuracy / speed score' in explanation
     assert 'undiscounted recorded reward' in explanation
     assert 'otherwise −100' in explanation
     assert '− 100 × final error' in explanation
+    assert '1000 exp[−½(e / 0.005)²]' in explanation
+    assert 'bonus is awarded only on success' in explanation
+    assert 'within ±5 mL' in explanation
     assert 'γΦₜ₊₁ − Φₜ' in explanation
     assert 'Φ = 0 at every terminal state' in explanation
     assert '1 point' in explanation
@@ -289,8 +292,9 @@ def test_comparison_and_history_use_actual_core_metrics(tmp_path, finetuning_sna
 start();latest().receive(fixtures.completed);
 assert.equal(node('#ft-results').hidden,false);assert.equal(node('#ft-history').hidden,false);
 assert.deepEqual(cells('#ft-comparison'),[
-  ['Original clone','-30.250','702.0 mL','2.0 mL','0.1 mL','29.3 s','Success'],
-  ['Best evaluated policy','-25.125','702.0 mL','2.0 mL','0.1 mL','28.4 s','Success']]);
+  ['Original clone','-30.250','702.0 mL','2.0 mL','Yes','0.1 mL','29.3 s','Success'],
+  ['Latest evaluated policy','-25.125','702.0 mL','2.0 mL','Yes','0.1 mL','28.4 s','Success'],
+  ['Best evaluated policy','-25.125','702.0 mL','2.0 mL','Yes','0.1 mL','28.4 s','Success']]);
 assert.match(node('#ft-improvement').textContent,/increased by 5.125/);
 assert.match(node('#ft-improvement').textContent,/iteration 2/);
 const history=cells('#ft-history-rows');assert.equal(history.length,1);
@@ -299,6 +303,21 @@ assert.equal(node('#ft-run-best').disabled,false);
 const retained=clone(fixtures.completed);retained.finetuning.result.best={...retained.finetuning.result.baseline,episode:0};
 retained.finetuning.result.improved=false;retained.finetuning.result.best_episode=0;
 latest().receive(retained);assert.match(node('#ft-improvement').textContent,/original cloned policy is retained/);
+""")
+
+
+def test_precision_goal_is_distinct_from_environment_success(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const frame=clone(fixtures.completed);
+frame.finetuning.result.baseline.fill_ml=672;
+frame.finetuning.result.history[0].evaluation.fill_ml=704.5;
+frame.finetuning.result.best.fill_ml=700;
+latest().receive(frame);const comparison=cells('#ft-comparison');
+assert.deepEqual(comparison.map(row=>row.slice(2,5)),[
+  ['672.0 mL','28.0 mL','No'],['704.5 mL','4.5 mL','Yes'],['700.0 mL','0.0 mL','Yes']]);
+assert.ok(comparison.every(row=>row.at(-1)==='Success'),'Completion does not imply the precision goal');
+const pending=clone(frame);pending.finetuning.result.history.push({episode:2,training:{return:100},evaluation:null,update:{accepted:false}});
+latest().receive(pending);assert.equal(cells('#ft-comparison')[1][2],'704.5 mL');
 """)
 
 
@@ -328,6 +347,21 @@ latest().receive(frame);
 assert.equal(node('#ft-exploration').textContent,'Candidate: 90.0% of cloned speed · pair centered at 100.0%.');
 assert.doesNotMatch(node('#ft-exploration').textContent,/policy being explored|adjustments/);
 assert.equal(cells('#ft-history-rows')[0][3],'No change');
+""")
+
+
+def test_phase_search_summary_identifies_both_gains_and_explored_coordinate(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const frame=clone(fixtures.completed);
+frame.finetuning.result.strategy='policy_search';
+frame.finetuning.result.history[0].update={
+  accepted:true,actor_change:.1,candidate_gains:[1.15,.95],pair_center:[1.15,1.05],coordinate:'return',
+  exploration:{kind:'paired_phase_parameter',speed_min:.95,speed_max:1.15,slower_decisions:1,faster_decisions:0}};
+latest().receive(frame);
+assert.equal(node('#ft-exploration').textContent,
+  'Candidate: approach/pour 115.0% · return 95.0% of cloned speed · exploring return speed · pair center 115.0% / 105.0%.');
+assert.doesNotMatch(node('#ft-exploration').textContent,/policy being explored/);
+assert.equal(cells('#ft-history-rows')[0][3],'Applied');
 """)
 
 
