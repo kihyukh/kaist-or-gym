@@ -65,7 +65,8 @@ const window={addEventListener:(type,fn)=>winListeners.set(type,fn),
   removeEventListener:(type)=>winListeners.delete(type),confirm:()=>false};
 const context=vm.createContext({element,document,window,
   props:{value:{worker_url:'/coffee-worker.js',bundle_url:'/coffee-bundle.zip',
-    collecting:true,participant_required:true,upload_url:'/api/submissions?class=test-class'}},
+    collecting:true,participant_required:true,upload_url:'/api/submissions?class=test-class',
+    ...fixtures.configOverrides}},
   watch(){},trigger(){throw new Error('The website must use HTTP rather than a notebook bridge.');},
   Blob:class {},URL:{createObjectURL:()=>'/backup.npz',revokeObjectURL(){}},
   Worker:class {postMessage(value){sent.push(JSON.parse(JSON.stringify(value)));} terminate(){}},
@@ -222,6 +223,30 @@ assert.equal(sent.filter(command=>command.kind==='save').length,1);
 """)
 
 
+def test_save_and_share_uploads_automatically_and_needs_a_receipt(tmp_path, recording):
+    run_controller(tmp_path, {**recording, "configOverrides": {
+        "save_label": "Save & share", "saved_label": "Shared ✓",
+    }}, """
+begin();
+node('.coffee-participant').value='20260001';
+assert.equal(node('[data-command="save"]').textContent,'Save & share');
+clickSave();receive(fixtures.saved);
+// Saving immediately sends the archive; no second submit or file upload step.
+assert.equal(requests.length,1);
+reply(0,true,{status:'saved',episode_id:fixtures.saved.episode_id});await settle();
+assert.equal(read('dirty'),true);
+assert.match(node('.coffee-submission').textContent,/Tap Save & share to retry/);
+clickSave();
+assert.equal(sent.filter(command=>command.kind==='save').length,1);
+reply(1,true,{status:'saved',episode_id:fixtures.saved.episode_id,receipt:'shared-receipt'});
+await settle();
+assert.equal(read('dirty'),false);
+assert.equal(node('[data-command="save"]').textContent,'Shared ✓');
+assert.match(node('.coffee-submission').textContent,/Saved and shared with your instructor/);
+assert.match(node('.coffee-submission').textContent,/Receipt: shared-receipt/);
+""")
+
+
 @pytest.fixture(scope="module")
 def browser():
     playwright = pytest.importorskip("playwright.sync_api")
@@ -350,7 +375,7 @@ def test_exported_student_page_is_usable_on_phones(browser, website, recording, 
 def test_practice_page_keeps_the_collection_limit_notice(browser, website, recording):
     page, errors = open_student_page(browser, website, recording, 390, 844)
     try:
-        page.goto("http://coffee.test/")
+        page.goto("http://coffee.test/?practice=1")
         page.wait_for_function("document.querySelector('#save-heading').textContent === 'Finish & save'")
         notice = page.locator(".collection-limit-note")
         assert notice.is_visible()
@@ -396,7 +421,7 @@ def test_exported_page_requires_id_and_recovers_failed_submission(browser, websi
         assert requests[0] == requests[1]
         assert requests[0]
         assert page.evaluate("window.workerMessages.filter(m=>m.kind==='save').length") == 1
-        assert submit.inner_text() == "Submitted ✓"
+        assert submit.inner_text() == "Shared ✓"
         assert not errors
     finally:
         page.close()

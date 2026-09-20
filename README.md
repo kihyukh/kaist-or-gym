@@ -239,7 +239,8 @@ surface tension are not modeled.
 ### Classroom website: scan, play, submit
 
 The standalone website is the recommended classroom workflow. Students scan a class QR,
-open the simulation on their phone, enter their student ID, and tap **Submit trajectory**.
+open the simulation on their phone, enter their student ID, and tap **Save & share**.
+Saving automatically sends the recording to the instructor; students do not upload a file separately.
 No notebook, account, package installation, or code execution is required from students.
 Python and the simulation libraries download automatically on the first visit.
 
@@ -248,11 +249,16 @@ private dashboard groups submissions by class and shows participant, received ti
 fill/spill, success, and duration. Replay runs the recorded actions through the same
 physics model; each recording can also be downloaded as `.npz` for later learning experiments.
 Student IDs are required by default; the instructor can choose optional participant codes.
+The submission list refreshes every five seconds and when the instructor returns to the page.
 
 Submissions use private persistent storage and return a receipt only after saving. Failed
 uploads can be retried from the same tab without duplicates; a download remains available
 as a backup. Closing a class stops new submissions. The public student link cannot list,
-replay, or download anyone's submissions. A link without a class opens practice mode.
+replay, or download anyone's submissions. The main website automatically joins the sole open
+class and adds its token to the URL, so the recording stays assigned to that class. If several
+classes are open, students must use the correct class QR/link. With no open class, or with
+`/?practice=1`, recordings stay local in practice mode. An explicit closed/invalid class link
+never redirects recordings to a different class.
 
 See [website setup and deployment](deploy/coffee-web/README.md) for the instructor-only
 setup, HTTPS hosting, persistent volume, and password configuration. Run one server

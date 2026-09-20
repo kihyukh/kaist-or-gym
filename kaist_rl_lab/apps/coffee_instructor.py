@@ -92,7 +92,7 @@ INSTRUCTOR_HTML = """<!doctype html>
       <section id="submissions-panel" class="panel" hidden>
         <div class="heading-row">
           <div><h2>Submitted demonstrations</h2><p id="submission-count" class="hint"></p></div>
-          <label class="checkbox"><input id="auto-refresh" type="checkbox" checked> Refresh every 15 seconds</label>
+          <label class="checkbox"><input id="auto-refresh" type="checkbox" checked> Refresh every 5 seconds</label>
         </div>
         <label class="filter-label" for="participant-filter">Find a participant</label>
         <input id="participant-filter" type="search" placeholder="Student ID or participant code">
@@ -230,7 +230,7 @@ const cloningDemo=createCloningDemo($('#cloning-panel'),post,
   model=>fineTuningDemo.setModel(model));
 let sessions=[], activeSession=null, submissions=[], authenticated=false, authEpoch=0;
 let examples=[], examplesLoaded=false, exampleRequest=0;
-let listRequest=0, replayRequest=0, refreshBusy=false, replayFrames=[];
+let listRequest=0, replayRequest=0, refreshBusy=false, refreshError='', submissionLoad=null, replayFrames=[];
 let frameIndex=0, playing=false, playStarted=0, playOrigin=0, animation=null;
 let replayAbort=null,replayComplete=false,replayDuration=0,replayExpectedFrames=0;
 function setStatus(message,error=false) {
@@ -353,12 +353,44 @@ async function loadSessions(preferred) {
 }
 async function loadSubmissions() {
   if(!activeSession||!authenticated) return;
-  const request=++listRequest,session=activeSession;
-  const data=await api('/api/instructor/submissions?session='+idPath(session));
-  if(request!==listRequest||session!==activeSession||!authenticated) return;
-  if(!Array.isArray(data)) throw new Error('Could not read submissions.');
-  submissions=data.slice().sort((a,b)=>String(b.received_at).localeCompare(String(a.received_at)));
-  renderSubmissions();
+  const session=activeSession,epoch=authEpoch;
+  if(submissionLoad?.session===session&&submissionLoad.epoch===epoch)return submissionLoad.promise;
+  const request=++listRequest,pending={session,epoch,promise:null},controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),15000);
+  pending.promise=(async()=>{
+    try {
+      const data=await api('/api/instructor/submissions?session='+idPath(session),{signal:controller.signal});
+      if(request!==listRequest||session!==activeSession||epoch!==authEpoch||!authenticated) return;
+      if(!Array.isArray(data)) throw new Error('Could not read submissions.');
+      submissions=data.slice().sort((a,b)=>String(b.received_at).localeCompare(String(a.received_at)));
+      renderSubmissions();
+    } catch(error) {
+      if(controller.signal.aborted) {
+        if(request!==listRequest||session!==activeSession||epoch!==authEpoch||!authenticated)return;
+        throw new Error('Refreshing submissions took too long. It will retry automatically.');
+      }
+      throw error;
+    }
+  })().finally(()=>{clearTimeout(timeout);if(submissionLoad===pending)submissionLoad=null;});
+  submissionLoad=pending;
+  return pending.promise;
+}
+async function refreshSubmissions() {
+  if(!authenticated||!activeSession||document.hidden||!$('#auto-refresh').checked||refreshBusy)return;
+  const session=activeSession,epoch=authEpoch;
+  refreshBusy=true;
+  try {
+    await loadSubmissions();
+    if(session===activeSession&&epoch===authEpoch&&authenticated) {
+      if(refreshError&&$('#page-status').textContent===refreshError)setStatus('Student submissions are up to date.');
+      refreshError='';
+    }
+  } catch(error) {
+    if((session===activeSession&&epoch===authEpoch)||(error.status===401&&!authenticated)) {
+      refreshError=error.status===401?'Your sign in has expired. Sign in again.':error.message;
+      setStatus(refreshError,true);
+    }
+  } finally {refreshBusy=false;}
 }
 function cell(row,text,className='') {
   const td=document.createElement('td');td.textContent=text;td.className=className;row.append(td);return td;
@@ -559,13 +591,10 @@ $('#play-replay').addEventListener('click',()=>playing?stopPlayback():startPlayb
 $('#replay-position').addEventListener('input',event=>{stopPlayback();renderReplayFrame(Number(event.target.value));});
 $('#playback-speed').addEventListener('change',()=>{if(playing){stopPlayback();startPlayback();}});
 $('#close-replay').addEventListener('click',()=>{cancelReplayRequest();$('#replay-panel').hidden=true;});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlayback();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlayback();else refreshSubmissions();});
+window.addEventListener('focus',refreshSubmissions);
 window.addEventListener('pagehide',()=>cancelReplayRequest());
-setInterval(async()=>{
-  if(!authenticated||!activeSession||document.hidden||!$('#auto-refresh').checked||refreshBusy)return;
-  refreshBusy=true;
-  try{await loadSubmissions();}catch(error){setStatus(error.status===401?'Your sign in has expired. Sign in again.':error.message,true);}finally{refreshBusy=false;}
-},15000);
+setInterval(refreshSubmissions,5000);
 loadSessions().catch(error=>setStatus(error.status===401?'Sign in to manage classes and review demonstrations.':error.message,error.status!==401));
 """ + CANVAS_JAVASCRIPT.replace(
     'element.querySelector(', 'element.querySelector("#replay-panel " + '

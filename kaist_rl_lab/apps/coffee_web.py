@@ -412,6 +412,21 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
         return {key: value for key, value in classroom(row).items()
                 if key in {"id", "name", "open", "participant_required"}}
 
+    @app.get("/api/session/default")
+    def default_session():
+        # The main student website joins the sole open class. Never choose an
+        # arbitrary recipient when several classes are collecting recordings.
+        with store.connect() as db:
+            rows = db.execute("SELECT * FROM classes WHERE open=1 LIMIT 2").fetchall()
+        if len(rows) != 1:
+            return {"session": None,
+                    "reason": "no_open_class" if not rows else "multiple_open_classes"}
+        row = rows[0]
+        session = {key: value for key, value in classroom(row).items()
+                   if key in {"id", "name", "open", "participant_required"}}
+        session["join_token"] = row["join_token"]
+        return {"session": session}
+
     @app.post("/api/submissions")
     async def submit(request: Request, class_token: str = Query(alias="class", min_length=1, max_length=128)):
         rate_limit(request, "upload", 240)

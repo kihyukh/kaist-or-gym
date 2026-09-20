@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from kaist_rl_lab.apps.coffee_instructor import INSTRUCTOR_JAVASCRIPT
+from kaist_rl_lab.apps.coffee_instructor import INSTRUCTOR_HTML, INSTRUCTOR_JAVASCRIPT
 
 NODE_HARNESS = r"""
 const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
@@ -22,6 +22,9 @@ class Node {
   scrollIntoView(){}
 }
 const nodes=new Map(),requests=[],held=new Set(),pending=new Map(),animations=new Map(),feeds=new Map();
+const documentEvents=new Map(),windowEvents=new Map(),intervals=[],timeouts=new Map();let nextTimeout=0;
+function addEvent(events,name,callback){const callbacks=events.get(name)||[];callbacks.push(callback);events.set(name,callbacks);}
+async function dispatch(events,name){await Promise.all((events.get(name)||[]).map(callback=>callback()));await pump();}
 function streamFeed(){
   const queue=[];let waiter=null,aborted=false;
   const push=value=>{if(waiter){const next=waiter;waiter=null;next.resolve(value);}else queue.push(value);};
@@ -33,9 +36,11 @@ function streamFeed(){
 let nextAnimation=0,now=0,authenticated=false,availableSessions;
 const get=selector=>{if(!nodes.has(selector))nodes.set(selector,new Node());return nodes.get(selector);};
 get('#playback-speed').value='1';
+get('#auto-refresh').checked=true;
 const element={querySelector:get,querySelectorAll:()=>[]};
 const document={querySelector:()=>element,createElement:()=>new Node(),
-  createDocumentFragment:()=>Object.assign(new Node(),{fragment:true}),addEventListener(){},hidden:false};
+  createDocumentFragment:()=>Object.assign(new Node(),{fragment:true}),
+  addEventListener(name,callback){addEvent(documentEvents,name,callback);},hidden:false};
 const session={id:'test-class',name:'A class',join_url:'https://coffee.test/join?token=test',open:true,participant_required:true};
 const otherSession={...session,id:'other-class',name:'B class'};
 availableSessions=[session,otherSession];
@@ -62,8 +67,9 @@ const fetch=async(path,options)=>{
   if(path==='/api/instructor/logout'){authenticated=false;return response(200,{authenticated:false});}
   if(!authenticated)return response(401,{detail:'Sign in required'});
   if(feeds.has(path)){const feed=feeds.get(path);feed.connect(options.signal);return {ok:true,status:200,body:feed.body};}
-  if(held.has(path))return new Promise(resolve=>{
+  if(held.has(path))return new Promise((resolve,reject)=>{
     const queue=pending.get(path)||[];queue.push(resolve);pending.set(path,queue);
+    options.signal?.addEventListener('abort',()=>reject(Error('Aborted')));
   });
   if(path==='/api/instructor/sessions')return response(200,availableSessions);
   if(path==='/api/instructor/examples')return response(200,exampleRows);
@@ -73,7 +79,10 @@ const fetch=async(path,options)=>{
   throw Error('Unexpected request: '+path);
 };
 const context=vm.createContext({document,fetch,URL,location:{origin:'https://coffee.test'},
-  window:{addEventListener(){},confirm:()=>true},navigator:{},setInterval(){},AbortController,TextDecoder,
+  window:{addEventListener(name,callback){addEvent(windowEvents,name,callback);},confirm:()=>true},navigator:{},
+  setInterval(callback,milliseconds){intervals.push({callback,milliseconds});return intervals.length;},
+  setTimeout(callback,milliseconds){const id=++nextTimeout;timeouts.set(id,{callback,milliseconds});return id;},
+  clearTimeout(id){timeouts.delete(id);},AbortController,TextDecoder,
   requestAnimationFrame(callback){const id=++nextAnimation;animations.set(id,callback);return id;},
   cancelAnimationFrame(id){animations.delete(id);},performance:{now:()=>now},console});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),context);
@@ -294,4 +303,78 @@ assert.equal(evaluate('playing'),false);assert.equal(evaluate('replayFrames.leng
 assert.equal(get('#play-replay').disabled,true);
 assert.match(get('#replay-status').textContent,/physics/);
 assert.equal(requests.at(-1).options.signal.aborted,true);
+""")
+
+
+def test_submission_refresh_uses_five_seconds_and_updates_on_visible_or_focus(tmp_path):
+    assert 'id="auto-refresh" type="checkbox" checked> Refresh every 5 seconds' in INSTRUCTOR_HTML
+    run_instructor(tmp_path, r"""
+await login();const poll=intervals.find(item=>item.milliseconds===5000);
+assert.ok(poll,'Student list must refresh every five seconds');
+assert.equal(intervals.filter(item=>item.milliseconds===15000).length,0);
+const count=()=>requests.filter(item=>item.path.startsWith('/api/instructor/submissions?')).length;
+const before=count();await poll.callback();assert.equal(count(),before+1);
+document.hidden=true;await dispatch(documentEvents,'visibilitychange');await poll.callback();
+await dispatch(windowEvents,'focus');assert.equal(count(),before+1,'Background page must not poll');
+const submitted={...row,episode_id:'newly-saved',participant:'New student'};studentRows.push(submitted);
+document.hidden=false;await dispatch(documentEvents,'visibilitychange');
+assert.equal(count(),before+2);assert.ok(findRow('#submission-rows','New student'));
+await dispatch(windowEvents,'focus');assert.equal(count(),before+3);
+get('#auto-refresh').checked=false;
+await poll.callback();await dispatch(documentEvents,'visibilitychange');await dispatch(windowEvents,'focus');
+assert.equal(count(),before+3,'The auto-refresh preference applies to foreground refresh too');
+get('#auto-refresh').checked=true;await click('#logout');
+await poll.callback();await dispatch(windowEvents,'focus');assert.equal(count(),before+3);
+""")
+
+
+def test_refresh_deduplicates_pending_list_requests_without_changing_replay(tmp_path):
+    run_instructor(tmp_path, r"""
+await login();await replayButton(findRow('#submission-rows',row.participant)).listeners.click();
+get('#replay-position').listeners.input({target:{value:'1'}});click('#play-replay');
+const title=get('#replay-title').textContent,download=get('#replay-download').href;
+const listPath='/api/instructor/submissions?session=test-class';held.add(listPath);
+const poll=intervals.find(item=>item.milliseconds===5000),before=requests.length;
+const loading=poll.callback();await pump();const manual=evaluate('loadSubmissions()');
+await poll.callback();await dispatch(windowEvents,'focus');await dispatch(documentEvents,'visibilitychange');
+assert.equal(requests.length,before+1);assert.equal(pending.get(listPath).length,1);
+resolveHeld(listPath,[...studentRows,{...row,episode_id:'added',participant:'Added student'}]);
+await Promise.all([loading,manual]);
+assert.ok(findRow('#submission-rows','Added student'));
+assert.equal(get('#replay-title').textContent,title);assert.equal(get('#replay-download').href,download);
+assert.equal(get('#replay-position').value,'1');assert.equal(evaluate('playing'),true);
+assert.equal(get('#session-select').value,'test-class');
+assert.ok(requests.slice(before).every(item=>item.path===listPath),'Refreshing the library must not train or reload model data');
+assert.equal(timeouts.size,0,'Completed list loads must release their timeout');
+""")
+
+
+def test_stalled_submission_refresh_times_out_and_later_poll_recovers(tmp_path):
+    run_instructor(tmp_path, r"""
+await login();const listPath='/api/instructor/submissions?session=test-class';held.add(listPath);
+const poll=intervals.find(item=>item.milliseconds===5000),loading=poll.callback();await pump();
+const request=requests.at(-1);assert.equal(request.path,listPath);
+assert.equal(timeouts.size,1);const timeout=[...timeouts.values()][0];assert.equal(timeout.milliseconds,15000);
+timeout.callback();await loading;
+assert.equal(request.options.signal.aborted,true);assert.equal(timeouts.size,0);
+assert.equal(evaluate('refreshBusy'),false);assert.equal(evaluate('submissionLoad'),null);
+assert.match(get('#page-status').textContent,/took too long.*retry automatically/);
+held.delete(listPath);studentRows.push({...row,episode_id:'after-timeout',participant:'After timeout'});
+await poll.callback();assert.ok(findRow('#submission-rows','After timeout'));
+assert.equal(get('#page-status').textContent,'Student submissions are up to date.');
+resolveHeld(listPath,[]);await pump();assert.ok(findRow('#submission-rows','After timeout'));
+""")
+
+
+def test_same_class_after_new_sign_in_does_not_share_old_pending_refresh(tmp_path):
+    run_instructor(tmp_path, r"""
+await login();const listPath='/api/instructor/submissions?session=test-class';held.add(listPath);
+const stale=evaluate('loadSubmissions()');await pump();await click('#logout');
+held.delete(listPath);studentRows.push({...row,episode_id:'new-auth',participant:'New sign-in submission'});
+await login();assert.ok(findRow('#submission-rows','New sign-in submission'));
+resolveHeld(listPath,[]);await stale;
+assert.equal(get('#dashboard').hidden,false);assert.ok(findRow('#submission-rows','New sign-in submission'));
+get('#participant-filter').value='nobody';get('#participant-filter').listeners.input();
+assert.match(get('#submission-count').textContent,/4 demonstrations.*0 shown/);
+assert.equal(get('#empty-submissions').textContent,'No participants match this search.');
 """)

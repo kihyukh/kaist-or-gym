@@ -1,7 +1,9 @@
 # Host the coffee classroom
 
 Students open a classroom QR link, wait for the simulation to load, play, and
-submit. All student setup happens automatically in the browser. The website
+tap **Save & share**. Saving uploads the trajectory directly to the instructor and
+shows **Shared ✓** with a receipt after the server has stored it. All student setup
+happens automatically in the browser. The website
 downloads the Python browser runtime on first use; students do not install Python,
 run a notebook, or sign in. A network connection is needed for loading and submission.
 The runtime, pinned libraries, and simulation source download concurrently; package
@@ -11,6 +13,15 @@ The instructor opens `/instructor`, signs in, creates a class, and projects its
 QR code. Each class has its own random student link. The dashboard lists submitted
 attempts, replays recorded physics, and downloads the original training data.
 Closing a class stops new submissions but permits retries of already saved attempts.
+The instructor list refreshes every five seconds and when the instructor returns
+to the tab. Failed uploads retain the recording for retry or backup download.
+
+The main website (`/`) joins the sole open class automatically and pins its class
+link in the address bar. This makes that open class publicly joinable; the class
+token is for routing submissions, not instructor access. When multiple classes
+are open, students must use their instructor's QR/link to avoid sending to the
+wrong class. With no open class, or at `/?practice=1`, recordings stay local.
+Explicit class links are never reassigned to another class, even after closing.
 
 Above the training controls, **Generated practice demonstrations** and **Submitted
 demonstrations** list individual trajectories with total recorded reward, cup/spill

@@ -29,24 +29,25 @@ STUDENT_HTML = """<!doctype html>
     <p><b>Hold still does not stop the coffee.</b> Use <b>Pause time</b> to think.
     Fill the cup near 700 mL with little spill, then return both vessels upright.
     Each reset gives you a different starting pose.</p>
-    <p>Tap <b>Submit trajectory</b> when you finish. It ends this attempt and sends the moves
+    <p id="save-help">Tap <b>Save &amp; share</b> when you finish. It ends this attempt and sends the moves
     to your instructor. Wait for your receipt before closing this tab.</p>
   </details>
   <noscript>This simulation needs JavaScript enabled in your browser.</noscript>
   __TOOLBAR__
   __CANVAS__
   <section class="coffee-save" aria-labelledby="save-heading">
-    <h2 id="save-heading">Finish &amp; submit</h2>
+    <h2 id="save-heading">Finish &amp; share with your instructor</h2>
     <p class="collection-limit-note">Each attempt stops after 60 seconds of simulation time.
       Pausing also pauses the countdown. You can still save or submit an unfinished attempt.</p>
     <label><span id="participant-label">Student ID</span>
       <input class="coffee-participant" maxlength="64" autocomplete="off" autocapitalize="off"
         spellcheck="false" aria-describedby="participant-note" /></label>
     <p id="participant-note">Your ID and recording are visible to the instructor.</p>
-    <button type="button" disabled data-command="save">Submit trajectory</button>
+    <button type="button" disabled data-command="save">Save &amp; share</button>
     <p class="coffee-submission" role="status" aria-live="polite"></p>
     <a class="coffee-download" hidden>Download a backup (.npz)</a>
-    <p class="save-note">Submitting ends this attempt. You can reset afterward to try again.</p>
+    <p class="save-note">Saving automatically shares this attempt with your instructor. No file upload is needed.
+      You can reset afterward to try again.</p>
   </section>
   <footer>Runs on your phone. Switching away pauses time and stops the motors.</footer>
 </main></body></html>
@@ -91,31 +92,57 @@ STUDENT_BOOTSTRAP = r"""
 (async () => {
   const element=document.querySelector('#coffee-demo');
   const label=document.querySelector('#class-name');
-  const joinToken=new URLSearchParams(location.search).get('class');
+  const params=new URLSearchParams(location.search);
+  let joinToken=params.get('class');
   const studentConfig={worker_url:'/coffee-worker.js',bundle_url:new URL('/coffee-bundle.zip',location.href).href,
-    collecting:false,participant_required:false};
-  if (joinToken) {
-    try {
+    collecting:false,participant_required:false,save_label:'Save & share',saved_label:'Shared ✓'};
+  try {
+    let session=null;
+    if (params.has('class')) {
+      if (!joinToken) throw new Error('This class link is not valid. Please scan the instructor’s current QR code.');
       const response=await fetch('/api/session?class='+encodeURIComponent(joinToken),{signal:AbortSignal.timeout(15000)});
-      const session=await response.json();
       if (!response.ok) throw new Error('This class link is not valid. Please scan the instructor’s current QR code.');
+      session=await response.json();
+    } else if (params.get('practice')!=='1') {
+      const response=await fetch('/api/session/default',{signal:AbortSignal.timeout(15000)});
+      if (!response.ok) throw new Error('Could not connect to your class. Please reload or use the instructor’s QR code.');
+      const result=await response.json();
+      session=result.session;
+      if (session) {
+        joinToken=session.join_token;
+        if (typeof joinToken!=='string' || !joinToken) throw new Error('Could not read your class link. Please reload.');
+        // Keep this attempt assigned to the same class, even after a reload or
+        // if another class opens while the student is playing.
+        const joinedURL=new URL(location.href);
+        joinedURL.searchParams.set('class',joinToken);
+        history.replaceState(null,'',joinedURL.href);
+      } else if (result.reason==='multiple_open_classes') {
+        throw new Error('Several classes are open. Scan your instructor’s QR code to choose the correct class.');
+      } else if (result.reason!=='no_open_class') {
+        throw new Error('Could not read your class. Please reload.');
+      }
+    }
+    if (session) {
       label.textContent=session.name+(session.open ? '' : ' · Submissions closed — practice only');
       if (session.open) {
         studentConfig.collecting=true;
         studentConfig.participant_required=!!session.participant_required;
         studentConfig.upload_url='/api/submissions?class='+encodeURIComponent(joinToken);
       }
-    } catch(error) {
-      label.textContent=error.name==='TimeoutError' ? 'The class website is taking too long to respond. Please reload.' : error.message;
-      element.querySelector('.coffee-status').textContent='The demo could not load your class. Check your connection and reload.';
-      return;
-    }
-  } else label.textContent='Practice mode · Use your class QR code to submit to your instructor';
+    } else label.textContent=params.get('practice')==='1' ? 'Practice mode · Recordings stay on this device' :
+      'No class is open · Practice only. Ask your instructor to open a class before recording a submission.';
+  } catch(error) {
+    label.textContent=error.name==='TimeoutError' ? 'The class website is taking too long to respond. Please reload.' : error.message;
+    element.querySelector('.coffee-status').textContent='The demo could not load your class. Check your class link and connection, then reload.';
+    return;
+  }
   const participant=element.querySelector('.coffee-participant');
   participant.required=studentConfig.participant_required;
   document.querySelector('#participant-label').textContent=studentConfig.participant_required ? 'Student ID (required)' : 'Participant code (optional)';
   if (!studentConfig.collecting) {
+    studentConfig.save_label='Save trajectory';
     document.querySelector('#save-heading').textContent='Finish & save';
+    document.querySelector('#save-help').textContent='Tap Save trajectory to end this attempt and download a recording. Practice recordings are not shared with an instructor.';
     document.querySelector('#participant-note').textContent='Practice recordings stay on your phone unless you download and share them.';
     element.querySelector('.save-note').textContent='Saving ends this attempt. No recording is sent to an instructor in practice mode.';
   }

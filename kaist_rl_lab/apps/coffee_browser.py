@@ -187,7 +187,8 @@ const workerUrl=config.worker_url || URL.createObjectURL(new Blob([config.worker
 const worker=new Worker(workerUrl, {type:'module'});
 if (!config.worker_url) URL.revokeObjectURL(workerUrl);
 const saveButton=$('[data-command="save"]');
-saveButton.textContent=config.collecting ? 'Submit trajectory' : 'Save trajectory';
+const saveLabel=config.save_label || (config.collecting ? 'Submit trajectory' : 'Save trajectory');
+saveButton.textContent=saveLabel;
 let uploading=false;
 function controls() {
   if (!displayState) return;
@@ -227,15 +228,16 @@ async function submitArchive() {
         body:Uint8Array.from(atob(thisArchive),c=>c.charCodeAt(0)), signal:abort.signal});
       const result=await response.json();
       if (!response.ok) throw new Error(typeof result.detail==='string' ? result.detail : 'Upload was not accepted.');
-      if (episodeId!==thisEpisode || result.episode_id!==thisEpisode || result.status!=='saved')
+      if (episodeId!==thisEpisode || result.episode_id!==thisEpisode || result.status!=='saved' ||
+          typeof result.receipt!=='string' || !result.receipt)
         throw new Error('The server receipt did not match this attempt.');
       dirty=false;
-      $('.coffee-submission').textContent='Submitted to your instructor. Receipt: '+result.receipt;
-      saveButton.textContent='Submitted ✓';
+      $('.coffee-submission').textContent='Saved and shared with your instructor. Receipt: '+result.receipt;
+      saveButton.textContent=config.saved_label || 'Submitted ✓';
     } catch(error) {
       $('.coffee-submission').textContent=(error.name==='AbortError' ? 'Upload timed out.' : error.message)+
-        ' Your attempt is kept in this tab. Tap Submit trajectory to retry, or download a backup.';
-      saveButton.textContent='Submit trajectory';
+        ' Your attempt is kept in this tab. Tap '+saveLabel+' to retry, or download a backup.';
+      saveButton.textContent=saveLabel;
     } finally {clearTimeout(timeout); uploading=false; controls();}
     return;
   }
@@ -278,7 +280,7 @@ worker.onmessage=({data})=>{
     archive=null; dirty=false; $('.coffee-download').hidden=true;
     $('.coffee-submission').textContent=''; clearTimeout(uploadTimer);
     if(downloadUrl) URL.revokeObjectURL(downloadUrl);
-    saveButton.textContent=config.collecting ? 'Submit trajectory' : 'Save trajectory';
+    saveButton.textContent=saveLabel;
     $('.coffee-participant').disabled=false;
   }
   episodeId=data.episode_id; displayState=next; ready=true; resetting=false;

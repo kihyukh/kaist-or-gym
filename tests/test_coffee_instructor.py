@@ -52,7 +52,7 @@ const fetch=async(path,options)=>{
   throw Error('Unexpected request: '+path);
 };
 const context=vm.createContext({document,fetch,URL,location:{origin:'https://coffee.test'},
-  window:{addEventListener(){},confirm:()=>true},navigator:{},setInterval(){},
+  window:{addEventListener(){},confirm:()=>true},navigator:{},setInterval(){},setTimeout,clearTimeout,AbortController,
   requestAnimationFrame(){return 1;},cancelAnimationFrame(){},performance:{now:()=>0},console});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),context);
 const evaluate=code=>vm.runInContext(code,context);
