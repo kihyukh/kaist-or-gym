@@ -149,12 +149,12 @@ assertFiniteSvg();
 def test_candidate_toggle_keeps_failure_evidence_and_inspection_available(tmp_path, learning_state):
     run_viz(tmp_path, learning_state, r"""
 const state=clone(fixture);state.result.history[0].training={return:-100,success:false};
-assert.equal(node('#ft-chart-candidates').checked,false);viz.render(state);
-assert.equal(points('exploration').length,0);assert.equal(points('evaluation').length,4);
-assert.ok(numeric(svg(),'data-y-min')>-5,'Default axis follows evaluated policies');
-assert.match(node('#ft-candidate-summary').textContent,/4 completed.*1 unsuccessful.*not plotted/);
+assert.equal(node('#ft-chart-candidates').checked,true);viz.render(state);
+assert.equal(points('exploration').length,4);assert.equal(points('evaluation').length,4);
+assert.ok(numeric(svg(),'data-y-min')<-100,'Default chart includes every measured candidate');
+assert.match(node('#ft-candidate-summary').textContent,/4 completed.*1 unsuccessful.*shown on chart/);
 node('#ft-chart-trial').value='1';fire(node('#ft-chart-trial'),'change');
-assert.match(node('#ft-chart-inspector').textContent,/Candidate \/ exploration -100.000/);
+assert.match(node('#ft-chart-inspector').textContent,/Exploration \(noisy\).*score -100.000000/);
 node('#ft-chart-candidates').checked=true;fire(node('#ft-chart-candidates'),'change');
 assert.equal(points('exploration').length,4);assert.ok(numeric(svg(),'data-y-min')<-100);
 assert.match(node('#ft-candidate-summary').textContent,/1 unsuccessful.*shown on chart/);
@@ -163,7 +163,7 @@ node('#ft-chart-candidates').checked=false;fire(node('#ft-chart-candidates'),'ch
 assert.equal(points('exploration').length,0);assert.equal(selected(),'1');
 assert.match(node('#ft-chart-inspector').textContent,/-100.000/);
 node('#ft-chart-candidates').checked=true;fire(node('#ft-chart-candidates'),'change');
-viz.reset();assert.equal(node('#ft-chart-candidates').checked,false);
+viz.reset();assert.equal(node('#ft-chart-candidates').checked,true);
 assert.equal(node('#ft-candidate-summary').textContent,'');assertFiniteSvg();
 """)
 
@@ -181,7 +181,9 @@ assert.match(node('#ft-learning-status').textContent,/Testing a candidate speed/
 assert.match(node('#ft-learning-updates').textContent,/Policy updates: 1 applied \/ 4 attempted/);
 assert.equal(points('exploration').length,4);assert.equal(points('evaluation').length,4);
 node('#ft-chart-trial').value='1';fire(node('#ft-chart-trial'),'change');
-assert.match(node('#ft-chart-inspector').textContent,/Candidate \/ exploration/);
+assert.match(node('#ft-chart-inspector').textContent,/Candidate \(deterministic\)/);
+assert.match(node('#ft-legend-candidate-text').textContent,/deterministic/);
+assert.match(node('#ft-legend-evaluation-text').textContent,/Retained policy/);
 assert.match(node('#ft-chart-inspector').textContent,/Policy unchanged/);
 node('#ft-chart-trial').value='2';fire(node('#ft-chart-trial'),'change');
 assert.match(node('#ft-chart-inspector').textContent,/Policy update applied/);
@@ -359,7 +361,7 @@ assert.equal(points('evaluation').at(-1).getAttribute('data-trial'),'99');
 assert.ok(numeric(svg(),'data-y-max')<20,'Raw, undiscounted returns must not enter this chart');
 assert.equal(numeric(points('evaluation')[6],'data-value'),10,'Show a worsening current policy, not best so far');
 assert.notEqual(path('evaluation').getAttribute('d'),path('best').getAttribute('d'));
-assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\) —/);
+assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\).*score —/);
 assert.match(node('#ft-learning-status').textContent,/iteration 100 \/ 100/);
 const ticks=descendants().filter(item=>item.getAttribute('data-axis')==='trial').map(item=>Number(item.textContent));
 assert.deepEqual(ticks,TICKS);
@@ -368,6 +370,136 @@ const earlier=points('evaluation')[0];viz.render(state);
 assert.equal(points('evaluation')[0],earlier,'Unchanged history should not rebuild 100 iterations');
 state.result.history[99].evaluation={return:10.2,raw_return:20100};viz.render(state);
 assert.equal(points('evaluation').length,100);assert.equal(selected(),'100');
-assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\) 10.200/);
+assert.match(node('#ft-chart-inspector').textContent,/Current policy \(no noise\).*score 10.200000/);
 assertFiniteSvg();
 """.replace("WIDTH", str(width)).replace("TICKS", json.dumps(ticks)))
+
+
+def test_inspector_keeps_fine_measurements_and_rejected_candidate_deltas(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+const state=clone(fixture);state.result.strategy='policy_search';state.result.history=state.result.history.slice(0,2);
+const first={return:779.1234567,fill_ml:699.12345678,seconds:32.03125,success:true};
+state.result.baseline={return:51.0000004,fill_ml:672.0123456,seconds:36.0625,success:true};
+state.result.history[0]={episode:1,training:first,evaluation:first,update:{accepted:true}};
+state.result.history[1]={episode:2,training:{...first,return:779.1234547,fill_ml:699.12342345,seconds:32.0625},
+  evaluation:first,update:{accepted:false,candidate_gains:[1.123456789,1.0000023]}};
+const original=JSON.stringify(state);viz.render(state);
+assert.equal(points('exploration').length,2);assert.equal(points('evaluation').length,2);
+assert.notEqual(numeric(points('exploration')[0],'data-value'),numeric(points('exploration')[1],'data-value'));
+assert.equal(numeric(points('evaluation')[0],'cy'),numeric(points('evaluation')[1],'cy'),'Rejected candidate retains the same policy');
+const inspector=node('#ft-chart-inspector').textContent;
+assert.match(inspector,/Candidate \(deterministic\).*score 779.123455/);
+assert.match(inspector,/Retained policy \(no noise\).*score 779.123457/);
+assert.match(inspector,/Original clone.*score 51.000000/);
+assert.match(inspector,/Cup 699.1234 mL.*\|error\| 0.8766 mL.*32.06250 s/);
+assert.match(inspector,/candidate -0.000002 · retained 0.000000/);
+assert.match(inspector,/time Δ 0.00000 s/);
+assert.match(inspector,/approach\/pour 1.123457× · return 1.000002×/);
+assert.match(inspector,/Policy unchanged/);
+node('#ft-chart-trial').value='1';fire(node('#ft-chart-trial'),'change');
+assert.match(node('#ft-chart-inspector').textContent,/candidate \+728.123456 · retained \+728.123456/);
+assert.match(node('#ft-chart-inspector').textContent,/time Δ -4.03125 s/);
+assert.equal(JSON.stringify(state),original,'Inspection must not round or mutate recorded values');assertFiniteSvg();
+""")
+
+
+def test_error_and_duration_plot_actual_measurements_not_best_score_surrogates(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+const state=clone(fixture);state.result.history=state.result.history.slice(0,3);
+state.result.baseline.fill_ml=672;state.result.baseline.seconds=36.0625;
+state.result.history[0].training.fill_ml=703.456789;state.result.history[0].evaluation.fill_ml=701.234567;
+state.result.history[1].training.fill_ml=699.876543;state.result.history[1].evaluation={return:null,fill_ml:700,seconds:10};
+state.result.history[2].training.fill_ml=null;state.result.history[2].evaluation=null;
+state.result.history[0].evaluation.seconds=32.03125;
+viz.render(state);node('#ft-chart-metric').value='error';fire(node('#ft-chart-metric'),'change');
+assert.equal(points('exploration').length,2);assert.equal(points('evaluation').length,1);
+assert.equal(numeric(points('exploration')[0],'data-value'),Math.abs(700-703.456789));
+assert.equal(numeric(points('evaluation')[0],'data-value'),Math.abs(700-701.234567));
+assert.equal(numeric(points('baseline')[0],'data-value'),28);
+assert.equal(path('best'),undefined);assert.equal(node('#ft-legend-best').hidden,true);
+assert.match(node('#ft-chart-direction').textContent,/Lower is better.*check success/);
+assert.match(node('#ft-chart-view-note').textContent,/Best-score guide.*only.*score/);
+assert.match(points('evaluation')[0].getAttribute('aria-label'),/Absolute target error \(mL\) 1.2346/);
+node('#ft-chart-metric').value='time';fire(node('#ft-chart-metric'),'change');
+assert.equal(points('evaluation').length,1);assert.equal(numeric(points('evaluation')[0],'data-value'),32.03125);
+assert.equal(numeric(points('baseline')[0],'data-value'),36.0625);
+assert.match(points('evaluation')[0].getAttribute('aria-label'),/Duration \(s\) 32.03125/);
+assert.equal(path('best'),undefined);assertFiniteSvg();
+""")
+
+
+def test_recent_detail_rescales_real_points_and_explicitly_omits_old_guides(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+const state=clone(fixture);state.result.strategy='policy_search';state.result.baseline.return=51;
+state.result.history=Array.from({length:20},(_,index)=>({episode:index+1,
+  training:{return:index<10?-100:779+(index-10)*.000003},
+  evaluation:{return:index<10?10000:779+(index-10)*.000002},update:{accepted:false}}));
+state.result.episodes=100;viz.render(state);
+assert.equal(numeric(svg(),'data-x-max'),20,'Pending iterations must not squeeze completed measurements');
+assert.ok(numeric(svg(),'data-y-max')>10000);
+node('#ft-chart-focus').value='recent';fire(node('#ft-chart-focus'),'change');
+assert.deepEqual(points('exploration').map(item=>numeric(item,'data-trial')),Array.from({length:10},(_,index)=>index+11));
+assert.equal(points('evaluation').length,10);assert.equal(points('baseline').length,0);assert.equal(path('best'),undefined);
+assert.ok(!descendants().some(item=>item.classes.has('ft-chart-baseline')),'Omitted baseline must not be drawn offscreen');
+assert.equal(numeric(svg(),'data-x-min'),11);assert.equal(numeric(svg(),'data-x-max'),20);
+assert.ok(numeric(svg(),'data-y-min')>778.999);assert.ok(numeric(svg(),'data-y-max')<779.001);
+assert.match(node('#ft-chart-view-note').textContent,/last 10 completed trials.*clone and best-score guides omitted/);
+const ticks=descendants().filter(item=>item.getAttribute('data-axis')==='reward').map(item=>item.textContent);
+assert.equal(new Set(ticks).size,ticks.length,'Fine axes must show distinct actual numeric tick values');
+node('#ft-chart-trial').value='1';fire(node('#ft-chart-trial'),'change');
+assert.match(node('#ft-chart-inspector').textContent,/score 10000.000000/,'Earlier results remain inspectable');
+node('#ft-chart-focus').value='recent5';fire(node('#ft-chart-focus'),'change');
+assert.equal(points('exploration').length,5);assert.equal(numeric(svg(),'data-x-min'),16);
+assert.match(node('#ft-chart-view-note').textContent,/last 5 completed trials/);
+node('#ft-chart-zero').checked=true;fire(node('#ft-chart-zero'),'change');
+assert.ok(numeric(svg(),'data-y-min')<=0);assert.equal(points('baseline').length,0);
+node('#ft-chart-focus').value='all';fire(node('#ft-chart-focus'),'change');
+assert.equal(points('exploration').length,20);assert.equal(points('baseline').length,1);assert.ok(path('best'));
+assert.equal(selected(),'1');assertFiniteSvg();
+""")
+
+
+def test_ppo_candidate_labels_do_not_claim_deterministic_evaluation(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+fixture.result.strategy='ppo';fixture.result.algorithm='bounded_speed_ppo_actor_critic';viz.render(fixture);
+assert.match(node('#ft-legend-candidate-text').textContent,/exploration · noisy/);
+assert.match(node('#ft-legend-evaluation-text').textContent,/Current policy · no noise/);
+assert.match(node('#ft-chart-explanation').textContent,/Orange measures noisy exploration/);
+assert.doesNotMatch(node('#ft-chart-explanation').textContent,/deterministic candidate/);
+assert.match(points('exploration')[0].getAttribute('aria-label'),/noisy exploration/);
+assert.match(node('#ft-chart-inspector').textContent,/Exploration \(noisy\)/);
+assert.equal(points('exploration').length,4);assertFiniteSvg();
+""")
+
+
+def test_selector_changes_cache_and_reset_restore_fine_view_defaults(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+viz.render(fixture);node('#ft-chart-metric').value='error';fire(node('#ft-chart-metric'),'change');
+assert.equal(svg().getAttribute('data-metric'),'error');
+node('#ft-chart-focus').value='recent5';fire(node('#ft-chart-focus'),'change');
+const point=points('evaluation')[0];viz.render(fixture);assert.equal(points('evaluation')[0],point);
+node('#ft-chart-candidates').checked=false;fire(node('#ft-chart-candidates'),'change');
+viz.reset();assert.equal(node('#ft-chart-metric').value,'score');assert.equal(node('#ft-chart-focus').value,'all');
+assert.equal(node('#ft-chart-candidates').checked,true);
+viz.render(fixture);assert.equal(points('exploration').length,4);assert.equal(points('baseline').length,1);
+assert.equal(svg().getAttribute('data-metric'),'score');assertFiniteSvg();
+""")
+
+
+def test_sub_micro_score_changes_remain_visible_and_never_claim_zero_delta(tmp_path, learning_state):
+    run_viz(tmp_path, learning_state, r"""
+const state=clone(fixture);state.result.strategy='policy_search';state.result.history=state.result.history.slice(0,2);
+state.result.baseline.return=779;
+state.result.history[0].training.return=779.00000001;state.result.history[0].evaluation.return=779.00000001;
+state.result.history[1].training.return=779.00000002;state.result.history[1].evaluation.return=779.00000002;
+svg().clientWidth=320;viz.render(state);node('#ft-chart-focus').value='recent5';fire(node('#ft-chart-focus'),'change');
+const inspector=node('#ft-chart-inspector').textContent;
+assert.match(inspector,/candidate \+[^ ]+e-8 · retained \+[^ ]+e-8/);
+assert.doesNotMatch(inspector,/candidate \+0.000000/);
+const ticks=descendants().filter(item=>item.getAttribute('data-axis')==='reward');
+assert.equal(new Set(ticks.map(item=>item.textContent)).size,5,'A tiny real range needs distinct numeric ticks');
+assert.ok(numeric(points('evaluation')[1],'cy')<numeric(points('evaluation')[0],'cy'));
+assert.equal(points('evaluation')[1].children[0].textContent,'Accuracy / speed score: 779.00000002');
+assert.ok(all(node('#ft-chart-inspector')).some(item=>item.getAttribute('title')==='Recorded score: 779.00000002'));
+assertFiniteSvg();
+""")

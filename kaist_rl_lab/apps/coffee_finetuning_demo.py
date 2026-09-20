@@ -75,9 +75,12 @@ FINETUNING_HTML = """
           <button id="ft-run-best" type="button" class="primary" disabled>Watch best policy</button>
           <button id="ft-reset" type="button" disabled>Reset displayed trial</button>
         </div>
-        <details id="ft-history" hidden><summary>Accuracy / speed scores across learning iterations</summary>
+        <details id="ft-history" hidden><summary>Measurements for every tested policy</summary>
+          <p class="hint">Every completed candidate and separate evaluation is listed, including rejected candidates.
+            Scores show six decimals, liquid amounts four, and time five. These are simulation measurements;
+            policy selection uses the full stored values.</p>
           <div class="table-scroll"><table>
-            <thead><tr><th>Iteration</th><th>Candidate / exploration score</th><th>Current policy score · no noise</th><th>Policy update</th></tr></thead>
+            <thead><tr><th>Iteration</th><th>Policy / trial</th><th>Score ↑</th><th>Cup (mL)</th><th>Target error (mL) ↓</th><th>Time (s)</th><th>Spill (mL)</th><th>Result</th><th>Policy update</th></tr></thead>
             <tbody id="ft-history-rows"></tbody></table></div>
         </details>
         <section id="ft-reward-explanation" class="ft-reward-explanation" aria-labelledby="ft-reward-title">
@@ -170,7 +173,8 @@ function createFineTuningDemo(element,beforeRun) {
   let canvasRef=null,resizeObserver=null,displayState=null;
   let enabled=false,model=null,worker=null,state=null,loading=false,modelSent=false;
   let pendingCommand=false,pendingAction=null,pauseRequested=false,renderedResult='';
-  const number=(value,digits=3)=>Number.isFinite(value)?value.toFixed(digits):'—';
+  const number=(value,digits=6)=>Number.isFinite(value)?value.toFixed(digits):'—';
+  const targetError=value=>Number.isFinite(value?.fill_ml)?Math.abs(value.fill_ml-700):null;
   function status(message,error=false) {
     $('#ft-status').textContent=message;$('#ft-status').classList.toggle('error',error);
   }
@@ -212,7 +216,7 @@ function createFineTuningDemo(element,beforeRun) {
     parent.append(tr);
   }
   function renderResults(result) {
-    const signature=JSON.stringify(result&&[result.baseline,result.best,result.history]);
+    const signature=JSON.stringify(result&&[result.baseline,result.best,result.history,result.strategy,result.algorithm]);
     if(signature===renderedResult)return;renderedResult=signature;
     $('#ft-comparison').replaceChildren();$('#ft-history-rows').replaceChildren();
     $('#ft-results').hidden=!result?.baseline;
@@ -222,13 +226,14 @@ function createFineTuningDemo(element,beforeRun) {
     const history=Array.isArray(result.history)?result.history:[];
     const latestEvaluation=[...history].reverse().find(item=>item.evaluation)?.evaluation;
     [['Original clone',result.baseline],['Latest evaluated policy',latestEvaluation],['Best evaluated policy',result.best]].forEach(([label,value])=>{
-      if(value)row($('#ft-comparison'),[label,number(value.return),number(value.fill_ml,1)+' mL',
-        number(Math.abs(value.fill_ml-700),1)+' mL',
-        Number.isFinite(value.fill_ml)?(Math.abs(value.fill_ml-700)<=5?'Yes':'No'):'—',number(value.spill_ml,1)+' mL',
-        number(value.seconds,1)+' s',value.success?'Success':'Attempt']);
+      if(value)row($('#ft-comparison'),[label,number(value.return),number(value.fill_ml,4)+' mL',
+        number(targetError(value),4)+' mL',
+        Number.isFinite(value.fill_ml)?(Math.abs(value.fill_ml-700)<=5?'Yes':'No'):'—',number(value.spill_ml,4)+' mL',
+        number(value.seconds,5)+' s',value.success?'Success':'Attempt']);
     });
     const delta=(result.best?.return??result.baseline.return)-result.baseline.return;
-    $('#ft-improvement').textContent=delta>1e-8?'Best accuracy / speed score increased by '+number(delta)+
+    const deltaText=delta>0&&delta<0.000001?delta.toExponential(6):number(delta);
+    $('#ft-improvement').textContent=delta>0?'Best accuracy / speed score increased by '+deltaText+
       ' · checkpoint after iteration '+result.best.episode+'.':
       'No better checkpoint yet. The original cloned policy is retained.';
     $('#ft-history').hidden=!history.length;
@@ -254,8 +259,21 @@ function createFineTuningDemo(element,beforeRun) {
             ' faster adjustments than the policy being explored.':'.');
       }
     }
-    history.forEach(item=>row($('#ft-history-rows'),[item.episode,number(item.training.return),
-      number(item.evaluation?.return),(item.update?.accepted??(item.update?.actor_change>0))?'Applied':'No change']));
+    const measurementRow=(iteration,label,value,update)=>{
+      if(!Number.isFinite(value?.return))return;
+      const outcome={success:'Success',time_limit:'Time limit',spill_or_overflow:'Spill / overflow'}[value.outcome]||
+        (value.success?'Success':'Attempt');
+      row($('#ft-history-rows'),[iteration,label,number(value.return),number(value.fill_ml,4),
+        number(targetError(value),4),number(value.seconds,5),number(value.spill_ml,4),outcome,update]);
+    };
+    measurementRow(0,'Original clone · no noise',result.baseline,'—');
+    const search=result.strategy==='policy_search'||result.algorithm==='bounded_paired_policy_search';
+    history.forEach(item=>{
+      const applied=item.update?.accepted??(item.update?.actor_change>0);
+      measurementRow(item.episode,search?'Candidate policy · no action noise':'Exploratory trial · with noise',
+        item.training,applied?'Applied':'No change');
+      measurementRow(item.episode,search?'Retained policy · no noise':'Current policy · no noise',item.evaluation,'—');
+    });
   }
   function fail(message) {
     if(state)learningViz.render({...state,training_active:false,training_stopped:true,paused:true,
@@ -283,7 +301,7 @@ function createFineTuningDemo(element,beforeRun) {
       (rollout.policy==='best'?'Best evaluated policy':'Original clone'):
       rollout.elapsed_seconds===0?'Starting pose':
       progress.phase==='complete'?'Last evaluated policy':state.has_result?'Stopped experiment':'Ready';
-    $('#ft-time').textContent=number(training?progress.elapsed_seconds:rollout.elapsed_seconds,1)+' s';
+    $('#ft-time').textContent=number(training?progress.elapsed_seconds:rollout.elapsed_seconds,5)+' s';
     $('#ft-reward').textContent=number(training?progress.reward:rollout.reward);
     $('#ft-progress').textContent=state.has_result||training?
       'Completed '+(progress.completed_episodes||0)+' / '+(progress.episodes||0)+' learning iterations · '+
@@ -291,7 +309,7 @@ function createFineTuningDemo(element,beforeRun) {
     const outcome={success:'Success',spill_or_overflow:'Too much spill or overflow',time_limit:'Time limit reached'}[rollout.outcome]||'Finished';
     if(training)status((state.paused?'Paused · ':'')+phase+(progress.episode?' · iteration '+progress.episode+' / '+progress.episodes:''));
     else if(rollout.done)status(outcome+' · Accuracy / speed score '+number(rollout.reward)+' · '+
-      Math.round(displayState.fill*1000)+' mL in the cup, '+Math.round(displayState.spill*1000)+' mL spilled · '+
+      number(displayState.fill*1000,4)+' mL in the cup, '+number(displayState.spill*1000,4)+' mL spilled · '+
       (Math.abs(displayState.fill*1000-700)<=5?'within ±5 mL precision goal.':'outside ±5 mL precision goal.'));
     else if(rollout.active)status(state.paused?'Policy paused. Resume to continue.':'Watching the policy without exploration noise.');
     else if(state.has_result)status('Experiment ready to compare. Watch the original clone and the best evaluated policy.');

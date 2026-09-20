@@ -164,15 +164,28 @@ directions remain those of the clone. Neither method calls the demonstration
 controller, copies future actions from a recording, or uses an expert correction.
 
 A live chart sits beside the simulation on wider screens and stacks above it on
-phones. By default, navy points show the current policy evaluated without noise,
-and green shows the best evaluated score so far, including the original clone.
-Select **Show candidate / exploration scores** to add the amber trial series;
-the axis then includes those scores, including failed trials. Completed and
-unsuccessful candidate counts remain visible even when that series is not plotted.
-Every trial remains available in the inspector and history. Missing evaluations
-remain missing. Select an iteration to inspect its values and update status, or
-include zero on the score axis. The curve remains available while watching a policy and clears when a
-new experiment or cloning model replaces it.
+phones. Every candidate is visible by default in amber, including rejected and
+failed trials. For policy search, each candidate is a deterministic policy run;
+for PPO, amber represents an exploratory rollout with action noise. Navy always
+shows the separate current-policy evaluation without noise. Green shows the best
+evaluated score so far. Rejected search candidates leave the retained policy
+unchanged, so repeated navy scores and genuine plateaus are expected.
+
+Choose score, absolute volume error, or completion time as the plotted measure.
+The recent-iteration detail view removes the original-clone and best-score guides
+from the axis calculation, making small recent differences easier to see. The
+inspector still reports candidate, current-policy, and clone measurements, along
+with score changes. Missing evaluations remain missing; no interpolated samples
+or smoothed measurements are invented. The curve remains available while watching
+a policy and clears when a new experiment or cloning model replaces it.
+
+**Measurements for every tested policy** lists the original clone and separate
+rows for each candidate and completed evaluation, including their outcome and
+whether an update was applied. Scores display six decimal places, liquid amounts
+four, and durations five (enough to represent every 1/32-second physics step).
+All scoring, comparisons, and policy selection continue to use the unrounded
+floating-point values. Display detail does not change the reward function or the
+learner's decisions.
 
 **Training speed** defaults to **Fastest available**. **Policy playback speed** is
 separate and defaults to **4×** for **Watch original clone** and **Watch best policy**.

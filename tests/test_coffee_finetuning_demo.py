@@ -211,7 +211,7 @@ training.finetuning.result.strategy='ppo';training.finetuning.result.algorithm='
 Object.assign(training.finetuning.progress,{phase:'training',episode:3,completed_episodes:2,elapsed_seconds:12.5,reward:-14.25});
 worker.receive(training);assert.match(node('#ft-status').textContent,/Exploring nearby actions/);
 assert.match(node('#ft-progress').textContent,/Completed 2 \/ 4/);
-assert.equal(node('#ft-time').textContent,'12.5 s');assert.equal(node('#ft-reward').textContent,'-14.250');
+assert.equal(node('#ft-time').textContent,'12.50000 s');assert.equal(node('#ft-reward').textContent,'-14.250000');
 click('#ft-pause');assert.deepEqual(worker.messages.at(-1),{kind:'ft-pause',paused:true});
 worker.receive(fixtures.paused);assert.equal(node('#ft-pause').textContent,'Resume');
 click('#ft-pause');assert.deepEqual(worker.messages.at(-1),{kind:'ft-pause',paused:false});
@@ -292,13 +292,15 @@ def test_comparison_and_history_use_actual_core_metrics(tmp_path, finetuning_sna
 start();latest().receive(fixtures.completed);
 assert.equal(node('#ft-results').hidden,false);assert.equal(node('#ft-history').hidden,false);
 assert.deepEqual(cells('#ft-comparison'),[
-  ['Original clone','-30.250','702.0 mL','2.0 mL','Yes','0.1 mL','29.3 s','Success'],
-  ['Latest evaluated policy','-25.125','702.0 mL','2.0 mL','Yes','0.1 mL','28.4 s','Success'],
-  ['Best evaluated policy','-25.125','702.0 mL','2.0 mL','Yes','0.1 mL','28.4 s','Success']]);
+  ['Original clone','-30.250000','702.0000 mL','2.0000 mL','Yes','0.0500 mL','29.30000 s','Success'],
+  ['Latest evaluated policy','-25.125000','702.0000 mL','2.0000 mL','Yes','0.0500 mL','28.40000 s','Success'],
+  ['Best evaluated policy','-25.125000','702.0000 mL','2.0000 mL','Yes','0.0500 mL','28.40000 s','Success']]);
 assert.match(node('#ft-improvement').textContent,/increased by 5.125/);
 assert.match(node('#ft-improvement').textContent,/iteration 2/);
-const history=cells('#ft-history-rows');assert.equal(history.length,1);
-assert.deepEqual(history[0].slice(0,3),['1','-34.000','-25.125']);
+const history=cells('#ft-history-rows');assert.equal(history.length,3);
+assert.deepEqual(history[0].slice(0,3),['0','Original clone · no noise','-30.250000']);
+assert.deepEqual(history[1].slice(0,3),['1','Candidate policy · no action noise','-34.000000']);
+assert.deepEqual(history[2].slice(0,3),['1','Retained policy · no noise','-25.125000']);
 assert.equal(node('#ft-run-best').disabled,false);
 const retained=clone(fixtures.completed);retained.finetuning.result.best={...retained.finetuning.result.baseline,episode:0};
 retained.finetuning.result.improved=false;retained.finetuning.result.best_episode=0;
@@ -314,10 +316,37 @@ frame.finetuning.result.history[0].evaluation.fill_ml=704.5;
 frame.finetuning.result.best.fill_ml=700;
 latest().receive(frame);const comparison=cells('#ft-comparison');
 assert.deepEqual(comparison.map(row=>row.slice(2,5)),[
-  ['672.0 mL','28.0 mL','No'],['704.5 mL','4.5 mL','Yes'],['700.0 mL','0.0 mL','Yes']]);
+  ['672.0000 mL','28.0000 mL','No'],['704.5000 mL','4.5000 mL','Yes'],['700.0000 mL','0.0000 mL','Yes']]);
 assert.ok(comparison.every(row=>row.at(-1)==='Success'),'Completion does not imply the precision goal');
 const pending=clone(frame);pending.finetuning.result.history.push({episode:2,training:{return:100},evaluation:null,update:{accepted:false}});
-latest().receive(pending);assert.equal(cells('#ft-comparison')[1][2],'704.5 mL');
+latest().receive(pending);assert.equal(cells('#ft-comparison')[1][2],'704.5000 mL');
+""")
+
+
+def test_fine_measurements_preserve_rejected_candidates_and_pending_evaluations(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const frame=clone(fixtures.completed),result=frame.finetuning.result;
+result.strategy='policy_search';
+const incumbent={...result.baseline,return:779.223703562,fill_ml:699.872854188,seconds:32.5,spill_ml:.00001234};
+result.best={...incumbent,episode:1};
+result.history=[{episode:1,training:{...incumbent},evaluation:{...incumbent},update:{accepted:true}},
+  {episode:2,training:{...incumbent,return:779.223692789,fill_ml:699.8729,seconds:32.46875},
+   evaluation:{...incumbent},update:{accepted:false}},
+  {episode:3,training:{...incumbent,return:-88.0000001,success:false,outcome:'time_limit',seconds:60},
+   evaluation:null,update:{accepted:false}}];
+latest().receive(frame);
+const rows=cells('#ft-history-rows');assert.equal(rows.length,6);
+assert.deepEqual(rows[3].slice(0,7),['2','Candidate policy · no action noise','779.223693',
+  '699.8729','0.1271','32.46875','0.0000']);
+assert.equal(rows[3][8],'No change');
+assert.equal(rows[4][2],'779.223704');
+assert.equal(rows[4][3],'699.8729');
+assert.equal(rows[5][7],'Time limit');
+assert.equal(rows.filter(row=>row[0]==='3').length,1,'No invented evaluation while it is pending');
+result.strategy='ppo';result.algorithm='bounded_speed_ppo_actor_critic';
+result.history[0].training.return+=.000002;
+latest().receive(frame);
+assert.equal(cells('#ft-history-rows')[1][1],'Exploratory trial · with noise');
 """)
 
 
@@ -336,6 +365,21 @@ assert.equal(node('#ft-exploration').hidden,true);assert.equal(node('#ft-explora
 """)
 
 
+def test_missing_volume_and_tiny_retained_improvement_are_reported_honestly(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const frame=clone(fixtures.completed),result=frame.finetuning.result;
+result.baseline.return=0;result.best.return=5e-9;result.best.episode=1;
+result.history[0].training.fill_ml=null;
+result.history[0].evaluation.fill_ml=null;
+latest().receive(frame);
+assert.equal(cells('#ft-comparison')[1][3],'— mL');
+assert.equal(cells('#ft-history-rows')[1][4],'—');
+assert.equal(cells('#ft-history-rows')[2][4],'—');
+assert.match(node('#ft-improvement').textContent,/increased by 5.000000e-9/);
+assert.doesNotMatch(node('#ft-improvement').textContent,/original cloned policy is retained/);
+""")
+
+
 def test_paired_search_summary_uses_shared_pair_center(tmp_path, finetuning_snapshots):
     run_demo(tmp_path, finetuning_snapshots, r"""
 start();const frame=clone(fixtures.completed);
@@ -346,7 +390,7 @@ frame.finetuning.result.history[0].update={
 latest().receive(frame);
 assert.equal(node('#ft-exploration').textContent,'Candidate: 90.0% of cloned speed · pair centered at 100.0%.');
 assert.doesNotMatch(node('#ft-exploration').textContent,/policy being explored|adjustments/);
-assert.equal(cells('#ft-history-rows')[0][3],'No change');
+assert.equal(cells('#ft-history-rows')[1][8],'No change');
 """)
 
 
@@ -361,7 +405,7 @@ latest().receive(frame);
 assert.equal(node('#ft-exploration').textContent,
   'Candidate: approach/pour 115.0% · return 95.0% of cloned speed · exploring return speed · pair center 115.0% / 105.0%.');
 assert.doesNotMatch(node('#ft-exploration').textContent,/policy being explored/);
-assert.equal(cells('#ft-history-rows')[0][3],'Applied');
+assert.equal(cells('#ft-history-rows')[1][8],'Applied');
 """)
 
 
