@@ -89,6 +89,7 @@ def test_student_rewards_use_recorded_sequence_and_survive_restart(setup):
     rows = client.get("/api/instructor/submissions", params={"session": identifier}).json()
     assert len(rows) == 1
     assert rows[0]["total_reward"] == np.sum(rewards, dtype=np.float64)
+    assert rows[0]["reward_model"] == "additive_v1"
     assert "reward_checked" not in rows[0]
     with store.connect() as db:
         saved = db.execute("SELECT * FROM submissions WHERE episode_id=?", (episode_id,)).fetchone()
@@ -109,6 +110,7 @@ def test_student_rewards_use_recorded_sequence_and_survive_restart(setup):
         login(restarted)
         saved = restarted.get("/api/instructor/submissions", params={"session": identifier}).json()
         assert saved[0]["total_reward"] == -1.75
+        assert saved[0]["reward_model"] == "additive_v1"
 
 
 def test_nonfinite_reward_totals_are_rejected_before_storage(setup):
@@ -170,6 +172,7 @@ def test_legacy_migration_backfills_bounded_batches_and_failed_archives_only_onc
         login(client)
         rows = client.get("/api/instructor/submissions", params={"session": "legacy-class"}).json()
         by_id = {row["episode_id"]: row for row in rows}
+        assert all(row["reward_model"] == "legacy" for row in rows)
         assert by_id[ids[2]]["total_reward"] == -1.75
         assert by_id[ids[1]]["total_reward"] is None
         assert by_id[ids[0]]["total_reward"] is None

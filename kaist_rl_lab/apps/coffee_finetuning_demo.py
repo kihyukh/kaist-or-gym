@@ -84,37 +84,39 @@ FINETUNING_HTML = """
             <tbody id="ft-history-rows"></tbody></table></div>
         </details>
         <section id="ft-reward-explanation" class="ft-reward-explanation" aria-labelledby="ft-reward-title">
-          <h3 id="ft-reward-title">Reward used for fine-tuning</h3>
-          <p><b>Accuracy comes first: aim for exactly 700 mL, within ±5 mL.</b> A successful pour earns a precision
-            bonus that peaks at 1,000 points exactly at 700 mL and is still at least 606.5 points within ±5 mL.
-            A quick pour far from the target cannot make up for missing that precision.</p>
-          <p>Success also earns 100 points; failure or timeout loses 100 points and earns no precision bonus.
-            Each simulated second costs 1 point. Target error, spilling, motor effort, and cup tilt also cost points.</p>
-          <p><b>Earlier reward counts more.</b> Reward one simulated second later receives 99% of its earlier weight.
-            The chart and policy comparisons use this discounted <b>Accuracy / speed score</b>, with the same scoring rule
-            for the original clone and every new policy. The trajectory library keeps its original
-            <b>undiscounted recorded reward</b>; those values use a different reward function.</p>
-          <details class="ft-reward-formula"><summary>Exact reward and discount formula</summary>
-            <p>Every physics step lasts <b>dt = 1/32 second</b>. Let <b>e</b> be the absolute distance from
-              0.700 litres in the cup, <b>Δspill</b> the litres spilled in this step, <b>a₁ … a₆</b> the six
-              controls between −1 and 1, and <b>θ</b> the cup angle in radians.</p>
-            <p class="ft-equation">rₜ = −dt − 40Δspill − 0.024dt ∑ᵢ₌₁⁶ aᵢ² − 0.032dt |θ| + γΦₜ₊₁ − Φₜ</p>
-            <p>At the final step, also add:</p>
-            <p class="ft-equation">(100 + A(e) if successful, otherwise −100) − 100 × final error − 14 × total spill</p>
-            <p class="ft-equation">A(e) = 1000 exp[−½(e / 0.005)²]</p>
-            <p>Here e is in litres: 0.005 L is 5 mL. The precision bonus is awarded only on success;
-              it is largest at zero error and decreases continuously as the pour misses 700 mL.</p>
-            <p class="ft-equation">Φₜ = −20eₜ; Φ = 0 at every terminal state, including timeout</p>
-            <p>The Φ term provides feedback while filling. Its discounted total is the same 14 points for
-              every trial starting with an empty cup, so it does not change which completed policy scores best.
-              Errors and spill volumes are in litres; final penalties are additional to step penalties.</p>
-            <p><b>Success requires all five conditions:</b> the cup is within 40 mL of the 700 mL target,
-              total spill ≤20 mL, flow rate ≤8 mL/s, cup tilt ≤8°, and pot tilt ≤12°.
-              Each rollout has a 60-second time limit. A fast failed attempt still scores below a slow success.</p>
-            <p class="ft-equation">G = ∑ₜ₌₀ᵀ⁻¹ γᵗ rₜ, with γ = 0.99<sup>1/32</sup></p>
-            <p>All terms use the same discount. Even a successful pour within ±5 mL that takes the full
-              60 seconds outranks a successful pour at least 10 mL off target, however fast it finishes.
-              Speed still matters among accurate pours. Animation speed does not affect the score.</p>
+          <h3 id="ft-reward-title">How the score is calculated</h3>
+          <p><b>Aim for exactly 700 mL, then finish with the pot upright and the flow settled.</b>
+            The volume contribution is 700 points minus 1 point per mL away from the target.
+            A successful, settled finish within ±5 mL earns <b>100 extra points</b>.</p>
+          <p><b>Costs:</b> 10 points per simulated second, 1 point per mL spilled,
+            2 points per degree of final pot tilt, and 5 points per mL/s of final flow.
+            Pot tilt and flow are charged only when the attempt ends, including a manual finish.</p>
+          <p>The <b>Accuracy / speed score</b> is a simple sum: <b>no extra exponential discount</b>.
+            New student recordings, the original clone, and every fine-tuned policy use the same rule.
+            Older archives keep their historical recorded rewards; legacy scores are not directly comparable.</p>
+          <p><b>Examples:</b> with 30 seconds elapsed, no spill, an upright pot, and zero final flow,
+            a successful 700 mL pour scores <b>500</b>, 705 mL scores <b>495</b>, and 710 mL scores <b>390</b>.
+            The score balances accuracy, time, spill, and a settled finish.</p>
+          <details class="ft-reward-formula"><summary>Exact additive formula and finish conditions</summary>
+            <p>Volumes are in <b>mL</b>, time in <b>simulated seconds</b>, pot angle in <b>degrees from upright</b>,
+              and flow in <b>mL/s</b>. For an attempt starting with an empty cup:</p>
+            <p class="ft-equation">score = target − |final fill − target| + bonus − 10 × time − spill − 2 × |final pot angle| − 5 × final flow</p>
+            <p><b>The bonus is 100 only when all three conditions hold at the end:</b>
+              the environment reports success, final target error ≤5 mL, and final flow ≤1 mL/s.
+              Otherwise the bonus is zero. Reaching 700 mL while still pouring does not earn it.</p>
+            <p>The environment's success condition remains unchanged: target error ≤40 mL,
+              total spill ≤20 mL, flow ≤8 mL/s, cup tilt ≤8°, and pot tilt ≤12°.
+              The precision bonus requires the tighter error and flow limits above.
+              Each rollout has a 60-second time limit.</p>
+            <p>Every physics step lasts <b>dt = 1/32 second</b>. Let <b>eₜ</b> be the absolute target error in mL,
+              and <b>Δspill</b> the mL spilled during that step:</p>
+            <p class="ft-equation">rₜ = eₜ − eₜ₊₁ − 10dt − Δspill</p>
+            <p>At the terminal step or manual finish, add the bonus and subtract the final pot-tilt and flow costs once.
+              The filling terms sum to target minus final error from an empty cup; there is no additional offset.
+              Motor effort and cup tilt have no separate step penalty.</p>
+            <p class="ft-equation">G = ∑ₜ rₜ, with γ = 1</p>
+            <p>Every recorded reward has the same weight. Animation speed changes playback pacing,
+              not simulated time or the score.</p>
           </details>
         </section>
         <details><summary>What is being learned?</summary>

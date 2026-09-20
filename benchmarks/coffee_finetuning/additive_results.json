@@ -1,0 +1,2358 @@
+{
+  "created_at_utc": "2026-09-20T03:51:38.428835+00:00",
+  "reward_model": "additive_v1",
+  "complete": true,
+  "seeds": [
+    2026,
+    2027,
+    2028
+  ],
+  "iterations": 10,
+  "environment": {
+    "python": "3.12.12 (main, Feb 12 2026, 00:42:34) [Clang 21.1.4 ]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "numpy": "2.5.3",
+    "gymnasium": "1.3.0",
+    "dt": 0.03125,
+    "arm_base_distance_m": 1.28,
+    "jobs": 3
+  },
+  "source_sha256": {
+    "kaist_rl_lab/envs/coffee_reward.py": "fe03a5dafbcbcce56d0469f2a5e5cccb6599d24a5bd543bbf442c0a2748a742d",
+    "kaist_rl_lab/envs/coffee_pouring.py": "88ed6b3ceaf4c3850a168b8713e968029cdfe61a77a9e252f7dd856949d687b6",
+    "kaist_rl_lab/apps/coffee_finetuning.py": "fb34952b125982c59fffdb47a64145aa01a1375a24e91f28fdb0488016d965ed",
+    "kaist_rl_lab/apps/coffee_finetuning_reward.py": "33ba3b3fa9e70fa0dcb7674fb361ee08135b500cec69bafca72f8c1df4aa5f0e",
+    "kaist_rl_lab/apps/coffee_pouring_app.py": "39a4825c589b37bf555a7ee1435e5660c6bd84322c462b1e7647a44d1e37ac09",
+    "kaist_rl_lab/apps/coffee_cloning.py": "0bc2c1d2ce2a8c688e88b8763f12aef4124728cc9cd1e306a2e2882dbc3e0f82",
+    "kaist_rl_lab/apps/coffee_classroom.py": "d2e6623b235fa1d9d158d214220b7e48aa9be36d9578afd2f67166f5ac6b9922",
+    "benchmarks/coffee_finetuning/additive_benchmark.py": "35a16f62c87b649870dc4545d05c92ce255e8d3ccb7d88c7c7bb3657c8bfa09e"
+  },
+  "archives_sha256": [
+    "f078e5bc45f4c2e7aac3059502f38e28e4585ad988ac815cc5900396812f68b8",
+    "34a2f2df12f7f72d6972349d977217c4d2716a2ad90936412646ef8f948e70a8",
+    "9823526d6394612b250b16cb59e532c30986568cab410209bd067adecb710039",
+    "e4829b9635eafaa7d1b5121490f619cbba70e2873cb7ae8e63e35e7cd14c4acf",
+    "1304c364dc3e6a1fe7f19e19972dbabdf7cdbbcffec385ca2326d86439912ad2",
+    "bdf244e3eea70c6e5e4d818f1995eb4a0433d53f5b0554b463798dab9c953a81",
+    "052b9023d278fe6dca4fd31e5503bac9671c9db0b2a9224d095394fa2dae5f62",
+    "41102e57206f77335aa5fa60040fd86a021bb853823cc25134907a2598835a38",
+    "cf9c9a0d50209be10fde91b50e3078e72bcaaea65c99013f48315bb654101580",
+    "4887071c4082fd909691113d529a5a9943f65f899de4258ed7dfc0d4b8ce60bd",
+    "fe5cc13ee15839266f96f7d8842f24f16fe3398dbba0bf3535c1a81f26df2977",
+    "35c5352de3021abd08da6f32d90de7114e76e9ebce4491266a5f6d9bd97d293b",
+    "4b8c1fbd083f099173f79c30fe0bf90262945fe8e58f401b851df4abcf629501",
+    "eda873db5dd8b22b191796e0964f1c7b5777c6592ebafcc2721fb40c2c54a611",
+    "7a18d8da88026e1fc54739570413d0de414920028b88c1a39fb38f4f9f0c0173"
+  ],
+  "model_metrics": {
+    "demonstrations": 15,
+    "total_steps": 17473,
+    "validation_trajectories": 1,
+    "validation_steps": 500,
+    "validation_total_steps": 1099,
+    "heldout_action_mae": 0.025416282819566142,
+    "training_samples": 11206
+  },
+  "runs": [
+    {
+      "seed": 2026,
+      "result": {
+        "algorithm": "bounded_paired_policy_search",
+        "strategy": "policy_search",
+        "parameterization": "phase_speeds",
+        "speed_multiplier": 1.3439510053263004,
+        "return_speed_multiplier": 1.0,
+        "best_speed_multiplier": 1.3439510053263004,
+        "best_return_speed_multiplier": 1.0,
+        "search_speed_range": [
+          0.7,
+          1.4
+        ],
+        "search_radius_range": [
+          0.12,
+          0.16
+        ],
+        "phase": "complete",
+        "done": true,
+        "episode": 10,
+        "episodes": 10,
+        "total_steps": 23233,
+        "episode_steps": 1014,
+        "seed": 2026,
+        "evaluation_seed": 7001,
+        "arm_base_distance_m": 1.28,
+        "speed_bound": 0.5,
+        "latent_std": 0.5,
+        "max_latent_mean": 1.25,
+        "discount_per_second": 1.0,
+        "step_discount": 1.0,
+        "decision_seconds": 0.5,
+        "limit_seconds": 60.0,
+        "max_update_kl": 0.08,
+        "baseline": {
+          "return": 287.4439775557559,
+          "raw_return": 287.4439775557559,
+          "fill_ml": 672.054436918263,
+          "spill_ml": 1.359212779235906e-05,
+          "seconds": 36.0625,
+          "success": true,
+          "outcome": "success",
+          "initial_seed": 7001,
+          "pot_degrees": 11.992722885189682,
+          "flow_ml_s": 0.0,
+          "bonus": 0.0,
+          "formula_score": 287.44397755575585,
+          "within_5ml": false,
+          "termination_reason": "success"
+        },
+        "best": {
+          "return": 457.17474454554673,
+          "raw_return": 457.17474454554673,
+          "fill_ml": 702.0875266594709,
+          "spill_ml": 0.0002328208708376163,
+          "seconds": 31.6875,
+          "success": true,
+          "outcome": "success",
+          "initial_seed": 7001,
+          "pot_degrees": 11.931247987055798,
+          "flow_ml_s": 0.0,
+          "bonus": 100.0,
+          "formula_score": 457.1747445455467,
+          "within_5ml": true,
+          "termination_reason": "success",
+          "episode": 10
+        },
+        "history": [
+          {
+            "episode": 1,
+            "training": {
+              "return": -28.011949785869007,
+              "raw_return": -28.011949785869007,
+              "fill_ml": 642.4651857692708,
+              "spill_ml": 9.255932837215154e-06,
+              "seconds": 60.0,
+              "success": false,
+              "outcome": "time_limit",
+              "initial_seed": 7001,
+              "pot_degrees": 35.23856314960331,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": -28.011949785868694,
+              "within_5ml": false,
+              "termination_reason": "time_limit"
+            },
+            "evaluation": {
+              "return": 287.4439775557559,
+              "raw_return": 287.4439775557559,
+              "fill_ml": 672.054436918263,
+              "spill_ml": 1.359212779235906e-05,
+              "seconds": 36.0625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.992722885189682,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 287.44397755575585,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                0.8728426074529826,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12715739254701744,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.8728426074529826,
+                "speed_max": 1.0,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 2,
+            "training": {
+              "return": 326.167867300801,
+              "raw_return": 326.167867300801,
+              "fill_ml": 691.0157235439453,
+              "spill_ml": 8.846469108560548e-05,
+              "seconds": 34.09375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.95513388922674,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 326.16786730080076,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 326.167867300801,
+              "raw_return": 326.167867300801,
+              "fill_ml": 691.0157235439453,
+              "spill_ml": 8.846469108560548e-05,
+              "seconds": 34.09375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.95513388922674,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 326.16786730080076,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.12715739254701752,
+              "accepted": true,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1271573925470175,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12715739254701744,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1271573925470175,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 3,
+            "training": {
+              "return": 283.30235786387306,
+              "raw_return": 283.30235786387306,
+              "fill_ml": 670.6257574845953,
+              "spill_ml": 5.088112040713938e-05,
+              "seconds": 36.34375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.942924369800883,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 283.3023578638731,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 326.167867300801,
+              "raw_return": 326.167867300801,
+              "fill_ml": 691.0157235439453,
+              "spill_ml": 8.846469108560548e-05,
+              "seconds": 34.09375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.95513388922674,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 326.16786730080076,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.1271573925470175,
+                1.0
+              ],
+              "candidate_gains": [
+                0.9884666565012781,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.1386907360457394,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.9884666565012781,
+                "speed_max": 1.0,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 4,
+            "training": {
+              "return": 451.04205933799255,
+              "raw_return": 451.04205933799255,
+              "fill_ml": 699.8728541882328,
+              "spill_ml": 0.00033296022611345406,
+              "seconds": 32.5,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.91523094500711,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 451.04205933799255,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 451.04205933799255,
+              "raw_return": 451.04205933799255,
+              "fill_ml": 699.8728541882328,
+              "spill_ml": 0.00033296022611345406,
+              "seconds": 32.5,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.91523094500711,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 451.04205933799255,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.13869073604573945,
+              "accepted": true,
+              "pair_center": [
+                1.1271573925470175,
+                1.0
+              ],
+              "candidate_gains": [
+                1.265848128592757,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.1386907360457394,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.265848128592757,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 5,
+            "training": {
+              "return": 356.1139749344558,
+              "raw_return": 356.1139749344558,
+              "fill_ml": 706.9450120614172,
+              "spill_ml": 0.0003079102021013929,
+              "seconds": 31.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.907852546962408,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 356.11397493445594,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 451.04205933799255,
+              "raw_return": 451.04205933799255,
+              "fill_ml": 699.8728541882328,
+              "spill_ml": 0.00033296022611345406,
+              "seconds": 32.5,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.91523094500711,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 451.04205933799255,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.265848128592757,
+                1.0
+              ],
+              "candidate_gains": [
+                1.4,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13482002108432192,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.4,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 6,
+            "training": {
+              "return": 327.2034674896918,
+              "raw_return": 327.2034674896918,
+              "fill_ml": 691.644194939855,
+              "spill_ml": 0.00013682951266743242,
+              "seconds": 34.0625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.907795310325174,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 327.20346748969195,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 451.04205933799255,
+              "raw_return": 451.04205933799255,
+              "fill_ml": 699.8728541882328,
+              "spill_ml": 0.00033296022611345406,
+              "seconds": 32.5,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.91523094500711,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 451.04205933799255,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.265848128592757,
+                1.0
+              ],
+              "candidate_gains": [
+                1.131028107508435,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13482002108432192,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.131028107508435,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 7,
+            "training": {
+              "return": 307.87818970402816,
+              "raw_return": 307.87818970402816,
+              "fill_ml": 720.6967501851478,
+              "spill_ml": 0.0003382127345404306,
+              "seconds": 34.75,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.96236094904463,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 307.87818970402833,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 451.04205933799255,
+              "raw_return": 451.04205933799255,
+              "fill_ml": 699.8728541882328,
+              "spill_ml": 0.00033296022611345406,
+              "seconds": 32.5,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.91523094500711,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 451.04205933799255,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.265848128592757,
+                1.0
+              ],
+              "candidate_gains": [
+                1.265848128592757,
+                0.8483792701658694
+              ],
+              "coordinate": "return",
+              "radius": 0.1516207298341306,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.8483792701658694,
+                "speed_max": 1.265848128592757,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 8,
+            "training": {
+              "return": 348.68604771375976,
+              "raw_return": 348.68604771375976,
+              "fill_ml": 682.4802618954167,
+              "spill_ml": 0.00028065290528814707,
+              "seconds": 31.0,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.896966764375925,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 348.68604771375954,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 451.04205933799255,
+              "raw_return": 451.04205933799255,
+              "fill_ml": 699.8728541882328,
+              "spill_ml": 0.00033296022611345406,
+              "seconds": 32.5,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.91523094500711,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 451.04205933799255,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.265848128592757,
+                1.0
+              ],
+              "candidate_gains": [
+                1.265848128592757,
+                1.1516207298341306
+              ],
+              "coordinate": "return",
+              "radius": 0.1516207298341306,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.1516207298341306,
+                "speed_max": 1.265848128592757,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 9,
+            "training": {
+              "return": 337.0327465179896,
+              "raw_return": 337.0327465179896,
+              "fill_ml": 693.7731477557746,
+              "spill_ml": 0.000129128739459493,
+              "seconds": 33.28125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.963886054522916,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 337.0327465179894,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 451.04205933799255,
+              "raw_return": 451.04205933799255,
+              "fill_ml": 699.8728541882328,
+              "spill_ml": 0.00033296022611345406,
+              "seconds": 32.5,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.91523094500711,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 451.04205933799255,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.265848128592757,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1877452518592135,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.07810287673354348,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1877452518592135,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 10,
+            "training": {
+              "return": 457.17474454554673,
+              "raw_return": 457.17474454554673,
+              "fill_ml": 702.0875266594709,
+              "spill_ml": 0.0002328208708376163,
+              "seconds": 31.6875,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.931247987055798,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 457.1747445455467,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 457.17474454554673,
+              "raw_return": 457.17474454554673,
+              "fill_ml": 702.0875266594709,
+              "spill_ml": 0.0002328208708376163,
+              "seconds": 31.6875,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.931247987055798,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 457.1747445455467,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.07810287673354344,
+              "accepted": true,
+              "pair_center": [
+                1.265848128592757,
+                1.0
+              ],
+              "candidate_gains": [
+                1.3439510053263004,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.07810287673354348,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.3439510053263004,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          }
+        ],
+        "latest_update": {
+          "actor_change": 0.07810287673354344,
+          "accepted": true,
+          "pair_center": [
+            1.265848128592757,
+            1.0
+          ],
+          "candidate_gains": [
+            1.3439510053263004,
+            1.0
+          ],
+          "coordinate": "approach_pour",
+          "radius": 0.07810287673354348,
+          "exploration": {
+            "kind": "paired_phase_parameter",
+            "decisions": 1,
+            "speed_min": 1.0,
+            "speed_max": 1.3439510053263004,
+            "slower_decisions": 0,
+            "faster_decisions": 1
+          }
+        },
+        "improved": true,
+        "completed_episodes": 10,
+        "actor_weights": [
+          1.3439510053263004,
+          1.0
+        ],
+        "best_weights": [
+          1.3439510053263004,
+          1.0
+        ]
+      },
+      "replay": {
+        "final": {
+          "fill_ml": 702.0875266594709,
+          "spill_ml": 0.0002328208708376163,
+          "seconds": 31.6875,
+          "pot_degrees": 11.931247987055798,
+          "flow_ml_s": 0.0,
+          "success": true,
+          "bonus": 100.0,
+          "formula_score": 457.1747445455467,
+          "within_5ml": true,
+          "termination_reason": "success"
+        },
+        "reward_sum": 457.17474454554673,
+        "near_target_flowing_count": 33,
+        "first_near_target_flowing": {
+          "fill_ml": 695.0280434230468,
+          "spill_ml": 0.0,
+          "seconds": 22.28125,
+          "pot_degrees": 41.57286142694557,
+          "flow_ml_s": 16.08329349085915,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 308.65335311485995,
+          "within_5ml": true,
+          "termination_reason": null
+        },
+        "best_stop_while_flowing": {
+          "fill_ml": 701.9446053941226,
+          "spill_ml": 0.0,
+          "seconds": 23.28125,
+          "pot_degrees": 38.42159354171496,
+          "flow_ml_s": 1.1190207073030178,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 382.8046039859324,
+          "within_5ml": true,
+          "termination_reason": null
+        },
+        "best_stop_while_unfinished": {
+          "fill_ml": 702.0868509803191,
+          "spill_ml": 0.0,
+          "seconds": 23.625,
+          "pot_degrees": 37.33834520957208,
+          "flow_ml_s": 0.03868541664730552,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 386.79303151730016,
+          "within_5ml": true,
+          "termination_reason": null
+        }
+      },
+      "manual_stop_checks": {
+        "best_stop_while_flowing": {
+          "saved_score": 382.80460398593243,
+          "completed_score": 457.17474454554673,
+          "margin_for_finishing": 74.3701405596143,
+          "state": {
+            "fill_ml": 701.9446053941226,
+            "spill_ml": 0.0,
+            "seconds": 23.28125,
+            "pot_degrees": 38.42159354171496,
+            "flow_ml_s": 1.1190207073030178,
+            "success": false,
+            "bonus": 0.0,
+            "formula_score": 382.8046039859324,
+            "within_5ml": true,
+            "termination_reason": null
+          },
+          "final_transition_truncated": true
+        },
+        "best_stop_while_unfinished": {
+          "saved_score": 386.7930315173002,
+          "completed_score": 457.17474454554673,
+          "margin_for_finishing": 70.38171302824651,
+          "state": {
+            "fill_ml": 702.0868509803191,
+            "spill_ml": 0.0,
+            "seconds": 23.625,
+            "pot_degrees": 37.33834520957208,
+            "flow_ml_s": 0.03868541664730552,
+            "success": false,
+            "bonus": 0.0,
+            "formula_score": 386.79303151730016,
+            "within_5ml": true,
+            "termination_reason": null
+          },
+          "final_transition_truncated": true
+        }
+      },
+      "first_precise_evaluation": 4,
+      "wall_seconds": 39.33031616709195
+    },
+    {
+      "seed": 2027,
+      "result": {
+        "algorithm": "bounded_paired_policy_search",
+        "strategy": "policy_search",
+        "parameterization": "phase_speeds",
+        "speed_multiplier": 1.3835371064710866,
+        "return_speed_multiplier": 1.0,
+        "best_speed_multiplier": 1.3835371064710866,
+        "best_return_speed_multiplier": 1.0,
+        "search_speed_range": [
+          0.7,
+          1.4
+        ],
+        "search_radius_range": [
+          0.12,
+          0.16
+        ],
+        "phase": "complete",
+        "done": true,
+        "episode": 10,
+        "episodes": 10,
+        "total_steps": 22963,
+        "episode_steps": 1003,
+        "seed": 2027,
+        "evaluation_seed": 7001,
+        "arm_base_distance_m": 1.28,
+        "speed_bound": 0.5,
+        "latent_std": 0.5,
+        "max_latent_mean": 1.25,
+        "discount_per_second": 1.0,
+        "step_discount": 1.0,
+        "decision_seconds": 0.5,
+        "limit_seconds": 60.0,
+        "max_update_kl": 0.08,
+        "baseline": {
+          "return": 287.4439775557559,
+          "raw_return": 287.4439775557559,
+          "fill_ml": 672.054436918263,
+          "spill_ml": 1.359212779235906e-05,
+          "seconds": 36.0625,
+          "success": true,
+          "outcome": "success",
+          "initial_seed": 7001,
+          "pot_degrees": 11.992722885189682,
+          "flow_ml_s": 0.0,
+          "bonus": 0.0,
+          "formula_score": 287.44397755575585,
+          "within_5ml": false,
+          "termination_reason": "success"
+        },
+        "best": {
+          "return": 458.88986877847685,
+          "raw_return": 458.88986877847685,
+          "fill_ml": 703.7749111224648,
+          "spill_ml": 0.00031994956210604897,
+          "seconds": 31.34375,
+          "success": true,
+          "outcome": "success",
+          "initial_seed": 7001,
+          "pot_degrees": 11.948700074748041,
+          "flow_ml_s": 0.0,
+          "bonus": 100.0,
+          "formula_score": 458.889868778477,
+          "within_5ml": true,
+          "termination_reason": "success",
+          "episode": 6
+        },
+        "history": [
+          {
+            "episode": 1,
+            "training": {
+              "return": -25.519532600893996,
+              "raw_return": -25.519532600893996,
+              "fill_ml": 644.9564053283679,
+              "spill_ml": 2.6074347572296497e-06,
+              "seconds": 60.0,
+              "success": false,
+              "outcome": "time_limit",
+              "initial_seed": 7001,
+              "pot_degrees": 35.23796766091364,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": -25.519532600894188,
+              "within_5ml": false,
+              "termination_reason": "time_limit"
+            },
+            "evaluation": {
+              "return": 287.4439775557559,
+              "raw_return": 287.4439775557559,
+              "fill_ml": 672.054436918263,
+              "spill_ml": 1.359212779235906e-05,
+              "seconds": 36.0625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.992722885189682,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 287.44397755575585,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                0.8796797815837694,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12032021841623068,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.8796797815837694,
+                "speed_max": 1.0,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 2,
+            "training": {
+              "return": 325.0503632012935,
+              "raw_return": 325.0503632012935,
+              "fill_ml": 690.5930542338435,
+              "spill_ml": 0.00017608471183959084,
+              "seconds": 34.15625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.990007473919002,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 325.0503632012937,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 325.0503632012935,
+              "raw_return": 325.0503632012935,
+              "fill_ml": 690.5930542338435,
+              "spill_ml": 0.00017608471183959084,
+              "seconds": 34.15625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.990007473919002,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 325.0503632012937,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.12032021841623064,
+              "accepted": true,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1203202184162306,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12032021841623068,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1203202184162306,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 3,
+            "training": {
+              "return": 448.2651367067411,
+              "raw_return": 448.2651367067411,
+              "fill_ml": 699.3852845165198,
+              "spill_ml": 0.0002853397757559054,
+              "seconds": 32.71875,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.966181235001422,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 448.26513670674126,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 448.2651367067411,
+              "raw_return": 448.2651367067411,
+              "fill_ml": 699.3852845165198,
+              "spill_ml": 0.0002853397757559054,
+              "seconds": 32.71875,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.966181235001422,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 448.26513670674126,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.12330082462434544,
+              "accepted": true,
+              "pair_center": [
+                1.1203202184162306,
+                1.0
+              ],
+              "candidate_gains": [
+                1.243621043040576,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12330082462434547,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.243621043040576,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 4,
+            "training": {
+              "return": 291.3463851604222,
+              "raw_return": 291.3463851604222,
+              "fill_ml": 681.5251412873076,
+              "spill_ml": 3.674754651642258e-05,
+              "seconds": 36.625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.964359689669394,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 291.3463851604223,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 448.2651367067411,
+              "raw_return": 448.2651367067411,
+              "fill_ml": 699.3852845165198,
+              "spill_ml": 0.0002853397757559054,
+              "seconds": 32.71875,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.966181235001422,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 448.26513670674126,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.1203202184162306,
+                1.0
+              ],
+              "candidate_gains": [
+                0.9970193937918852,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.12330082462434547,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.9970193937918852,
+                "speed_max": 1.0,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 5,
+            "training": {
+              "return": 322.32067463137315,
+              "raw_return": 322.32067463137315,
+              "fill_ml": 690.3053200273163,
+              "spill_ml": 0.00011447487933469428,
+              "seconds": 34.40625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.96101546053176,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 322.3206746313734,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 448.2651367067411,
+              "raw_return": 448.2651367067411,
+              "fill_ml": 699.3852845165198,
+              "spill_ml": 0.0002853397757559054,
+              "seconds": 32.71875,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.966181235001422,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 448.26513670674126,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.243621043040576,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1037049796100655,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13991606343051047,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1037049796100655,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 6,
+            "training": {
+              "return": 458.88986877847685,
+              "raw_return": 458.88986877847685,
+              "fill_ml": 703.7749111224648,
+              "spill_ml": 0.00031994956210604897,
+              "seconds": 31.34375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.948700074748041,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 458.889868778477,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 458.88986877847685,
+              "raw_return": 458.88986877847685,
+              "fill_ml": 703.7749111224648,
+              "spill_ml": 0.00031994956210604897,
+              "seconds": 31.34375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.948700074748041,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 458.889868778477,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.13991606343051055,
+              "accepted": true,
+              "pair_center": [
+                1.243621043040576,
+                1.0
+              ],
+              "candidate_gains": [
+                1.3835371064710866,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13991606343051047,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.3835371064710866,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 7,
+            "training": {
+              "return": 444.51533256274155,
+              "raw_return": 444.51533256274155,
+              "fill_ml": 695.9974609919891,
+              "spill_ml": 0.00020267190294334005,
+              "seconds": 32.75,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.990962878672383,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 444.5153325627414,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 458.88986877847685,
+              "raw_return": 458.88986877847685,
+              "fill_ml": 703.7749111224648,
+              "spill_ml": 0.00031994956210604897,
+              "seconds": 31.34375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.948700074748041,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 458.889868778477,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.3835371064710866,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2353199727340736,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14821713373701315,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.2353199727340736,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 8,
+            "training": {
+              "return": 356.1139749344558,
+              "raw_return": 356.1139749344558,
+              "fill_ml": 706.9450120614172,
+              "spill_ml": 0.0003079102021013929,
+              "seconds": 31.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.907852546962408,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 356.11397493445594,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 458.88986877847685,
+              "raw_return": 458.88986877847685,
+              "fill_ml": 703.7749111224648,
+              "spill_ml": 0.00031994956210604897,
+              "seconds": 31.34375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.948700074748041,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 458.889868778477,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.3835371064710866,
+                1.0
+              ],
+              "candidate_gains": [
+                1.4,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14821713373701315,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.4,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 9,
+            "training": {
+              "return": 321.21550086902874,
+              "raw_return": 321.21550086902874,
+              "fill_ml": 722.0474345370937,
+              "spill_ml": 0.0003536006512191413,
+              "seconds": 33.28125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.96210549661333,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 321.21550086902835,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 458.88986877847685,
+              "raw_return": 458.88986877847685,
+              "fill_ml": 703.7749111224648,
+              "spill_ml": 0.00031994956210604897,
+              "seconds": 31.34375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.948700074748041,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 458.889868778477,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.3835371064710866,
+                1.0
+              ],
+              "candidate_gains": [
+                1.3835371064710866,
+                0.8680884605119802
+              ],
+              "coordinate": "return",
+              "radius": 0.13191153948801979,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.8680884605119802,
+                "speed_max": 1.3835371064710866,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 10,
+            "training": {
+              "return": 365.8897099724029,
+              "raw_return": 365.8897099724029,
+              "fill_ml": 688.2955562489883,
+              "spill_ml": 0.0003660421639992627,
+              "seconds": 29.84375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.98399011721066,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 365.889709972403,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 458.88986877847685,
+              "raw_return": 458.88986877847685,
+              "fill_ml": 703.7749111224648,
+              "spill_ml": 0.00031994956210604897,
+              "seconds": 31.34375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.948700074748041,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 458.889868778477,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.3835371064710866,
+                1.0
+              ],
+              "candidate_gains": [
+                1.3835371064710866,
+                1.1319115394880197
+              ],
+              "coordinate": "return",
+              "radius": 0.13191153948801979,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.1319115394880197,
+                "speed_max": 1.3835371064710866,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          }
+        ],
+        "latest_update": {
+          "actor_change": 0.0,
+          "accepted": false,
+          "pair_center": [
+            1.3835371064710866,
+            1.0
+          ],
+          "candidate_gains": [
+            1.3835371064710866,
+            1.1319115394880197
+          ],
+          "coordinate": "return",
+          "radius": 0.13191153948801979,
+          "exploration": {
+            "kind": "paired_phase_parameter",
+            "decisions": 1,
+            "speed_min": 1.1319115394880197,
+            "speed_max": 1.3835371064710866,
+            "slower_decisions": 0,
+            "faster_decisions": 1
+          }
+        },
+        "improved": true,
+        "completed_episodes": 10,
+        "actor_weights": [
+          1.3835371064710866,
+          1.0
+        ],
+        "best_weights": [
+          1.3835371064710866,
+          1.0
+        ]
+      },
+      "replay": {
+        "final": {
+          "fill_ml": 703.7749111224648,
+          "spill_ml": 0.00031994956210604897,
+          "seconds": 31.34375,
+          "pot_degrees": 11.948700074748041,
+          "flow_ml_s": 0.0,
+          "success": true,
+          "bonus": 100.0,
+          "formula_score": 458.889868778477,
+          "within_5ml": true,
+          "termination_reason": "success"
+        },
+        "reward_sum": 458.88986877847685,
+        "near_target_flowing_count": 36,
+        "first_near_target_flowing": {
+          "fill_ml": 695.2943611149034,
+          "spill_ml": 0.0,
+          "seconds": 21.84375,
+          "pot_degrees": 41.88574487756849,
+          "flow_ml_s": 18.19680622057029,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 302.1013402569149,
+          "within_5ml": true,
+          "termination_reason": null
+        },
+        "best_stop_while_flowing": {
+          "fill_ml": 703.6422186777966,
+          "spill_ml": 0.0,
+          "seconds": 22.9375,
+          "pot_degrees": 38.43904562940721,
+          "flow_ml_s": 1.0636721510888745,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 384.78632930794464,
+          "within_5ml": true,
+          "termination_reason": null
+        },
+        "best_stop_while_unfinished": {
+          "fill_ml": 703.7745944503789,
+          "spill_ml": 0.0,
+          "seconds": 23.28125,
+          "pot_degrees": 37.355797297264346,
+          "flow_ml_s": 0.030930759765271362,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 388.546657156266,
+          "within_5ml": true,
+          "termination_reason": null
+        }
+      },
+      "manual_stop_checks": {
+        "best_stop_while_flowing": {
+          "saved_score": 384.7863293079445,
+          "completed_score": 458.88986877847685,
+          "margin_for_finishing": 74.10353947053233,
+          "state": {
+            "fill_ml": 703.6422186777966,
+            "spill_ml": 0.0,
+            "seconds": 22.9375,
+            "pot_degrees": 38.43904562940721,
+            "flow_ml_s": 1.0636721510888745,
+            "success": false,
+            "bonus": 0.0,
+            "formula_score": 384.78632930794464,
+            "within_5ml": true,
+            "termination_reason": null
+          },
+          "final_transition_truncated": true
+        },
+        "best_stop_while_unfinished": {
+          "saved_score": 388.54665715626584,
+          "completed_score": 458.88986877847685,
+          "margin_for_finishing": 70.34321162221102,
+          "state": {
+            "fill_ml": 703.7745944503789,
+            "spill_ml": 0.0,
+            "seconds": 23.28125,
+            "pot_degrees": 37.355797297264346,
+            "flow_ml_s": 0.030930759765271362,
+            "success": false,
+            "bonus": 0.0,
+            "formula_score": 388.546657156266,
+            "within_5ml": true,
+            "termination_reason": null
+          },
+          "final_transition_truncated": true
+        }
+      },
+      "first_precise_evaluation": 3,
+      "wall_seconds": 39.04342879191972
+    },
+    {
+      "seed": 2028,
+      "result": {
+        "algorithm": "bounded_paired_policy_search",
+        "strategy": "policy_search",
+        "parameterization": "phase_speeds",
+        "speed_multiplier": 1.3615492715082091,
+        "return_speed_multiplier": 1.0,
+        "best_speed_multiplier": 1.3615492715082091,
+        "best_return_speed_multiplier": 1.0,
+        "search_speed_range": [
+          0.7,
+          1.4
+        ],
+        "search_radius_range": [
+          0.12,
+          0.16
+        ],
+        "phase": "complete",
+        "done": true,
+        "episode": 10,
+        "episodes": 10,
+        "total_steps": 23092,
+        "episode_steps": 1009,
+        "seed": 2028,
+        "evaluation_seed": 7001,
+        "arm_base_distance_m": 1.28,
+        "speed_bound": 0.5,
+        "latent_std": 0.5,
+        "max_latent_mean": 1.25,
+        "discount_per_second": 1.0,
+        "step_discount": 1.0,
+        "decision_seconds": 0.5,
+        "limit_seconds": 60.0,
+        "max_update_kl": 0.08,
+        "baseline": {
+          "return": 287.4439775557559,
+          "raw_return": 287.4439775557559,
+          "fill_ml": 672.054436918263,
+          "spill_ml": 1.359212779235906e-05,
+          "seconds": 36.0625,
+          "success": true,
+          "outcome": "success",
+          "initial_seed": 7001,
+          "pot_degrees": 11.992722885189682,
+          "flow_ml_s": 0.0,
+          "bonus": 0.0,
+          "formula_score": 287.44397755575585,
+          "within_5ml": false,
+          "termination_reason": "success"
+        },
+        "best": {
+          "return": 457.3936648128988,
+          "raw_return": 457.3936648128988,
+          "fill_ml": 703.4378661772735,
+          "spill_ml": 0.0003457268297945949,
+          "seconds": 31.53125,
+          "success": true,
+          "outcome": "success",
+          "initial_seed": 7001,
+          "pot_degrees": 11.927811641498737,
+          "flow_ml_s": 0.0,
+          "bonus": 100.0,
+          "formula_score": 457.39366481289926,
+          "within_5ml": true,
+          "termination_reason": "success",
+          "episode": 10
+        },
+        "history": [
+          {
+            "episode": 1,
+            "training": {
+              "return": -31.33558640232927,
+              "raw_return": -31.33558640232927,
+              "fill_ml": 639.1238173683879,
+              "spill_ml": 8.483149296607866e-06,
+              "seconds": 60.0,
+              "success": false,
+              "outcome": "time_limit",
+              "initial_seed": 7001,
+              "pot_degrees": 35.22969764378396,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": -31.335586402329305,
+              "within_5ml": false,
+              "termination_reason": "time_limit"
+            },
+            "evaluation": {
+              "return": 287.4439775557559,
+              "raw_return": 287.4439775557559,
+              "fill_ml": 672.054436918263,
+              "spill_ml": 1.359212779235906e-05,
+              "seconds": 36.0625,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.992722885189682,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 287.44397755575585,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                0.8645299073907974,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13547009260920265,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.8645299073907974,
+                "speed_max": 1.0,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 2,
+            "training": {
+              "return": 328.6679471943935,
+              "raw_return": 328.6679471943935,
+              "fill_ml": 692.5060087228738,
+              "spill_ml": 0.00010404699651262045,
+              "seconds": 34.0,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.918978740741975,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 328.6679471943934,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 328.6679471943935,
+              "raw_return": 328.6679471943935,
+              "fill_ml": 692.5060087228738,
+              "spill_ml": 0.00010404699651262045,
+              "seconds": 34.0,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.918978740741975,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 328.6679471943934,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.13547009260920273,
+              "accepted": true,
+              "pair_center": [
+                1.0,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1354700926092027,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.13547009260920265,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1354700926092027,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 3,
+            "training": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.14949321092325163,
+              "accepted": true,
+              "pair_center": [
+                1.1354700926092027,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2849633035324544,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14949321092325155,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.2849633035324544,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 4,
+            "training": {
+              "return": 282.63752417140836,
+              "raw_return": 282.63752417140836,
+              "fill_ml": 669.7460221890419,
+              "spill_ml": 2.2484000812481786e-05,
+              "seconds": 36.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.991737766816279,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 282.6375241714086,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.1354700926092027,
+                1.0
+              ],
+              "candidate_gains": [
+                0.9859768816859512,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.14949321092325155,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.9859768816859512,
+                "speed_max": 1.0,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 5,
+            "training": {
+              "return": 356.1139749344558,
+              "raw_return": 356.1139749344558,
+              "fill_ml": 706.9450120614172,
+              "spill_ml": 0.0003079102021013929,
+              "seconds": 31.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.907852546962408,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 356.11397493445594,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2849633035324544,
+                1.0
+              ],
+              "candidate_gains": [
+                1.4,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.15939704913026762,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.4,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 6,
+            "training": {
+              "return": 325.4990573144244,
+              "raw_return": 325.4990573144244,
+              "fill_ml": 690.2701969669899,
+              "spill_ml": 0.00013013872348226262,
+              "seconds": 34.09375,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.916754756920959,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 325.49905731442453,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2849633035324544,
+                1.0
+              ],
+              "candidate_gains": [
+                1.1255662544021867,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.15939704913026762,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.1255662544021867,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 7,
+            "training": {
+              "return": 312.2452212328619,
+              "raw_return": 312.2452212328619,
+              "fill_ml": 720.6960458443033,
+              "spill_ml": 0.00039915213222524237,
+              "seconds": 34.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.966666885351202,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 312.2452212328621,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2849633035324544,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2849633035324544,
+                0.8640167803102181
+              ],
+              "coordinate": "return",
+              "radius": 0.1359832196897819,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 0.8640167803102181,
+                "speed_max": 1.2849633035324544,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 8,
+            "training": {
+              "return": 354.62035063129235,
+              "raw_return": 354.62035063129235,
+              "fill_ml": 686.4189921234184,
+              "spill_ml": 0.0002784903614680834,
+              "seconds": 30.78125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.992931500882204,
+              "flow_ml_s": 0.0,
+              "bonus": 0.0,
+              "formula_score": 354.6203506312925,
+              "within_5ml": false,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2849633035324544,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2849633035324544,
+                1.1359832196897819
+              ],
+              "coordinate": "return",
+              "radius": 0.1359832196897819,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.1359832196897819,
+                "speed_max": 1.2849633035324544,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          },
+          {
+            "episode": 9,
+            "training": {
+              "return": 441.8656011278489,
+              "raw_return": 441.8656011278489,
+              "fill_ml": 696.931426265228,
+              "spill_ml": 0.00014036598422223465,
+              "seconds": 33.125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.907842385697355,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 441.865601127849,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 450.87689999098734,
+              "raw_return": 450.87689999098734,
+              "fill_ml": 702.074661124386,
+              "spill_ml": 0.0003804041569297137,
+              "seconds": 32.3125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.961529240234835,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 450.8768999909874,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.0,
+              "accepted": false,
+              "pair_center": [
+                1.2849633035324544,
+                1.0
+              ],
+              "candidate_gains": [
+                1.2083773355566996,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.07658596797575477,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.2083773355566996,
+                "slower_decisions": 1,
+                "faster_decisions": 0
+              }
+            }
+          },
+          {
+            "episode": 10,
+            "training": {
+              "return": 457.3936648128988,
+              "raw_return": 457.3936648128988,
+              "fill_ml": 703.4378661772735,
+              "spill_ml": 0.0003457268297945949,
+              "seconds": 31.53125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.927811641498737,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 457.39366481289926,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "evaluation": {
+              "return": 457.3936648128988,
+              "raw_return": 457.3936648128988,
+              "fill_ml": 703.4378661772735,
+              "spill_ml": 0.0003457268297945949,
+              "seconds": 31.53125,
+              "success": true,
+              "outcome": "success",
+              "initial_seed": 7001,
+              "pot_degrees": 11.927811641498737,
+              "flow_ml_s": 0.0,
+              "bonus": 100.0,
+              "formula_score": 457.39366481289926,
+              "within_5ml": true,
+              "termination_reason": "success"
+            },
+            "update": {
+              "actor_change": 0.07658596797575479,
+              "accepted": true,
+              "pair_center": [
+                1.2849633035324544,
+                1.0
+              ],
+              "candidate_gains": [
+                1.3615492715082091,
+                1.0
+              ],
+              "coordinate": "approach_pour",
+              "radius": 0.07658596797575477,
+              "exploration": {
+                "kind": "paired_phase_parameter",
+                "decisions": 1,
+                "speed_min": 1.0,
+                "speed_max": 1.3615492715082091,
+                "slower_decisions": 0,
+                "faster_decisions": 1
+              }
+            }
+          }
+        ],
+        "latest_update": {
+          "actor_change": 0.07658596797575479,
+          "accepted": true,
+          "pair_center": [
+            1.2849633035324544,
+            1.0
+          ],
+          "candidate_gains": [
+            1.3615492715082091,
+            1.0
+          ],
+          "coordinate": "approach_pour",
+          "radius": 0.07658596797575477,
+          "exploration": {
+            "kind": "paired_phase_parameter",
+            "decisions": 1,
+            "speed_min": 1.0,
+            "speed_max": 1.3615492715082091,
+            "slower_decisions": 0,
+            "faster_decisions": 1
+          }
+        },
+        "improved": true,
+        "completed_episodes": 10,
+        "actor_weights": [
+          1.3615492715082091,
+          1.0
+        ],
+        "best_weights": [
+          1.3615492715082091,
+          1.0
+        ]
+      },
+      "replay": {
+        "final": {
+          "fill_ml": 703.4378661772735,
+          "spill_ml": 0.0003457268297945949,
+          "seconds": 31.53125,
+          "pot_degrees": 11.927811641498737,
+          "flow_ml_s": 0.0,
+          "success": true,
+          "bonus": 100.0,
+          "formula_score": 457.39366481289926,
+          "within_5ml": true,
+          "termination_reason": "success"
+        },
+        "reward_sum": 457.3936648128988,
+        "near_target_flowing_count": 36,
+        "first_near_target_flowing": {
+          "fill_ml": 695.0204199705042,
+          "spill_ml": 0.0,
+          "seconds": 22.03125,
+          "pot_degrees": 41.864856448510174,
+          "flow_ml_s": 18.106617552588496,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 300.4451193105414,
+          "within_5ml": true,
+          "termination_reason": null
+        },
+        "best_stop_while_flowing": {
+          "fill_ml": 703.3088282238173,
+          "spill_ml": 0.0,
+          "seconds": 23.125,
+          "pot_degrees": 38.4181571961579,
+          "flow_ml_s": 1.043845120306797,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 383.38563178233295,
+          "within_5ml": true,
+          "termination_reason": null
+        },
+        "best_stop_while_unfinished": {
+          "fill_ml": 703.437662290363,
+          "spill_ml": 0.0,
+          "seconds": 23.46875,
+          "pot_degrees": 37.33490886401502,
+          "flow_ml_s": 0.028242134791071873,
+          "success": false,
+          "bonus": 0.0,
+          "formula_score": 387.0638093076516,
+          "within_5ml": true,
+          "termination_reason": null
+        }
+      },
+      "manual_stop_checks": {
+        "best_stop_while_flowing": {
+          "saved_score": 383.38563178233255,
+          "completed_score": 457.3936648128988,
+          "margin_for_finishing": 74.00803303056625,
+          "state": {
+            "fill_ml": 703.3088282238173,
+            "spill_ml": 0.0,
+            "seconds": 23.125,
+            "pot_degrees": 38.4181571961579,
+            "flow_ml_s": 1.043845120306797,
+            "success": false,
+            "bonus": 0.0,
+            "formula_score": 383.38563178233295,
+            "within_5ml": true,
+            "termination_reason": null
+          },
+          "final_transition_truncated": true
+        },
+        "best_stop_while_unfinished": {
+          "saved_score": 387.0638093076511,
+          "completed_score": 457.3936648128988,
+          "margin_for_finishing": 70.32985550524768,
+          "state": {
+            "fill_ml": 703.437662290363,
+            "spill_ml": 0.0,
+            "seconds": 23.46875,
+            "pot_degrees": 37.33490886401502,
+            "flow_ml_s": 0.028242134791071873,
+            "success": false,
+            "bonus": 0.0,
+            "formula_score": 387.0638093076516,
+            "within_5ml": true,
+            "termination_reason": null
+          },
+          "final_transition_truncated": true
+        }
+      },
+      "first_precise_evaluation": 3,
+      "wall_seconds": 39.03862087498419
+    }
+  ],
+  "wall_seconds": 39.51197887503076,
+  "report_renderer_sha256": "a1e4fca2fd48b1b040124e0595d41d44dd6e771ed6c4c1ae7ee2f14462a8d6ab"
+}

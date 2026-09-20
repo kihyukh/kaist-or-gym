@@ -179,7 +179,7 @@ assert.equal(worker.messages.some(message=>message.kind==='ft-step'||message.kin
 """)
 
 
-def test_ten_iteration_default_and_time_objective_are_explained_visibly():
+def test_ten_iteration_default_and_additive_objective_are_explained_visibly():
     options = re.search(r'<select id="ft-episodes">(.*?)</select>', FINETUNING_HTML, re.DOTALL).group(1)
     assert re.findall(r'<option value="(\d+)"', options) == ["10", "25", "50", "100"]
     assert '<option value="10" selected>' in options
@@ -189,19 +189,27 @@ def test_ten_iteration_default_and_time_objective_are_explained_visibly():
     assert '<option value="4" selected>' in playback
     explanation = FINETUNING_HTML.split('id="ft-reward-explanation"', 1)[1].split('</section>', 1)[0]
     assert 'hidden' not in explanation.split('>', 1)[0]
-    assert 'Earlier reward counts more.' in explanation
     assert 'Accuracy / speed score' in explanation
-    assert 'undiscounted recorded reward' in explanation
-    assert 'otherwise −100' in explanation
-    assert '− 100 × final error' in explanation
-    assert '1000 exp[−½(e / 0.005)²]' in explanation
-    assert 'bonus is awarded only on success' in explanation
+    assert 'historical recorded rewards' in explanation
+    assert 'legacy scores are not directly comparable' in explanation
+    assert 'score = target − |final fill − target| + bonus − 10 × time − spill' in explanation
+    assert '− 2 × |final pot angle| − 5 × final flow' in explanation
+    assert '100 only when all three conditions hold at the end' in explanation
+    assert 'environment reports success, final target error ≤5 mL, and final flow ≤1 mL/s' in explanation
+    assert 'Otherwise the bonus is zero' in explanation
     assert 'within ±5 mL' in explanation
-    assert 'γΦₜ₊₁ − Φₜ' in explanation
-    assert 'Φ = 0 at every terminal state' in explanation
-    assert '1 point' in explanation
-    assert '− 0.008dt' not in explanation
-    assert 'γ = 0.99<sup>1/32</sup>' in explanation
+    assert 'rₜ = eₜ − eₜ₊₁ − 10dt − Δspill' in explanation
+    assert 'terminal step or manual finish' in explanation
+    assert 'no additional offset' in explanation
+    assert 'γ = 1' in explanation
+    assert 'no extra exponential discount' in explanation
+    assert '700 mL pour scores <b>500</b>' in explanation
+    assert '705 mL scores <b>495</b>' in explanation
+    assert '710 mL scores <b>390</b>' in explanation
+    for condition in ('target error ≤40 mL', 'spill ≤20 mL', 'flow ≤8 mL/s', 'cup tilt ≤8°', 'pot tilt ≤12°'):
+        assert condition in explanation
+    for obsolete_claim in ('1000 exp', '1,000 points', '0.99', '−100', 'γΦ', 'outranks', 'cannot make up'):
+        assert obsolete_claim not in explanation
 
 
 def test_training_pause_resume_and_live_counters(tmp_path, finetuning_snapshots):

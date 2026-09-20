@@ -19,6 +19,7 @@ from zipfile import ZipFile
 import numpy as np
 
 from kaist_rl_lab.envs import CoffeePouringEnv
+from kaist_rl_lab.envs.coffee_reward import REWARD_MODEL
 from kaist_rl_lab.version import __version__
 
 MAX_ARCHIVE_BYTES = 12 * 1024 * 1024
@@ -47,6 +48,7 @@ def encode_demonstration(session: Any, participant: str = "") -> bytes:
         "environment": "kaist-or/CoffeePouringEnv-v0",
         "package_version": __version__,
         "physics_model": "torricelli_ballistic_v3",
+        "reward_model": REWARD_MODEL,
         "arm_base_distance_m": session.env.arm_base_distance,
         "episode_id": session.episode_id,
         "participant": participant,
@@ -114,6 +116,8 @@ def read_demonstration(data: bytes) -> tuple[dict[str, np.ndarray], dict[str, An
         raise ValueError("Unsupported trajectory format or environment.")
     if metadata["schema_version"] == 2 and "arm_base_distance_m" not in metadata:
         raise ValueError("Trajectory schema 2 requires arm_base_distance_m.")
+    if metadata.get("reward_model", "legacy") not in ("legacy", REWARD_MODEL):
+        raise ValueError("Unsupported recorded reward model.")
     # Older recordings predate configurable geometry and always used 1.16 m.
     CoffeePouringEnv.validate_arm_base_distance(metadata.get(
         "arm_base_distance_m", CoffeePouringEnv.DEFAULT_ARM_BASE_DISTANCE,

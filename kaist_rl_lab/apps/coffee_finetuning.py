@@ -3,7 +3,7 @@
 Paired policy search adjusts approach/pouring and returning speeds separately.
 PPO instead learns a state-dependent speed actor with a linear critic.
 Both query BC at each physical step, preserve motor directions, and use the same
-accuracy-first discounted objective. Every exploration trial is followed by a
+additive accuracy/speed objective. Every exploration trial is followed by a
 separate noise-free evaluation; only evaluated checkpoints are offered for replay.
 """
 
@@ -107,8 +107,8 @@ def ppo_actor_update(weights, features, latent, advantages, *, epochs=PPO_EPOCHS
     advantages = np.asarray(advantages, dtype=np.float64)
     advantages = (advantages - advantages.mean()) / max(float(advantages.std()), 1e-8)
     if discount_weights is not None:
-        # Discounted state occupancy: early decisions contribute more to the
-        # episode-start objective, rather than optimizing an undiscounted sum.
+        # The shared objective currently has gamma=1; retain these weights so
+        # variable-duration decisions use the same objective as live playback.
         advantages *= np.asarray(discount_weights, dtype=np.float64)
     old_mean = features @ original
     old_logp = -0.5 * ((latent - old_mean) / LATENT_STD) ** 2

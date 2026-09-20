@@ -40,6 +40,9 @@ Displayed rewards are undiscounted sums of archived step rewards, not rewards
 recomputed by the viewer. This preserves recorded bonuses and penalties without
 adding a new end-of-episode reward. Older submissions acquire their reward summaries
 when listed; missing or unreadable archives show a dash rather than a fabricated zero.
+New recordings use the additive Accuracy / speed score described below. Older
+archives retain their historical reward definition and are labeled as legacy;
+their totals should not be compared directly with new scores.
 
 The instructor dashboard also includes **Random agent · no learning**. Click
 **Start random trial** to load the browser simulator and run the same coffee physics.
@@ -117,8 +120,8 @@ The arm bases are **1.28 m apart**, compared with the original 1.16 m: each base
 moves outward by 6 cm while link lengths stay the same. Students, generated examples,
 cloned-policy playback, and every fine-tuning/evaluation rollout share this geometry.
 Wider spacing increases reach demands, but does not by itself guarantee a larger
-fine-tuning gain. The environment reward and 700 mL goal remain the same. Fine-tuning uses the
-separate accuracy-first score described below.
+fine-tuning gain. The 700 mL goal and physical success conditions remain the same.
+New demonstrations and fine-tuning use the same additive score described below.
 
 Seed, exact initial joints, and arm spacing are preserved in every new recording.
 Recordings made with different arm spacing remain available for replay and download,
@@ -139,10 +142,13 @@ exploration noise. All trials use the same fixed starting pose and 1.28 m arm sp
 
 The comparison reports the **Accuracy / speed score**, fill, target error,
 whether the **±5 mL precision goal** is met, spill, duration, and success. Accuracy
-comes first: **exactly 700 mL** earns the highest precision component, and pours
-within ±5 mL receive a strong bonus. Speed still matters among accurate pours.
+contributes one point for each mL closer to **exactly 700 mL**. A successful finish
+within ±5 mL with flow at most 1 mL/s earns an additional **100 points**. Each
+simulated second costs 10 points; spill, final pot tilt, and final flow also cost points.
 The environment's original ±40 mL completion tolerance remains distinct from the
-stricter precision goal. No particular learning gain is guaranteed.
+stricter bonus conditions. The score trades accuracy against time and finish
+quality; it does not guarantee that every slow accurate pour outranks a faster
+inaccurate one. No particular learning gain is guaranteed.
 
 **Policy search** learns two positive speed multipliers: one for approaching and
 pouring, and one for returning the pot. It always queries the clone with the real
@@ -208,52 +214,59 @@ pause, stop, and speed changes. Repeated geometry calculations are cached, and
 hidden training steps omit render-only diagnostics; displayed frames still use
 the full renderer.
 
-### Reward used for fine-tuning
+### Additive reward shared by recordings and fine-tuning
 
-The instructor page visibly explains the **Accuracy / speed score**, a fine-tuning objective
-separate from the environment reward stored in demonstration archives. The original
-clone, candidate trials, current-policy evaluations, and policy playback all use
-the same accuracy-and-speed reward helper. Archived rewards and submitted trajectories are unchanged.
+The instructor page explains the **Accuracy / speed score** in points. New student
+recordings, the original clone, candidate trials, current-policy evaluations, and
+policy playback use the same reward. The final score for an attempt beginning
+with an empty cup is:
 
-For each physics step, `dt = 1/32` seconds and `gamma = 0.99 ** dt`. With error and
-spill in litres and cup angle in radians, the fine-tuning step reward is:
+```text
+score = target_ml - abs(final_fill_ml - target_ml) + precision_bonus
+        - 10 * elapsed_seconds - total_spill_ml
+        - 2 * abs(final_pot_angle_degrees) - 5 * final_flow_ml_per_second
+```
 
-- `-dt` for elapsed time, or one point per simulated second;
-- `-40 * newly spilled liquid`;
-- `-0.024 * dt * sum(control**2)` over all six motors;
-- `-0.032 * dt * abs(cup angle)`;
-- `gamma * Phi(next) - Phi(current)`, where `Phi = -20 * absolute target error`.
+The precision bonus is **100 points** only if all three conditions hold at the
+end: the environment reports success, absolute target error is **≤5 mL**, and
+flow is **≤1 mL/s**. Otherwise it is zero. The existing physical success condition
+still requires error ≤40 mL, spill ≤20 mL, flow ≤8 mL/s, cup tilt ≤8°, and pot tilt
+≤12°. The bonus's tighter flow limit encourages a settled finish rather than
+briefly reaching the target while coffee is still flowing. There is no separate
+general success bonus or failure penalty.
 
-At success, failure, or timeout, it also adds:
+At each 1/32-second step, the dense reward is:
 
-`(100 + A(error) if success else -100) - 100 * final absolute target error - 14 * total spill`
+```text
+step_reward = previous_absolute_error_ml - current_absolute_error_ml
+              - 10 * dt - newly_spilled_ml
+```
 
-The continuous precision bonus is `A(error) = 1000 * exp(-0.5 * (error / 0.005)**2)`,
-where error is in litres. It is awarded **only on success**: exactly 700 mL gives
-1,000 points, and the bonus is at least 606.53 points within ±5 mL. It decreases
-smoothly toward zero as accuracy worsens. A failure cannot earn this bonus merely
-by briefly reaching the target fill with unsafe spill or tilt.
+The error reductions telescope: from an empty cup their sum is exactly
+`target_ml - final_absolute_error_ml`, without any additional offset. The precision
+bonus and final pot-angle/flow costs apply once at the terminal step or manual
+finish. There are no motor-effort or per-step cup-tilt costs. The total is the
+simple sum of recorded rewards, **gamma = 1**, with **no extra exponential
+discount**. Each simulated second already costs 10 points. Animation speed has
+no effect on the score or simulated duration. Trials retain their 60-second limit.
 
-The potential `Phi(next)` is **zero at every terminal state, including timeout**.
-Consequently its discounted sum is the same 14 points for every rollout from an
-empty cup with a 700 mL target. This provides intermediate filling feedback without
-changing which completed policy is preferred.
+For a 700 mL target, consider successful finishes after 30 simulated seconds,
+with no spill, zero final pot angle, and zero final flow:
 
-The displayed score is `sum(gamma**t * fine_tuning_reward_t)` from step zero. All
-terms, including terminal rewards, use the same discount of **0.99 per simulated
-second**. Success still requires being within 40 mL of 700 mL, at most 20 mL spilled,
-flow at most 8 mL/s, cup tilt at most 8°, and pot tilt at most 12°. Trials have a
-60-second limit. Within those limits, even a worst-case successful pour within
-±5 mL at 60 seconds scores at least 343.39, while a successful pour at least 10 mL
-off target cannot score above 248.34 even before time and control costs. Thus
-accuracy takes priority over a fast but inaccurate pour. At equal time and other
-costs, exactly 700 mL uniquely maximizes the score. Discounting and elapsed-time
-cost still favor faster completion when accuracy is comparable. Animation speed
-has no effect.
+| Final fill | Target error | Precision bonus | Final score |
+| --- | --- | --- | --- |
+| 700 mL | 0 mL | 100 | 500 |
+| 705 mL | 5 mL | 100 | 495 |
+| 710 mL | 10 mL | 0 | 390 |
 
-The trajectory library continues to show **undiscounted recorded environment
-reward**, including its original success bonus and penalties. Those numbers use a
-different reward function and should not be compared directly with Accuracy / speed scores.
+At equal time, spill, tilt, and flow, exactly 700 mL has the best volume component.
+Differences in those costs can change the overall ordering, so the table and
+chart expose each measurement alongside the total score.
+
+The trajectory library preserves **historical recorded rewards** in older
+archives and labels them as legacy. Those numbers retain their original reward
+definition and should not be compared directly with new additive scores. Replay
+never rewrites an archived reward to match the current scoring rule.
 
 The best completed evaluation is retained, including the original clone. The
 comparison measures refinement on one fixed pose, not average performance across

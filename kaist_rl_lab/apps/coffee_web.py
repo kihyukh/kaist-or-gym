@@ -109,7 +109,8 @@ class ClassroomStore:
                     success INTEGER NOT NULL, fill_ml REAL NOT NULL, spill_ml REAL NOT NULL,
                     duration_seconds REAL NOT NULL, sha256 TEXT NOT NULL, receipt TEXT NOT NULL,
                     total_reward REAL, reward_checked INTEGER NOT NULL DEFAULT 0,
-                    termination_reason TEXT
+                    termination_reason TEXT,
+                    reward_model TEXT NOT NULL DEFAULT 'legacy'
                 );
                 CREATE INDEX IF NOT EXISTS submissions_session ON submissions(session_id);
                 CREATE TABLE IF NOT EXISTS instructor_sessions (
@@ -127,6 +128,8 @@ class ClassroomStore:
                 db.execute("ALTER TABLE submissions ADD COLUMN reward_checked INTEGER NOT NULL DEFAULT 0")
             if "termination_reason" not in columns:
                 db.execute("ALTER TABLE submissions ADD COLUMN termination_reason TEXT")
+            if "reward_model" not in columns:
+                db.execute("ALTER TABLE submissions ADD COLUMN reward_model TEXT NOT NULL DEFAULT 'legacy'")
 
     @contextmanager
     def connect(self):
@@ -217,13 +220,13 @@ class ClassroomStore:
                 db.execute(
                     "INSERT INTO submissions (episode_id, session_id, participant, received_at, "
                     "steps, success, fill_ml, spill_ml, duration_seconds, sha256, receipt, "
-                    "total_reward, reward_checked, termination_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+                    "total_reward, reward_checked, termination_reason, reward_model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
                     (episode_id, classroom["id"], metadata["participant"].strip(), received,
                      len(arrays["actions"]), int(metadata["success"]),
                      float(arrays["next_observations"][-1, 12]) * 1000,
                      float(arrays["next_observations"][-1, 13]) * 1000,
                      len(arrays["actions"]) * metadata["dt"], digest, receipt, total_reward,
-                     metadata.get("termination_reason")),
+                     metadata.get("termination_reason"), metadata.get("reward_model", "legacy")),
                 )
                 db.commit()
             except Exception:
@@ -527,7 +530,7 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
         store.backfill_rewards(session)
         with store.connect() as db:
             rows = db.execute("""SELECT episode_id, participant, received_at, steps, success,
-                                 fill_ml, spill_ml, duration_seconds, total_reward, termination_reason FROM submissions
+                                 fill_ml, spill_ml, duration_seconds, total_reward, termination_reason, reward_model FROM submissions
                                  WHERE session_id=? ORDER BY received_at DESC""", (session,))
             return [{**dict(row), "success": bool(row["success"])} for row in rows]
 
@@ -685,6 +688,7 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
                 "spill_ml": float(arrays["next_observations"][-1, 13]) * 1000,
                 "duration_seconds": len(arrays["actions"]) * metadata["dt"],
                 "total_reward": total_reward,
+                "reward_model": metadata.get("reward_model", "legacy"),
             })
         return rows
 

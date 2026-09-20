@@ -17,6 +17,7 @@ from uuid import uuid4
 import numpy as np
 
 from kaist_rl_lab.envs import CoffeePouringEnv
+from kaist_rl_lab.envs.coffee_reward import finish_reward_terms
 
 DEFAULT_HORIZON = CoffeePouringEnv.DEFAULT_HORIZON
 DEFAULT_STEPS_PER_UPDATE = 4
@@ -167,6 +168,14 @@ class InteractiveSession:
             final = self.trajectory[-1]
             if not final["terminated"] and not final["truncated"]:
                 final["truncated"] = True
+                # Saving stops the animation, not the physical flow represented
+                # by the final state. Charge its unfinished-pour costs once.
+                terms = finish_reward_terms(self.info)
+                adjustment = float(sum(terms.values()))
+                final["reward"] += adjustment
+                self.cumulative_reward += adjustment
+                self.info["reward_terms"] = {**self.info.get("reward_terms", {}), **terms}
+                self.info["termination_reason"] = "manual_finish"
 
     @property
     def timer_interval(self) -> float:

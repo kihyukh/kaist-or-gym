@@ -11,10 +11,12 @@ NODE_HARNESS = r"""
 const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
 class Node {
   constructor(){this.children=[];this.listeners={};this.hidden=false;this.value='';this.textContent='';this.classList={toggle(){},remove(){},add(){}};}
+  set textContent(value){this._text=String(value);this.children=[];}
+  get textContent(){return this._text+this.children.map(child=>child.textContent).join('');}
   set innerHTML(value){throw Error('Untrusted text must never be parsed as HTML');}
   addEventListener(name,callback){this.listeners[name]=callback;}
   append(...children){this.children.push(...children.flatMap(child=>child.fragment?child.children:[child]));}
-  replaceChildren(...children){this.children=[];this.append(...children);}
+  replaceChildren(...children){this._text='';this.children=[];this.append(...children);}
   setAttribute(key,value){this[key]=value;}
   removeAttribute(key){delete this[key];}
   getContext(){return {clearRect(){}};}
@@ -141,9 +143,9 @@ assert.equal(get('#submissions-panel').hidden,true);
 assert.equal(get('#example-rows').children.length,3);
 assert.equal(requests.filter(item=>item.path.startsWith('/api/instructor/submissions?')).length,0);
 const values=label=>findRow('#example-rows',label).children.map(cell=>cell.textContent);
-assert.ok(values(example.label).some(value=>value==='27.625'));
-assert.ok(values('Zero example').some(value=>value==='0.000'));
-assert.ok(values('Missing example').some(value=>value==='—'));
+assert.ok(values(example.label).some(value=>value==='27.625 Earlier score'));
+assert.ok(values('Zero example').some(value=>value==='0.000 Earlier score'));
+assert.ok(values('Missing example').some(value=>value==='— Earlier score'));
 await replayButton(findRow('#example-rows',example.label)).listeners.click();
 assert.equal(requests.at(-1).path,replayPath(example,'examples'));
 assert.equal(get('#replay-panel').hidden,false);
@@ -161,9 +163,9 @@ def test_student_selection_rewards_and_shared_replay_controls(tmp_path):
         tmp_path,
         r"""
 await login();
-assert.equal(findRow('#submission-rows',row.participant).children[2].textContent,'-2.250');
-assert.equal(findRow('#submission-rows','Zero reward').children[2].textContent,'0.000');
-assert.equal(findRow('#submission-rows','Missing reward').children[2].textContent,'—');
+assert.equal(findRow('#submission-rows',row.participant).children[2].textContent,'-2.250 Earlier score');
+assert.equal(findRow('#submission-rows','Zero reward').children[2].textContent,'0.000 Earlier score');
+assert.equal(findRow('#submission-rows','Missing reward').children[2].textContent,'— Earlier score');
 await replayButton(findRow('#submission-rows',row.participant)).listeners.click();
 assert.equal(requests.at(-1).path,replayPath(row,'submissions'));
 assert.match(get('#replay-summary').textContent,/Student submission/);
@@ -206,6 +208,38 @@ assert.equal(get('#replay-panel').hidden,false);
 assert.equal(get('#play-replay').disabled,false);
 """,
     )
+
+
+def test_earlier_reward_badges_and_replay_labels_distinguish_additive_archives(tmp_path):
+    assert 'Earlier score</b> uses a previous formula' in INSTRUCTOR_HTML
+    assert 'new additive scores match fine-tuning' in INSTRUCTOR_HTML
+    run_instructor(tmp_path, r"""
+const currentStudent={...row,episode_id:'additive-student',participant:'Additive student',reward_model:'additive_v1',total_reward:500};
+const currentExample={...example,example_id:'additive-example',label:'Additive example',reward_model:'additive_v1',total_reward:495};
+studentRows.push(currentStudent,{...row,episode_id:'explicit-legacy',participant:'Legacy student',reward_model:'legacy'});
+exampleRows.push(currentExample);await login();
+const oldCell=findRow('#submission-rows',row.participant).children[2];
+assert.equal(oldCell.textContent,'-2.250 Earlier score');
+assert.equal(oldCell.children.length,1);assert.equal(oldCell.children[0].textContent,'Earlier score');
+assert.match(oldCell.children[0].title,/previous formula.*not directly comparable/);
+assert.equal(findRow('#submission-rows','Legacy student').children[2].children[0].textContent,'Earlier score');
+assert.equal(findRow('#example-rows',example.label).children[1].children[0].textContent,'Earlier score');
+const currentStudentCell=findRow('#submission-rows','Additive student').children[2];
+assert.equal(currentStudentCell.textContent,'500.000');assert.equal(currentStudentCell.children.length,0);
+const currentExampleCell=findRow('#example-rows','Additive example').children[1];
+assert.equal(currentExampleCell.textContent,'495.000');assert.equal(currentExampleCell.children.length,0);
+assert.equal(findRow('#submission-rows','Additive student').children.length,7);
+assert.equal(findRow('#example-rows','Additive example').children.length,6);
+await replayButton(findRow('#submission-rows',row.participant)).listeners.click();
+assert.match(get('#replay-summary').textContent,/Earlier score \(previous formula\)/);
+assert.match(get('#replay-summary').textContent,/total reward -2.250/,'Streaming must preserve the recorded total');
+await replayButton(findRow('#example-rows',example.label)).listeners.click();
+assert.match(get('#replay-summary').textContent,/Earlier score \(previous formula\)/);
+await replayButton(findRow('#submission-rows','Additive student')).listeners.click();
+assert.doesNotMatch(get('#replay-summary').textContent,/Earlier score/);
+await replayButton(findRow('#example-rows','Additive example')).listeners.click();
+assert.doesNotMatch(get('#replay-summary').textContent,/Earlier score/);
+""")
 
 
 def test_switching_trajectories_rejects_an_older_replay_response(tmp_path):

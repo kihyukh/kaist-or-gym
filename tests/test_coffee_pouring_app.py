@@ -171,6 +171,52 @@ def test_finished_session_reports_zero_live_pour_rate():
     session.close()
 
 
+def test_saved_pouring_attempt_charges_actual_final_tilt_and_flow_once():
+    from kaist_rl_lab.apps.coffee_demonstrations import read_demonstration
+    from kaist_rl_lab.apps.coffee_expert import load_examples
+    from kaist_rl_lab.envs.coffee_reward import fill_score, finish_reward_terms
+
+    actions, metadata = read_demonstration(load_examples()[0])
+    session = InteractiveSession(
+        seed=metadata["seed"], target_ml=700, dt=metadata["dt"], horizon=None,
+        arm_base_distance=metadata["arm_base_distance_m"],
+        reset_options={"joint_angles": metadata["initial_joint_angles_rad"]},
+    )
+    try:
+        for action in actions["actions"]:
+            session.motors[:] = action
+            session.advance()
+            if session.info["fill"] > 0.3 and session.info["flow_rate"] > 0.005:
+                break
+        assert session.running and not session.info["is_success"]
+        before = session.cumulative_reward
+        last_step_reward = session.trajectory[-1]["reward"]
+        final_info = dict(session.info)
+        finish_terms = finish_reward_terms(final_info)
+        assert finish_terms["precision_bonus"] == 0
+        assert finish_terms["pot_level"] < 0 and finish_terms["flow_at_finish"] < 0
+        path = session.save_demonstration("unfinished-pour")
+        data = path.read_bytes()
+        archived, saved = read_demonstration(data)
+        expected = (
+            fill_score(final_info["fill"], .7) - final_info["spill"] * 1000
+            - 10 * final_info["elapsed_time"] + sum(finish_terms.values())
+        )
+        assert session.cumulative_reward == pytest.approx(expected, abs=1e-8)
+        assert session.cumulative_reward == pytest.approx(before + sum(finish_terms.values()))
+        assert archived["rewards"][-1] == pytest.approx(last_step_reward + sum(finish_terms.values()))
+        assert np.sum(archived["rewards"], dtype=np.float64) == pytest.approx(expected, abs=2e-4)
+        assert saved["reward_model"] == "additive_v1"
+        assert saved["termination_reason"] == "manual_finish" and not saved["success"]
+        assert session.info["flow_rate"] == final_info["flow_rate"] > 0
+        assert _metrics(session)["pour rate (mL/s)"] == 0  # Animation has stopped.
+        session.finish()
+        assert session.cumulative_reward == pytest.approx(expected, abs=1e-8)
+        assert session.save_demonstration("retry").read_bytes() == data
+    finally:
+        session.close()
+
+
 def test_restart_generation_and_revision_reject_stale_animation_payloads():
     session = InteractiveSession(seed=7001, target_ml=700)
     first = session.animation_snapshot()

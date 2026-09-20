@@ -100,9 +100,12 @@ def test_recording_replays_the_displayed_python_physics_exactly():
         assert metadata["physics_substep"] == 1/64
         assert len(arrays["actions"]) == len(rendered) == 160
         for i, action in enumerate(arrays["actions"]):
-            obs, reward, _, _, _ = reference.step(action)
+            obs, reward, _, _, info = reference.step(action)
             np.testing.assert_array_equal(reference.joint_angles, rendered[i])
             np.testing.assert_array_equal(obs, arrays["next_observations"][i])
+            if i == len(arrays["actions"]) - 1 and metadata["manual_finish"]:
+                from kaist_rl_lab.envs.coffee_reward import finish_reward_terms
+                reward += sum(finish_reward_terms(info).values())
             assert reward == pytest.approx(arrays["rewards"][i], abs=1e-6)
         assert arrays["truncated"][-1]
         assert call(runtime, "save", participant="changed")["archive"] == saved["archive"]

@@ -87,7 +87,8 @@ INSTRUCTOR_HTML = """<!doctype html>
           <thead><tr><th>Example</th><th>Total reward</th><th>Cup / spill</th><th>Result</th><th>Duration</th><th>Trajectory</th></tr></thead>
           <tbody id="example-rows"></tbody>
         </table></div>
-        <p class="hint">Total reward is the sum of the recording's step rewards. Generated examples are separate from student submissions.</p>
+        <p class="hint">Total reward is the sum of the recording's step rewards. An <b>Earlier score</b> uses a previous formula;
+          new additive scores match fine-tuning. Generated examples are separate from student submissions.</p>
       </section>
       <section id="submissions-panel" class="panel" hidden>
         <div class="heading-row">
@@ -101,7 +102,8 @@ INSTRUCTOR_HTML = """<!doctype html>
           <tbody id="submission-rows"></tbody>
         </table></div>
         <p id="empty-submissions" class="empty-state">Waiting for the first submission. Keep this page open during the activity.</p>
-        <p class="hint">Total reward sums the recorded step rewards, including recorded penalties and success bonuses. A dash means the reward is unavailable.</p>
+        <p class="hint">Total reward sums the recorded step rewards. An <b>Earlier score</b> uses a previous formula and is not directly
+          comparable with new additive scores, which match fine-tuning. A dash means the reward is unavailable.</p>
       </section>
       <section id="replay-panel" class="panel" hidden aria-labelledby="replay-title">
         <div class="heading-row"><div><h2 id="replay-title">Trajectory replay</h2><p id="replay-summary" class="hint"></p></div><button id="close-replay" type="button" class="quiet">Close replay</button></div>
@@ -186,6 +188,7 @@ summary {cursor:pointer;font-size:14px;font-weight:650;min-height:44px;display:l
 .button-row {justify-content:flex-start;gap:8px;margin-top:10px;flex-wrap:wrap;}
 .badge {display:inline-block;border-radius:99px;background:#e8f3ed;color:#286446;padding:3px 9px;font-size:12px;font-weight:700;white-space:nowrap;}
 .badge.closed {background:#f1eceb;color:#72534b;}
+.badge.earlier-score {font-size:10px;margin-left:6px;padding:2px 7px;}
 .filter-label {font-size:13px;}
 #participant-filter {max-width:330px;margin-bottom:16px;}
 .table-scroll {width:100%;overflow-x:auto;}
@@ -395,6 +398,15 @@ async function refreshSubmissions() {
 function cell(row,text,className='') {
   const td=document.createElement('td');td.textContent=text;td.className=className;row.append(td);return td;
 }
+function hasEarlierScore(item) {return item.reward_model!=='additive_v1';}
+function trajectoryReward(row,item) {
+  const earlier=hasEarlierScore(item),reward=cell(row,number(item.total_reward,3)+(earlier?' ':''),'nowrap');
+  if(earlier) {
+    const badge=document.createElement('span');badge.className='badge closed earlier-score';badge.textContent='Earlier score';
+    badge.title='Recorded with a previous formula; not directly comparable with new additive scores.';
+    reward.append(badge);
+  }
+}
 function trajectoryPath(item,source='students') {
   return source==='examples'?'/api/instructor/examples/'+idPath(item.example_id):
     '/api/instructor/submissions/'+idPath(item.episode_id);
@@ -423,7 +435,7 @@ async function loadExamples() {
     const rows=document.createDocumentFragment();
     examples.forEach(item=>{
       const row=document.createElement('tr');cell(row,item.label,'participant');
-      cell(row,number(item.total_reward,3),'nowrap');
+      trajectoryReward(row,item);
       cell(row,number(item.fill_ml,1)+' / '+number(item.spill_ml,1)+' mL','nowrap');
       trajectoryOutcome(row,item);cell(row,duration(item.duration_seconds),'nowrap');
       trajectoryActions(row,item,'examples');rows.append(row);
@@ -451,7 +463,7 @@ function renderSubmissions() {
   filtered.forEach(item=>{
     const row=document.createElement('tr');
     cell(row,item.participant||'Anonymous','participant');cell(row,localTime(item.received_at),'nowrap');
-    cell(row,number(item.total_reward,3),'nowrap');
+    trajectoryReward(row,item);
     cell(row,number(item.fill_ml)+' / '+number(item.spill_ml)+' mL','nowrap');
     trajectoryOutcome(row,item);
     cell(row,duration(item.duration_seconds),'nowrap');trajectoryActions(row,item);
@@ -510,7 +522,8 @@ async function openReplay(item,source='students') {
   $('#play-replay').textContent='Play';
   const label=source==='examples'?item.label:(item.participant||'Anonymous');
   const provenance=source==='examples'?'Generated practice demonstration':'Student submission · '+localTime(item.received_at);
-  const summary=provenance+' · '+number(item.steps)+' recorded steps · '+duration(item.duration_seconds);
+  const summary=provenance+' · '+number(item.steps)+' recorded steps · '+duration(item.duration_seconds)+
+    (hasEarlierScore(item)?' · Earlier score (previous formula)':'');
   $('#replay-panel').hidden=false;$('#replay-title').textContent='Replay · '+label;
   $('#replay-summary').textContent=summary+' · total reward '+number(item.total_reward,3);
   $('#replay-reward').textContent='—';$('#replay-time').textContent='0.0 / '+duration(item.duration_seconds);

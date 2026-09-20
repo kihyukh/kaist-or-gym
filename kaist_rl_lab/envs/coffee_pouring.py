@@ -17,6 +17,8 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
+from kaist_rl_lab.envs.coffee_reward import REWARD_MODEL, transition_reward_terms
+
 
 @dataclass(frozen=True)
 class ArmGeometry:
@@ -1675,6 +1677,9 @@ class CoffeePouringEnv(gym.Env):
             "spill": float(self.spill),
             "flow": float(self.last_flow),
             "flow_rate": float(self.last_flow_rate),
+            "pot_angle": float(self.pot_angle),
+            "cup_angle": float(self.cup_angle),
+            "reward_model": REWARD_MODEL,
             "captured": float(self.last_captured),
             "capture_fraction": float(self.last_capture_fraction),
             "pour_intensity": float(self.last_pour_intensity),
@@ -1869,7 +1874,6 @@ class CoffeePouringEnv(gym.Env):
             )
         self.elapsed_steps += 1
 
-        fill_error = abs(self.fill - self.target_fill)
         success = self._is_success()
         irrecoverable_failure = self.spill >= 0.40 or self.fill >= self.CUP_CAPACITY - 0.001
         terminated = bool(success or irrecoverable_failure)
@@ -1883,25 +1887,11 @@ class CoffeePouringEnv(gym.Env):
         elif truncated:
             self._last_termination_reason = "time_limit"
 
-        progress = previous_error - fill_error
-        spill_delta = self.spill - previous_spill
-        reward_terms = {
-            "fill_progress": 20.0 * progress,
-            "spill": -40.0 * spill_delta,
-            "control": -0.024 * self.dt * float(np.sum(action_array**2)),
-            "cup_tilt": -0.032 * self.dt * abs(self.cup_angle),
-            "time": -0.008 * self.dt,
-            "terminal": 0.0,
-        }
-        if terminated or truncated:
-            reward_terms["terminal"] = (
-                (15.0 if success else 0.0) - 10.0 * fill_error - 14.0 * self.spill
-            )
-        reward = float(sum(reward_terms.values()))
-
         self._episode_done = terminated or truncated
         observation = self._get_obs()
         info = self._get_info()
+        reward_terms = transition_reward_terms(previous_error, previous_spill, info, self.dt)
+        reward = float(sum(reward_terms.values()))
         info["reward_terms"] = reward_terms
         if self.render_mode == "human":
             self._render_human()

@@ -41,26 +41,41 @@ the live simulation. The five
 `(0.72, 0.055)`, `(0.68, 0.053)`, `(0.64, 0.057)`, `(0.70, 0.054)`, and
 `(0.66, 0.056)`.
 
-The table reports **undiscounted total environment reward**. Fine-tuning instead
-compares discounted return, with a discount of 0.99 per simulated second.
+The table reports **total additive points** from the regenerated `additive_v1`
+recordings. The environment, students, policy playback, and fine-tuning use the
+same score, without discounting:
+
+```text
+700 − |final fill in mL − 700|
++ 100 if within ±5 mL and safely finished with flow at most 1 mL/s
+− 10 × elapsed simulated seconds
+− spilled mL
+− 2 × |final pot tilt in degrees|
+− 5 × final flow in mL/second
+```
+
+The existing completion checks still require the pot/cup within 12°/8° of
+upright and at most 20 mL spill. Exact 700 mL is best at equal time and final
+conditions; the explicit time cost permits speed/accuracy tradeoffs. Manual
+saving applies the final tilt and flow costs once, using the physical state.
 
 | Example | Start seed | Early-return allowance | Duration | Cup coffee | Total reward |
 |---|---:|---:|---:|---:|---:|
-| 1 | 16262 | 15 mL | 35.969 s | 686.47 mL | 27.814 |
-| 2 | 17212 | 20 mL | 39.781 s | 681.87 mL | 27.595 |
-| 3 | 18021 | 25 mL | 33.344 s | 676.88 mL | 27.520 |
-| 4 | 19055 | 30 mL | 38.281 s | 671.95 mL | 27.347 |
-| 5 | 17020 | 18 mL | 38.031 s | 683.49 mL | 27.657 |
-| 6 | 18094 | 15 mL | 37.562 s | 686.47 mL | 27.760 |
-| 7 | 21808 | 20 mL | 35.125 s | 681.87 mL | 27.698 |
-| 8 | 18143 | 25 mL | 37.219 s | 676.88 mL | 27.499 |
-| 9 | 18986 | 30 mL | 38.250 s | 671.95 mL | 27.340 |
-| 10 | 21234 | 18 mL | 33.344 s | 683.49 mL | 27.780 |
-| 11 | 21142 | 15 mL | 37.750 s | 686.47 mL | 27.734 |
-| 12 | 17660 | 20 mL | 34.625 s | 681.87 mL | 27.709 |
-| 13 | 17573 | 25 mL | 33.781 s | 676.88 mL | 27.580 |
-| 14 | 16742 | 30 mL | 38.625 s | 671.95 mL | 27.318 |
-| 15 | 20628 | 18 mL | 34.344 s | 683.49 mL | 27.758 |
+| 1 | 16262 | 15 mL | 35.969 s | 686.47 mL | 302.955 |
+| 2 | 17212 | 20 mL | 39.781 s | 681.87 mL | 260.146 |
+| 3 | 18021 | 25 mL | 33.344 s | 676.88 mL | 319.561 |
+| 4 | 19055 | 30 mL | 38.281 s | 671.95 mL | 265.160 |
+| 5 | 17020 | 18 mL | 38.031 s | 683.49 mL | 279.319 |
+| 6 | 18094 | 15 mL | 37.562 s | 686.47 mL | 287.017 |
+| 7 | 21808 | 20 mL | 35.125 s | 681.87 mL | 306.708 |
+| 8 | 18143 | 25 mL | 37.219 s | 676.88 mL | 280.811 |
+| 9 | 18986 | 30 mL | 38.250 s | 671.95 mL | 265.472 |
+| 10 | 21234 | 18 mL | 33.344 s | 683.49 mL | 326.194 |
+| 11 | 21142 | 15 mL | 37.750 s | 686.47 mL | 285.142 |
+| 12 | 17660 | 20 mL | 34.625 s | 681.87 mL | 311.708 |
+| 13 | 17573 | 25 mL | 33.781 s | 676.88 mL | 315.186 |
+| 14 | 16742 | 30 mL | 38.625 s | 671.95 mL | 261.722 |
+| 15 | 20628 | 18 mL | 34.344 s | 683.49 mL | 316.194 |
 
 Regenerate with `python -m kaist_rl_lab.apps.coffee_expert` from the repository
 root using its installed dependencies. The shared classroom spacing, listed
@@ -72,53 +87,56 @@ initial joint angles, so replay does not depend on later start-sampler changes.
 The unchanged nearest-neighbor clone learns only the recorded observation/action
 pairs; it has no expert fallback. These fifteen recordings contain **17,473
 steps**, with **11,206 unique training samples**. The separate whole-trajectory
-held-out action MAE is **0.02542**. From the canonical policy pose (seed 7001), the
-clone succeeds with **672.054 mL**, less than 0.001 mL spilled, and **36.0625
-seconds**. Under the original environment reward, its undiscounted total is
-**27.38892** and discounted return is **20.44806**. Fine-tuning uses a separate
-accuracy-and-speed reward, so its scores are not directly comparable. The clone's
-imperfect pouring accuracy is inherited from the practice data; it does not meet
-the **±5 mL precision goal** around 700 mL.
+held-out action MAE is **0.02542**. Regeneration changed the reward arrays and
+reward metadata; observations, actions, next observations, and completion flags
+were verified identical to the previous recordings.
 
-The same clone was run closed-loop on twenty unseen classroom starts, seeds
-**12000–12019**, at 32 Hz, with the same 1.28 m geometry, 700 mL target, and
-60-second limit. **20/20** succeeded. Across those runs, final fill ranged from
-**671.899 to 686.221 mL**, spill stayed below **0.055 mL**, and duration ranged
-from **34.41 to 38.75 seconds**. Discounted returns of the original environment
-reward ranged from **19.89630 to 21.03761**. These are new rollouts, not predictions on stored demonstration frames.
+From the canonical policy pose (seed 7001), the clone succeeds with
+**672.054437 mL**, less than 0.001 mL spilled, and **36.0625 seconds**. Its new
+additive score is **287.443978 points**. The clone's imperfect accuracy is
+inherited from the practice data and misses the **±5 mL precision bonus**.
 
-Fine-tuning now prioritizes **exactly 700 mL**, with a strong continuous precision
-bonus within **±5 mL**, while retaining discounted reward and elapsed-time cost.
-The original ±40 mL environment completion tolerance is not the precision goal.
-These deliberately early-return examples leave an accuracy gap for reward-based
-learning to address.
+Under the same additive score, unchanged **10-trial two-phase policy search**
+learns the following from these examples:
 
-The current **10-iteration, two-phase policy-search** benchmark uses these fifteen
-recordings and one fixed canonical starting pose. All three primary training seeds
-reach the ±5 mL goal by iteration **3 or 4**, while also finishing faster than the
-clone's 36.0625 seconds. The clone's starting accuracy/speed score is **51.00519**.
-
-| Training seed | First evaluation within ±5 mL | Best policy fill | Absolute error | Duration | Accuracy / speed score |
+| Training seed | First evaluation within ±5 mL | Best policy fill | Absolute error | Duration | Points |
 |---|---:|---:|---:|---:|---:|
-| 2026 | 4 | 699.873 mL | 0.127 mL | 32.500 s | 779.224 |
-| 2027 | 3 | 699.385 mL | 0.615 mL | 32.719 s | 772.110 |
-| 2028 | 3 | 702.075 mL | 2.075 mL | 32.312 s | 721.311 |
+| 2026 | 4 | 702.087527 mL | 2.087527 mL | 31.68750 s | 457.174745 |
+| 2027 | 3 | 703.774911 mL | 3.774911 mL | 31.34375 s | 458.889869 |
+| 2028 | 3 | 703.437866 mL | 3.437866 mL | 31.53125 s | 457.393665 |
 
-Three additional optimization seeds, **7, 99, and 2029**, also reach ±5 mL by
-iteration 3 or 4. Their best policies pour **699.084–701.429 mL** in
-**32.188–32.313 seconds**. These are new optimization seeds at the same starting
-pose, not tests on unseen starting poses. Every best policy's metrics were
-reproduced exactly by the instructor's policy-playback runtime. The histories
-retain failed exploration too: across all six runs, **54/60 candidates** meet the
-environment's original completion condition; every final best policy meets the
-stricter precision goal.
+Every retained best policy earns the bonus, finishes with zero flow, and is
+**12.1–13.1% faster** than the clone. Final pot tilt is approximately
+11.93–11.95°, within the existing near-upright completion tolerance; that
+remaining tilt still incurs a cost. All 30 fresh evaluations complete safely;
+27 of 30 exploratory candidates do so. Candidates that fail or miss the precision
+band remain in the history. A separate real-physics replay reproduces every
+best-policy score and final state exactly.
 
-The [reproducible fine-tuning benchmark](../../../benchmarks/coffee_finetuning/README.md)
-contains full candidate/evaluation histories, objective definitions, and comparisons
-with PPO. Scores from an earlier reward are kept separate from the current
-accuracy-and-speed objective. These measurements do not promise a particular gain
-for every training seed or student dataset.
+The highest-scoring near-target early stops on these rollouts were also replayed
+and finished through the student's actual manual-finish method. Continuing to a
+completed pour scores **70.3–74.4 points more** than those tested stops, including
+stops after flow nearly ceases but while the pot is still tilted. Repeating
+finish does not charge the final penalties twice. These measurements are checks
+of the recorded policies, not a guarantee for every possible policy.
 
-Generated examples are only a proxy for a small class's data. Fifteen human
-demonstrations may have different coverage, quality, and consistency, and the
-held-out check does not establish robustness outside the tested start range.
+The [current additive benchmark](../../../benchmarks/coffee_finetuning/README.md)
+contains full candidate/evaluation histories, the literal score formula,
+manual-finish checks, and a runnable reproduction script. The website learns a
+new policy when training starts; it does not load these benchmark answers.
+
+An earlier held-out behavior check ran the same cloned controller on twenty
+unseen classroom starts, seeds **12000–12019**, with the same geometry and time
+limit. **20/20** succeeded, with **671.899–686.221 mL** final fill, less than
+**0.055 mL** spill, and **34.41–38.75 seconds** duration. That check predates the
+reward update and does not provide new additive scores. Physics, demonstrations,
+and the cloned controller's observations/actions are unchanged.
+
+The previous Gaussian-score six-seed search and PPO comparisons are retained as
+**historical** results in the benchmark folder. Their scores and selected policies
+must not be compared directly with the new additive points. The new bounded
+check covers the three optimization seeds above at one fixed starting pose.
+
+Generated examples are a proxy for a small class's data. Human demonstrations
+may have different coverage, quality, and consistency. These results do not
+promise the same improvement for every training seed, student dataset, or start.

@@ -37,10 +37,13 @@ def example_model():
     return train_behavior_cloning([read_demonstration(data) for data in load_examples()])
 
 
-def test_finite_horizon_gae_discounts_variable_duration_decisions_and_zero_bootstrap():
+@pytest.mark.parametrize("step_discount", [1.0, .99**BROWSER_DT])
+def test_finite_horizon_gae_discounts_variable_duration_decisions_and_zero_bootstrap(step_discount):
     rewards = np.array([0.2, -0.1, 15.0])
     values = np.array([10.0, 12.0, 14.0])
-    discounts = STEP_DISCOUNT ** np.array([8, 8, 3])
+    # Retain coverage of the general GAE calculation as well as the classroom's
+    # undiscounted objective; unequal durations matter when discount is enabled.
+    discounts = step_discount ** np.array([8, 8, 3])
     returns = np.array([rewards[0] + discounts[0] * (rewards[1] + discounts[1] * rewards[2]),
                         rewards[1] + discounts[1] * rewards[2], rewards[2]])
     np.testing.assert_allclose(
@@ -141,6 +144,12 @@ def test_real_training_uses_rewards_retains_best_and_replays_exactly(example_mod
         assert result["best"]["return"] >= result["baseline"]["return"]
         assert len(result["history"]) == 1
         assert all(row["evaluation"] is not None for row in result["history"])
+        rollout_metrics = [result["baseline"], result["best"]]
+        rollout_metrics.extend(
+            metrics for row in result["history"] for metrics in (row["training"], row["evaluation"])
+        )
+        for metrics in rollout_metrics:
+            assert metrics["return"] == pytest.approx(metrics["raw_return"], abs=1e-9)
         evaluation_seed = result["evaluation_seed"]
         assert result["baseline"]["initial_seed"] == evaluation_seed
         assert result["history"][0]["evaluation"]["initial_seed"] == evaluation_seed
@@ -155,19 +164,18 @@ def test_real_training_uses_rewards_retains_best_and_replays_exactly(example_mod
         )
         reward = 0.0
         raw_reward = 0.0
-        discount = 1.0
         for _ in range(60 * 32):
             observation, current, terminal, truncated, info = env.step(
                 trainer.best_policy.predict(observation),
             )
-            reward += discount * fine_tuning_reward(info, BROWSER_DT)
+            assert fine_tuning_reward(info, BROWSER_DT) == pytest.approx(current, abs=1e-12)
+            reward += fine_tuning_reward(info, BROWSER_DT)
             raw_reward += current
-            discount *= STEP_DISCOUNT
             if terminal or truncated:
                 break
         assert reward == pytest.approx(result["best"]["return"], abs=1e-9)
         assert raw_reward == pytest.approx(result["best"]["raw_return"], abs=1e-9)
-        assert reward != pytest.approx(raw_reward)
+        assert reward == pytest.approx(raw_reward, abs=1e-9)
         assert env.fill * 1000 == pytest.approx(result["best"]["fill_ml"], abs=1e-9)
         assert info["is_success"] == result["best"]["success"]
         env.close()
@@ -227,18 +235,18 @@ def test_ppo_update_matches_finite_difference_of_clipped_objective():
         np.testing.assert_allclose(actual, expected, atol=1e-8, rtol=1e-6)
 
 
-def test_discount_prefers_earlier_equivalent_success_and_is_physics_time_based():
-    # A fixed success reward is worth more at 20 seconds than at 30 seconds.
-    assert STEP_DISCOUNT**32 == pytest.approx(0.99)
-    assert 15 * STEP_DISCOUNT**(20 * 32) > 15 * STEP_DISCOUNT**(30 * 32)
+def test_additive_return_is_unchanged_by_actor_decision_grouping():
+    # Time preference comes from the explicit -10 points/second environment
+    # reward. There is no second exponential discount on the displayed score.
+    assert STEP_DISCOUNT == 1.0
     # 19 physics rewards, including a final partial decision, must give the
-    # same return whether discounted directly or grouped into actor decisions.
+    # same additive return whether summed directly or grouped into actor decisions.
     rewards = np.linspace(-0.2, 1.2, 19)
     groups = [rewards[:8], rewards[8:16], rewards[16:]]
     grouped = [np.sum(group * STEP_DISCOUNT ** np.arange(len(group))) for group in groups]
     discounts = [STEP_DISCOUNT ** len(group) for group in groups]
     actual = generalized_advantages(grouped, np.zeros(3), discounts=discounts, trace_decay=1)[0]
-    assert actual == pytest.approx(np.sum(rewards * STEP_DISCOUNT ** np.arange(19)))
+    assert actual == pytest.approx(np.sum(rewards))
 
 
 def test_hundred_iterations_default_and_critic_memory_is_constant(example_model):
@@ -291,15 +299,17 @@ def test_evaluation_is_greedy_current_policy_and_never_samples_noise(example_mod
         expected_env = CoffeePouringEnv(arm_base_distance=ARM_BASE_DISTANCE_M, dt=BROWSER_DT, horizon=60 * 32)
         observation, _ = expected_env.reset(seed=trainer.evaluation_seed,
                                             options={**fixed_policy_layout(), 'target_fill': 0.7})
-        discounted = 0.0
-        for step in range(20):
+        environment_return = 0.0
+        for _ in range(20):
             action = trainer.policy.predict(observation)
-            observation, _, _, _, info = expected_env.step(action)
-            discounted += STEP_DISCOUNT**step * fine_tuning_reward(info, BROWSER_DT)
+            observation, reward, _, _, info = expected_env.step(action)
+            environment_return += reward
+            assert fine_tuning_reward(info, BROWSER_DT) == pytest.approx(reward, abs=1e-12)
             trainer.step_chunk(1)
             np.testing.assert_array_equal(trainer.session.observation, observation)
             np.testing.assert_array_equal(trainer.session.trajectory[-1]['action'], action)
-        assert trainer.discounted_return == pytest.approx(discounted, abs=1e-12)
+        assert trainer.discounted_return == pytest.approx(environment_return, abs=1e-12)
+        assert trainer.discounted_return == pytest.approx(trainer.session.cumulative_reward, abs=1e-12)
         assert trainer.history[0]['evaluation'] is None  # Never publish a partial evaluation.
         expected_env.close()
     finally:

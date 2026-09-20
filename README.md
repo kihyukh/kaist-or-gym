@@ -120,7 +120,7 @@ for _ in range(100):
 
 `CoffeePouringEnv` is a continuous-control teaching environment for behavior cloning and
 reward-based fine-tuning. Two planar robot arms hold a cup and a coffee pot. The goal is to reach
-a requested fill amount while limiting spill, unnecessary motion, and cup tilt.
+a requested fill amount quickly, limit spill, and finish with an upright pot and settled flow.
 
 This is not a full fluid simulator or a real-robot controller. Arm geometry uses exact planar
 forward kinematics, while the liquid uses a fast, deterministic physical approximation: a finite
@@ -154,6 +154,37 @@ second, so a 90-degree turn takes ten simulated seconds when a mechanical stop i
 Each action is held as a constant angular velocity for the 0.125-second decision interval. Fixed
 1/64-second physics substeps integrate joint motion and liquid flow together, while the agent still
 observes and acts only at discrete Gymnasium decision epochs.
+
+## Additive classroom score
+
+New student recordings, behavior-cloned policy runs, and fine-tuning trials use
+the same **Accuracy / speed score**. For an attempt starting with an empty cup:
+
+```text
+score = target_ml - abs(final_fill_ml - target_ml) + precision_bonus
+        - 10 * elapsed_seconds - total_spill_ml
+        - 2 * abs(final_pot_angle_degrees) - 5 * final_flow_ml_per_second
+```
+
+The precision bonus is **100 points** only when the final state is successful,
+the target error is **at most 5 mL**, and the remaining flow is **at most 1 mL/s**.
+Otherwise it is zero. Physical success retains its existing conditions: target
+error ≤40 mL, total spill ≤20 mL, flow ≤8 mL/s, cup tilt ≤8°, and pot tilt ≤12°.
+Thus merely reaching 700 mL while still pouring does not earn the precision bonus.
+
+Filling closer to the target gives immediate feedback: each step earns the
+decrease in absolute error in mL, minus `10 * dt` and newly spilled mL. These
+volume changes sum to `target_ml - final_error_ml` from an empty cup, with no
+extra offset. The bonus and final pot-angle/flow penalties apply once, at the
+terminal step or manual finish. There is no motor-effort or per-step cup-tilt
+penalty. Returns are simple sums (**gamma = 1**), with no exponential discount.
+
+At a 700 mL target, a successful finish after 30 simulated seconds with no spill,
+an upright pot, and zero final flow scores **500 at 700 mL**, **495 at 705 mL**,
+or **390 at 710 mL**. The score trades accuracy against elapsed time, spill, and
+finish quality. Animation speed does not affect it. Older recordings retain
+their historical recorded rewards; legacy scores are not directly comparable
+with this score.
 
 ## Gymnasium usage
 

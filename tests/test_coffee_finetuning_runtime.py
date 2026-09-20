@@ -319,6 +319,8 @@ def test_actual_training_and_best_rollout_report_the_same_physics(runtime, model
     assert rollout["done"]
     assert rollout["outcome"] == state["result"]["best"]["outcome"]
     assert rollout["reward"] == pytest.approx(state["result"]["best"]["return"])
+    assert rollout["reward"] == pytest.approx(rollout["raw_return"])
+    assert rollout["reward"] == pytest.approx(sum(row["reward"] for row in runtime.session.trajectory))
     assert rollout["elapsed_seconds"] == state["result"]["best"]["seconds"]
     assert call(runtime, "tick") == final
     assert call(runtime, "ft-pause", paused=False) == final
@@ -423,7 +425,7 @@ def test_default_and_maximum_training_budget_use_the_core_100_trial_limit(runtim
     assert started["finetuning"]["progress"]["episodes"] == 100
 
 
-def test_discounted_watch_return_uses_physics_time_independent_of_speed_pause_and_batching(
+def test_additive_watch_return_uses_physics_time_independent_of_speed_pause_and_batching(
     monkeypatch, runtime, model,
 ):
     monkeypatch.setattr(module, "TRIAL_STEPS", 9)
@@ -432,8 +434,10 @@ def test_discounted_watch_return_uses_physics_time_independent_of_speed_pause_an
     partial = call(runtime, "tick", max_steps=4)
     partial_reward = partial["finetuning"]["rollout"]["reward"]
     rewards = np.array([row["reward"] for row in runtime.session.trajectory])
-    idle_reward = 14 * (1 - module.STEP_DISCOUNT) - module.BROWSER_DT
-    assert partial_reward == pytest.approx(np.sum(module.STEP_DISCOUNT ** np.arange(4) * idle_reward))
+    idle_reward = -10 * module.BROWSER_DT
+    assert module.STEP_DISCOUNT == 1
+    assert partial_reward == pytest.approx(4 * idle_reward)
+    assert partial_reward == pytest.approx(rewards.sum())
     assert partial["finetuning"]["rollout"]["raw_return"] == pytest.approx(rewards.sum())
     paused = call(runtime, "ft-pause", paused=True)
     assert call(runtime, "tick", max_steps=32) == paused
@@ -445,10 +449,11 @@ def test_discounted_watch_return_uses_physics_time_independent_of_speed_pause_an
     rollout = completed["finetuning"]["rollout"]
     assert rollout["done"] and len(rewards) == 9
     expected_rewards = np.full(9, idle_reward)
-    expected_rewards[-1] = -module.BROWSER_DT + 14 - 100 - 100 * .7
-    assert rollout["reward"] == pytest.approx(np.dot(module.STEP_DISCOUNT ** np.arange(9), expected_rewards))
+    # An empty, upright, non-pouring timeout has no bonus or finishing costs.
+    np.testing.assert_allclose(rewards, expected_rewards, atol=1e-12)
+    assert rollout["reward"] == pytest.approx(expected_rewards.sum())
     assert rollout["raw_return"] == pytest.approx(rewards.sum())
-    assert rollout["reward"] != pytest.approx(rollout["raw_return"])
+    assert rollout["reward"] == pytest.approx(rollout["raw_return"])
     assert call(runtime, "tick", max_steps=32) == completed
     restarted = call(runtime, "ft-run", policy="base", speed=8)
     assert restarted["finetuning"]["rollout"]["reward"] == 0
@@ -457,7 +462,7 @@ def test_discounted_watch_return_uses_physics_time_independent_of_speed_pause_an
     assert repeated["finetuning"]["rollout"]["reward"] == partial_reward
 
 
-def test_live_training_and_completed_scene_use_the_trainers_discounted_return(
+def test_live_training_and_completed_scene_use_the_environment_additive_return(
     monkeypatch, runtime, model,
 ):
     from kaist_rl_lab.apps import coffee_finetuning as core
@@ -467,16 +472,21 @@ def test_live_training_and_completed_scene_use_the_trainers_discounted_return(
     call(runtime, "ft-train", episodes=1, seed=2026)
     partial = call(runtime, "ft-step", max_steps=3)["finetuning"]
     rewards = np.array([row["reward"] for row in runtime.session.trajectory])
-    idle_reward = 14 * (1 - module.STEP_DISCOUNT) - module.BROWSER_DT
-    expected = np.sum(module.STEP_DISCOUNT ** np.arange(3) * idle_reward)
+    idle_reward = -10 * module.BROWSER_DT
+    expected = 3 * idle_reward
     assert partial["progress"]["reward"] == pytest.approx(expected)
     assert partial["progress"]["raw_return"] == pytest.approx(rewards.sum())
+    assert partial["progress"]["reward"] == pytest.approx(rewards.sum())
     completed = call(runtime, "ft-step", max_steps=32)["finetuning"]
     assert not completed["training_active"]
     assert completed["progress"]["reward"] == runtime.trainer.discounted_return
     assert completed["rollout"]["reward"] == runtime.trainer.discounted_return
     assert completed["rollout"]["reward"] == completed["result"]["history"][-1]["evaluation"]["return"]
     assert completed["rollout"]["raw_return"] == completed["result"]["history"][-1]["evaluation"]["raw_return"]
+    assert completed["rollout"]["reward"] == pytest.approx(completed["rollout"]["raw_return"])
+    assert completed["rollout"]["reward"] == pytest.approx(
+        sum(row["reward"] for row in runtime.session.trajectory),
+    )
 
 
 def test_noise_free_watch_matches_evaluation_for_a_nonzero_learned_actor(runtime, model):
