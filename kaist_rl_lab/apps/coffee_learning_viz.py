@@ -104,7 +104,7 @@ function createLearningVisualization(element) {
   const number=(value,digits=6)=>finite(value)?value.toFixed(digits):'—';
   const signed=(value,digits=6)=>finite(value)?(value>0?'+':'')+
     (value!==0&&Math.abs(value)<10**(-digits)?value.toExponential(4):number(value,digits)):'—';
-  const isSearch=result=>result.strategy==='policy_search'||result.algorithm==='bounded_paired_policy_search';
+  const isSearch=result=>['policy_search','residual_search'].includes(result.strategy)||result.algorithm==='bounded_paired_policy_search';
   const measures={score:{label:'Accuracy / speed score',digits:6,value:reward},
     error:{label:'Absolute target error (mL)',digits:4,value:item=>finite(item?.fill_ml)?Math.abs(700-item.fill_ml):null},
     time:{label:'Duration (s)',digits:5,value:item=>finite(item?.seconds)?item.seconds:null}};
@@ -134,8 +134,8 @@ function createLearningVisualization(element) {
     const attempted=history.filter(row=>row.update&&typeof row.update==='object').length;
     const episode=Number.isInteger(progress.episode)?progress.episode:result.episode;
     const total=Number.isInteger(progress.episodes)?progress.episodes:result.episodes;
-    const search=result.strategy==='policy_search'||result.algorithm==='bounded_paired_policy_search';
-    const phaseLabel={baseline:'Checking the original clone',training:search?'Testing a candidate speed':'Exploring nearby actions',evaluation:'Evaluating without noise'}[phase]||'Experiment ready';
+    const search=['policy_search','residual_search'].includes(result.strategy)||result.algorithm==='bounded_paired_policy_search';
+    const phaseLabel={baseline:'Checking the original clone',training:search?'Exploring a candidate policy':'Exploring nearby actions',evaluation:'Evaluating without noise'}[phase]||'Experiment ready';
     let label;
     if(current.training_active)label=(current.training_paused||current.paused?'Paused · ':'')+phaseLabel+
       (phase!=='baseline'&&Number.isInteger(episode)?' · iteration '+episode+(Number.isInteger(total)?' / '+total:''):'');

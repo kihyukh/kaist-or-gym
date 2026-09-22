@@ -177,7 +177,7 @@ state.training_active=true;state.paused=false;state.result.done=false;
 state.progress.phase='training';state.progress.episode=4;
 state.result.history.forEach((row,index)=>{row.update={accepted:index===1,actor_change:.02};});
 viz.render(state);
-assert.match(node('#ft-learning-status').textContent,/Testing a candidate speed/);
+assert.match(node('#ft-learning-status').textContent,/Exploring a candidate policy/);
 assert.match(node('#ft-learning-updates').textContent,/Policy updates: 1 applied \/ 4 attempted/);
 assert.equal(points('exploration').length,4);assert.equal(points('evaluation').length,4);
 node('#ft-chart-trial').value='1';fire(node('#ft-chart-trial'),'change');

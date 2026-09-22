@@ -110,7 +110,8 @@ class ClassroomStore:
                     duration_seconds REAL NOT NULL, sha256 TEXT NOT NULL, receipt TEXT NOT NULL,
                     total_reward REAL, reward_checked INTEGER NOT NULL DEFAULT 0,
                     termination_reason TEXT,
-                    reward_model TEXT NOT NULL DEFAULT 'legacy'
+                    reward_model TEXT NOT NULL DEFAULT 'legacy',
+                    cleared_batch TEXT, cleared_at TEXT
                 );
                 CREATE INDEX IF NOT EXISTS submissions_session ON submissions(session_id);
                 CREATE TABLE IF NOT EXISTS instructor_sessions (
@@ -130,6 +131,10 @@ class ClassroomStore:
                 db.execute("ALTER TABLE submissions ADD COLUMN termination_reason TEXT")
             if "reward_model" not in columns:
                 db.execute("ALTER TABLE submissions ADD COLUMN reward_model TEXT NOT NULL DEFAULT 'legacy'")
+            if "cleared_batch" not in columns:
+                db.execute("ALTER TABLE submissions ADD COLUMN cleared_batch TEXT")
+            if "cleared_at" not in columns:
+                db.execute("ALTER TABLE submissions ADD COLUMN cleared_at TEXT")
 
     @contextmanager
     def connect(self):
@@ -152,7 +157,7 @@ class ClassroomStore:
         try:
             with self.connect() as db:
                 rows = db.execute(
-                    "SELECT episode_id FROM submissions WHERE session_id=? AND reward_checked=0 "
+                    "SELECT episode_id FROM submissions WHERE session_id=? AND cleared_batch IS NULL AND reward_checked=0 "
                     "ORDER BY received_at DESC, episode_id DESC LIMIT ?",
                     (session_id, LEGACY_REWARD_BATCH_SIZE),
                 ).fetchall()
@@ -175,6 +180,44 @@ class ClassroomStore:
                 )
         finally:
             self.reward_backfill_lock.release()
+
+    def latest_clear(self, session_id: str, db=None):
+        """Find the most recent still-recoverable batch, including after restart."""
+        if db is None:
+            with self.connect() as connection:
+                return self.latest_clear(session_id, connection)
+        row = db.execute(
+            "SELECT cleared_batch AS batch_id, COUNT(*) AS count, MAX(cleared_at) AS cleared_at "
+            "FROM submissions WHERE session_id=? AND cleared_batch IS NOT NULL "
+            "GROUP BY cleared_batch ORDER BY cleared_at DESC, cleared_batch DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def clear_submissions(self, session_id: str):
+        # The write transaction defines this batch. Submissions received later
+        # are neither cleared nor touched by an eventual undo.
+        with self.write_lock, self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not db.execute("SELECT id FROM classes WHERE id=?", (session_id,)).fetchone():
+                raise LookupError("Classroom not found.")
+            batch = str(uuid4())
+            changed = db.execute(
+                "UPDATE submissions SET cleared_batch=?, cleared_at=? "
+                "WHERE session_id=? AND cleared_batch IS NULL", (batch, _now(), session_id),
+            ).rowcount
+            return {"cleared_count": changed, "latest_clear": self.latest_clear(session_id, db)}
+
+    def restore_submissions(self, session_id: str, batch_id: str):
+        with self.write_lock, self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not db.execute("SELECT id FROM classes WHERE id=?", (session_id,)).fetchone():
+                raise LookupError("Classroom not found.")
+            changed = db.execute(
+                "UPDATE submissions SET cleared_batch=NULL, cleared_at=NULL "
+                "WHERE session_id=? AND cleared_batch=?", (session_id, batch_id),
+            ).rowcount
+            return {"restored_count": changed, "latest_clear": self.latest_clear(session_id, db)}
 
     def receive(self, token: str, data: bytes, arrays, metadata):
         episode_id = str(UUID(metadata["episode_id"]))
@@ -482,7 +525,8 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
     def list_sessions(request: Request):
         instructor(request)
         with store.connect() as db:
-            return [classroom(row) for row in db.execute("SELECT * FROM classes ORDER BY created_at DESC")]
+            return [{**classroom(row), "latest_clear": store.latest_clear(row["id"], db)}
+                    for row in db.execute("SELECT * FROM classes ORDER BY created_at DESC")]
 
     @app.post("/api/instructor/sessions")
     async def create_session(request: Request):
@@ -508,6 +552,32 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
             raise HTTPException(404, "Classroom not found.")
         return classroom(row)
 
+    @app.post("/api/instructor/sessions/{identifier}/submissions/clear")
+    def clear_submissions(identifier: str, request: Request):
+        instructor(request)
+        rate_limit(request, "manage-submissions", 30)
+        try:
+            return store.clear_submissions(identifier)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
+    @app.post("/api/instructor/sessions/{identifier}/submissions/restore")
+    async def restore_submissions(identifier: str, request: Request):
+        instructor(request)
+        rate_limit(request, "manage-submissions", 30)
+        body = await small_json(request)
+        batch = body.get("batch_id")
+        try:
+            if not isinstance(batch, str):
+                raise TypeError()
+            batch = str(UUID(batch))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Choose a cleared submission batch to restore.") from None
+        try:
+            return await run_in_threadpool(store.restore_submissions, identifier, batch)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
     @app.get("/api/instructor/sessions/{identifier}/qr.svg")
     def session_qr(identifier: str, request: Request):
         instructor(request)
@@ -531,12 +601,14 @@ def create_app(*, data_dir=None, public_base_url=None, password=None, session_se
         with store.connect() as db:
             rows = db.execute("""SELECT episode_id, participant, received_at, steps, success,
                                  fill_ml, spill_ml, duration_seconds, total_reward, termination_reason, reward_model FROM submissions
-                                 WHERE session_id=? ORDER BY received_at DESC""", (session,))
+                                 WHERE session_id=? AND cleared_batch IS NULL
+                                 ORDER BY received_at DESC, episode_id DESC""", (session,))
             return [{**dict(row), "success": bool(row["success"])} for row in rows]
 
     def submitted_path(episode_id):
         with store.connect() as db:
-            row = db.execute("SELECT episode_id FROM submissions WHERE episode_id=?", (episode_id,)).fetchone()
+            row = db.execute("SELECT episode_id FROM submissions WHERE episode_id=? AND cleared_batch IS NULL",
+                             (episode_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Recording not found.")
         return store.archive_path(row["episode_id"])

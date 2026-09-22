@@ -95,15 +95,26 @@ INSTRUCTOR_HTML = """<!doctype html>
           <div><h2>Submitted demonstrations</h2><p id="submission-count" class="hint"></p></div>
           <label class="checkbox"><input id="auto-refresh" type="checkbox" checked> Refresh every 5 seconds</label>
         </div>
-        <label class="filter-label" for="participant-filter">Find a participant</label>
-        <input id="participant-filter" type="search" placeholder="Student ID or participant code">
+        <div class="submission-controls">
+          <div><label class="filter-label" for="participant-filter">Find a participant</label>
+            <input id="participant-filter" type="search" placeholder="Student ID or participant code"></div>
+          <div><label for="submission-sort">Sort by</label><select id="submission-sort">
+            <option value="newest" selected>Newest first</option>
+            <option value="reward-desc">Reward: high to low</option>
+            <option value="reward-asc">Reward: low to high</option>
+          </select></div>
+          <button id="clear-submissions" class="quiet" type="button">Clear submissions</button>
+          <button id="undo-clear-submissions" class="quiet" type="button" hidden>Undo clear</button>
+        </div>
+        <p id="submission-clear-status" class="hint" role="status"></p>
         <div class="table-scroll"><table>
           <thead><tr><th>Participant</th><th>Received</th><th>Total reward</th><th>Cup / spill</th><th>Result</th><th>Duration</th><th>Trajectory</th></tr></thead>
           <tbody id="submission-rows"></tbody>
         </table></div>
         <p id="empty-submissions" class="empty-state">Waiting for the first submission. Keep this page open during the activity.</p>
         <p class="hint">Total reward sums the recorded step rewards. An <b>Earlier score</b> uses a previous formula and is not directly
-          comparable with new additive scores, which match fine-tuning. A dash means the reward is unavailable.</p>
+          comparable with new additive scores. Reward sorting uses the recorded numbers; unavailable scores appear last.
+          Clear removes the class’s current training data; Undo restores it.</p>
       </section>
       <section id="replay-panel" class="panel" hidden aria-labelledby="replay-title">
         <div class="heading-row"><div><h2 id="replay-title">Trajectory replay</h2><p id="replay-summary" class="hint"></p></div><button id="close-replay" type="button" class="quiet">Close replay</button></div>
@@ -190,7 +201,9 @@ summary {cursor:pointer;font-size:14px;font-weight:650;min-height:44px;display:l
 .badge.closed {background:#f1eceb;color:#72534b;}
 .badge.earlier-score {font-size:10px;margin-left:6px;padding:2px 7px;}
 .filter-label {font-size:13px;}
-#participant-filter {max-width:330px;margin-bottom:16px;}
+.submission-controls {display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+.submission-controls>div {min-width:180px;}
+#participant-filter {max-width:330px;}
 .table-scroll {width:100%;overflow-x:auto;}
 table {border-collapse:collapse;width:100%;font-size:14px;text-align:left;}
 th {color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap;}
@@ -232,6 +245,7 @@ const cloningDemo=createCloningDemo($('#cloning-panel'),post,
   ()=>{randomDemo.pause();fineTuningDemo.pause();stopPlayback();},
   model=>fineTuningDemo.setModel(model));
 let sessions=[], activeSession=null, submissions=[], authenticated=false, authEpoch=0;
+let managingSubmissions=false;
 let examples=[], examplesLoaded=false, exampleRequest=0;
 let listRequest=0, replayRequest=0, refreshBusy=false, refreshError='', submissionLoad=null, replayFrames=[];
 let frameIndex=0, playing=false, playStarted=0, playOrigin=0, animation=null;
@@ -289,6 +303,7 @@ function showLogin() {
   $('#dashboard').hidden=true;$('#logout').hidden=true;$('#login-panel').hidden=false;
   sessions=[];submissions=[];examples=[];examplesLoaded=false;activeSession=null;replayFrames=[];displayState=null;
   $('#submission-rows').replaceChildren();$('#example-rows').replaceChildren();$('#session-select').replaceChildren();
+  $('#submission-clear-status').textContent='';$('#undo-clear-submissions').hidden=true;
   $('#example-count').textContent='';$('#examples-status').textContent='';$('#refresh-examples').disabled=false;
   $('#replay-reward').textContent='—';$('#replay-time').textContent='0.0 / 0.0 s';
   $('#join-url').value='';$('#class-qr').removeAttribute('src');
@@ -328,6 +343,7 @@ function renderSession() {
   const qrURL='/api/instructor/sessions/'+idPath(session.id)+'/qr.svg';
   $('#class-qr').src=qrURL;$('#qr-download').href=qrURL;
   $('#close-session').hidden=!session.open;
+  renderSubmissionControls();
   $('#session-policy').textContent=(session.participant_required?'Student ID is required. ':'Participant code is optional. ')+
     (session.open?'Submissions are open.':'Submissions are closed; existing demonstrations remain available.');
   if (['localhost','127.0.0.1','[::1]'].includes(location.hostname))
@@ -365,7 +381,8 @@ async function loadSubmissions() {
       const data=await api('/api/instructor/submissions?session='+idPath(session),{signal:controller.signal});
       if(request!==listRequest||session!==activeSession||epoch!==authEpoch||!authenticated) return;
       if(!Array.isArray(data)) throw new Error('Could not read submissions.');
-      submissions=data.slice().sort((a,b)=>String(b.received_at).localeCompare(String(a.received_at)));
+      if(submissions.some(old=>!data.some(item=>item.episode_id===old.episode_id)))cloningDemo.invalidate();
+      submissions=data.slice();
       renderSubmissions();
     } catch(error) {
       if(controller.signal.aborted) {
@@ -450,12 +467,53 @@ async function loadExamples() {
     if(request===exampleRequest&&epoch===authEpoch)$('#refresh-examples').disabled=false;
   }
 }
+function renderSubmissionControls() {
+  const session=selectedSession(),cleared=session?.latest_clear;
+  $('#clear-submissions').disabled=managingSubmissions||!session||!submissions.length;
+  $('#undo-clear-submissions').hidden=!cleared;
+  $('#undo-clear-submissions').disabled=managingSubmissions||!cleared;
+  $('#undo-clear-submissions').textContent=cleared?'Undo clear ('+cleared.count+')':'Undo clear';
+}
+function sortedSubmissions(items) {
+  const order=$('#submission-sort').value;
+  return items.slice().sort((left,right)=>{
+    if(order==='reward-desc'||order==='reward-asc') {
+      const a=left.total_reward,b=right.total_reward,knownA=Number.isFinite(a),knownB=Number.isFinite(b);
+      if(knownA!==knownB)return knownA?-1:1;
+      if(knownA&&a!==b)return order==='reward-desc'?b-a:a-b;
+    }
+    return String(right.received_at).localeCompare(String(left.received_at))||
+      String(right.episode_id).localeCompare(String(left.episode_id));
+  });
+}
+async function manageSubmissions(restore=false) {
+  const session=selectedSession();if(!session||managingSubmissions)return;
+  const batch=session.latest_clear?.batch_id;if(restore&&!batch)return;
+  const identifier=session.id,epoch=authEpoch;
+  managingSubmissions=true;renderSubmissionControls();
+  try {
+    const result=await post('/api/instructor/sessions/'+idPath(identifier)+'/submissions/'+(restore?'restore':'clear'),
+      restore?{batch_id:batch}:{});
+    if(epoch!==authEpoch||!authenticated)return;
+    const updated=sessions.find(item=>item.id===identifier);if(updated)updated.latest_clear=result.latest_clear;
+    if(activeSession!==identifier)return;
+    // Ignore an in-flight list response from before the transaction.
+    listRequest++;submissionLoad=null;submissions=[];cloningDemo.invalidate();
+    cancelReplayRequest();$('#replay-panel').hidden=true;renderSubmissions();
+    $('#submission-clear-status').textContent=restore?
+      'Restored '+result.restored_count+' submissions. Retrain the policy to use them.':
+      'Cleared '+result.cleared_count+' submissions. You can undo this.';
+    await loadSubmissions();
+  } catch(error) {
+    if(epoch===authEpoch&&activeSession===identifier)$('#submission-clear-status').textContent=error.message;
+  } finally {managingSubmissions=false;renderSubmissionControls();}
+}
 function renderSubmissions() {
   const session=selectedSession();
   cloningDemo.setContext({id:session?.id||null,name:session?.name||'',total:submissions.length,
     successful:submissions.filter(item=>item.success).length});
   const filter=$('#participant-filter').value.trim().toLocaleLowerCase();
-  const filtered=submissions.filter(item=>String(item.participant||'Anonymous').toLocaleLowerCase().includes(filter));
+  const filtered=sortedSubmissions(submissions.filter(item=>String(item.participant||'Anonymous').toLocaleLowerCase().includes(filter)));
   $('#submission-count').textContent=submissions.length+' demonstration'+(submissions.length===1?'':'s')+' · '+
     new Set(submissions.map(item=>item.participant).filter(Boolean)).size+' identified participant(s)'+
     (filter?' · '+filtered.length+' shown':'');
@@ -470,6 +528,7 @@ function renderSubmissions() {
     rows.append(row);
   });
   $('#submission-rows').replaceChildren(rows);$('#empty-submissions').hidden=filtered.length>0;
+  renderSubmissionControls();
   $('#empty-submissions').textContent=filter?'No participants match this search.':'Waiting for the first submission. Keep this page open during the activity.';
 }
 function stopPlayback() {
@@ -577,7 +636,7 @@ $('#create-form').addEventListener('submit',async event=>{
   }catch(error){setStatus(error.message,true);}finally{button.disabled=false;}
 });
 $('#session-select').addEventListener('change',async()=>{
-  activeSession=$('#session-select').value;submissions=[];renderSession();renderSubmissions();
+  activeSession=$('#session-select').value;submissions=[];$('#submission-clear-status').textContent='';renderSession();renderSubmissions();
   cancelReplayRequest();$('#replay-panel').hidden=true;
   try{await loadSubmissions();}catch(error){setStatus(error.message,true);}
 });
@@ -597,6 +656,9 @@ $('#refresh').addEventListener('click',async()=>{
   try{await loadSessions();}catch(error){setStatus(error.message,true);}finally{$('#refresh').disabled=false;}
 });
 $('#participant-filter').addEventListener('input',renderSubmissions);
+$('#submission-sort').addEventListener('change',renderSubmissions);
+$('#clear-submissions').addEventListener('click',()=>manageSubmissions());
+$('#undo-clear-submissions').addEventListener('click',()=>manageSubmissions(true));
 $('#refresh-examples').addEventListener('click',loadExamples);
 $('#random-start').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();fineTuningDemo.pause();});
 $('#random-pause').addEventListener('click',()=>{stopPlayback();cloningDemo.pause();fineTuningDemo.pause();});

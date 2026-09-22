@@ -13,10 +13,11 @@ FINETUNING_HTML = """
         <div class="heading-row"><div><p class="eyebrow">IMPROVE WITH REWARD</p>
           <h2 id="finetuning-title">Fine-tune with reinforcement learning</h2></div>
           <span class="badge">700 mL · ±5 mL precision goal</span></div>
-        <p>Start with imitation, try nearby speed adjustments, and use reward to choose what to keep.</p>
+        <p>Start with imitation, explore small control changes, and keep improvements measured by reward.</p>
         <div class="ft-training-controls">
           <div><label for="ft-strategy">Learning method</label>
-            <select id="ft-strategy"><option value="policy_search" selected>Policy search · classroom demo</option>
+            <select id="ft-strategy"><option value="residual_search" selected>Motor exploration · recommended</option>
+              <option value="policy_search">Speed search</option>
               <option value="ppo">Actor–critic · PPO</option></select></div>
           <div><label for="ft-episodes">Learning iterations</label>
             <select id="ft-episodes"><option value="10" selected>10 · quick demonstration</option>
@@ -29,8 +30,7 @@ FINETUNING_HTML = """
           <button id="ft-pause" type="button" disabled>Pause</button>
           <button id="ft-stop" type="button" disabled>Stop training</button>
         </div>
-        <p id="ft-method-description" class="hint">Policy search tests paired faster/slower settings for approaching/pouring and
-          returning the pot, keeping a candidate only when its score improves.</p>
+        <p id="ft-method-description" class="hint">Motor exploration tries small changes to each joint, including joints the clone leaves still. Reward decides which changes to keep.</p>
         <p class="hint">Each iteration completes one exploratory or candidate trial, decides how to update the policy,
           then evaluates the current policy without exploration noise from the same fixed starting pose.
           The arm bases are <b>__ARM_SPACING__ m apart</b>; demonstrations and policy trials use this same spacing.</p>
@@ -45,6 +45,7 @@ FINETUNING_HTML = """
             <span>Simulated time <strong id="ft-time">0.0 s</strong></span>
             <span>Accuracy / speed score so far <strong id="ft-reward">0.000</strong></span>
           </div>
+          <p id="ft-action" class="hint"></p>
           <div class="coffee-stage replay-stage"><div class="coffee-canvas-wrap">
             <canvas class="coffee-canvas" role="img" aria-label="Reinforcement learning coffee pouring trials and evaluation"></canvas>
             <div class="coffee-scene-stats" aria-label="Fine-tuned policy coffee amounts">
@@ -53,7 +54,7 @@ FINETUNING_HTML = """
               <span><span class="coffee-stat-label">In the pot</span><strong data-coffee-stat="remaining">—</strong></span>
             </div>
           </div></div>
-          <p class="hint">The scene shows the current rollout. The chart adds its Accuracy / speed score after the rollout finishes.</p>
+          <p class="hint">Live exploration includes unsuccessful attempts. Evaluation runs separately without exploration noise.</p>
         </div>
         </div>
         <div id="ft-results" hidden>
@@ -120,10 +121,13 @@ FINETUNING_HTML = """
           </details>
         </section>
         <details><summary>What is being learned?</summary>
-          <p class="hint">The behavior-cloning policy stays fixed. Both methods adjust its speed and continue to choose
-            controls from the current state. Zero commands remain zero and motion directions stay those of the clone.
-            They do not call the demonstration-generating controller.</p>
-          <p class="hint"><b>Policy search</b> learns two speed settings: one for approaching and pouring,
+          <p class="hint">The behavior-cloning policy stays fixed. Learned adjustments use the current state and never call the demonstration-generating controller.</p>
+          <p class="hint"><b>Motor exploration</b> learns a small correction for each of the six joints, separately for
+            approaching/pouring and returning the pot. Corrections can move a stationary joint or reverse a small command,
+            and are bounded to 5% of full motor control. Each pair tests opposite random corrections around the same policy.
+            The better policy is retained and evaluated again without new noise. This can improve an imperfect clone,
+            but two sparse demonstrations may still leave gaps that more practice or demonstrations are needed to resolve.</p>
+          <p class="hint"><b>Speed search</b> learns two speed settings: one for approaching and pouring,
             another for returning the pot. It tries paired faster/slower adjustments to one setting at a time,
             shrinking the search range when a pair fails to improve. Both multipliers stay between 0.7 and 1.4
             times the clone's commands. Paired candidates share the same starting settings even if the first
@@ -132,10 +136,11 @@ FINETUNING_HTML = """
             Accuracy / speed scores, and the actor uses those estimates to update its state-dependent speed policy.
             Speed multipliers stay between 0.5 and 1.5 times the clone; exploration is resampled every
             0.5 simulated seconds. An explored trajectory or policy update can still be worse.</p>
-          <p class="hint">Both methods use the same Accuracy / speed score, fixed starting pose, and 60-second limit.
+          <p class="hint">All methods use the same Accuracy / speed score, fixed starting pose, and 60-second limit.
             Demonstrations use a wider range of random starting poses. Improvement is not guaranteed.</p>
           <p class="hint">Training defaults to the fastest available speed; policy playback defaults to 4×.
-            Both controls also offer 8×. Speed changes how quickly the simulation is shown; every physics step and policy decision is still computed. Switching away pauses it.
+            Both controls also offer 8×. Every physics step and policy decision is still computed.
+            Training continues when you switch tabs. Keep this page open; browser or device suspension can delay it.
             Stop keeps the best completed evaluation. Changing the cloning policy or reloading clears this experiment.</p>
         </details>
       </section>
@@ -204,6 +209,7 @@ function createFineTuningDemo(element,beforeRun) {
     $('#ft-results').hidden=true;$('#ft-history').hidden=true;$('#ft-scene').hidden=true;
     $('#ft-comparison').replaceChildren();$('#ft-history-rows').replaceChildren();
     $('#ft-progress').textContent='';$('#ft-improvement').textContent='';
+    $('#ft-action').textContent='';
     $('#ft-exploration').hidden=true;$('#ft-exploration').textContent='';
     status(model?'Cloned policy ready. Start fine-tuning or watch the original clone.':'Train a behavior-cloning policy above to begin.');
     controls();
@@ -240,18 +246,22 @@ function createFineTuningDemo(element,beforeRun) {
       'No better checkpoint yet. The original cloned policy is retained.';
     $('#ft-history').hidden=!history.length;
     const latestUpdate=history.at(-1)?.update,exploration=latestUpdate?.exploration;
-    if(Number.isFinite(exploration?.speed_min)&&Number.isFinite(exploration?.speed_max)) {
+    if(exploration?.kind==='paired_motor_residual') {
+      $('#ft-exploration').hidden=false;
+      $('#ft-exploration').textContent='Last completed candidate: motor corrections up to '+
+        number(100*exploration.max_motor_offset,2)+'% of full control · '+(latestUpdate.accepted?'kept':'rejected')+'.';
+    } else if(Number.isFinite(exploration?.speed_min)&&Number.isFinite(exploration?.speed_max)) {
       $('#ft-exploration').hidden=false;
       const pair=value=>Array.isArray(value)&&value.length===2&&value.every(Number.isFinite);
       if(exploration.kind==='paired_phase_parameter'&&pair(latestUpdate.candidate_gains)) {
         const gains=latestUpdate.candidate_gains,center=latestUpdate.pair_center;
         const coordinate=latestUpdate.coordinate==='return'?'return speed':'approach/pour speed';
-        $('#ft-exploration').textContent='Candidate: approach/pour '+number(100*gains[0],1)+
+        $('#ft-exploration').textContent='Last completed candidate: approach/pour '+number(100*gains[0],1)+
           '% · return '+number(100*gains[1],1)+'% of cloned speed · exploring '+coordinate+
           (pair(center)?' · pair center '+number(100*center[0],1)+'% / '+number(100*center[1],1)+'%':'')+'.';
       } else if(exploration.kind==='paired_parameter') {
         const candidate=Number.isFinite(latestUpdate.candidate_speed)?latestUpdate.candidate_speed:exploration.speed_min;
-        $('#ft-exploration').textContent='Candidate: '+number(100*candidate,1)+'% of cloned speed'+
+        $('#ft-exploration').textContent='Last completed candidate: '+number(100*candidate,1)+'% of cloned speed'+
           (Number.isFinite(latestUpdate.pair_center)?' · pair centered at '+number(100*latestUpdate.pair_center,1)+'%':'')+'.';
       } else {
         $('#ft-exploration').textContent='Latest exploration · speed multipliers '+number(100*exploration.speed_min,1)+
@@ -269,7 +279,7 @@ function createFineTuningDemo(element,beforeRun) {
         number(targetError(value),4),number(value.seconds,5),number(value.spill_ml,4),outcome,update]);
     };
     measurementRow(0,'Original clone · no noise',result.baseline,'—');
-    const search=result.strategy==='policy_search'||result.algorithm==='bounded_paired_policy_search';
+    const search=['policy_search','residual_search'].includes(result.strategy)||result.algorithm==='bounded_paired_policy_search';
     history.forEach(item=>{
       const applied=item.update?.accepted??(item.update?.actor_change>0);
       measurementRow(item.episode,search?'Candidate policy · no action noise':'Exploratory trial · with noise',
@@ -291,14 +301,19 @@ function createFineTuningDemo(element,beforeRun) {
     displayState=normalizedSnapshot(data.snapshot);
     if(!modelSent){modelSent=true;send({kind:'ft-load',model});return;}
     if(!state.model_loaded){fail('The cloned policy could not be loaded.');return;}
-    if(document.hidden||pauseRequested)pendingAction=null;
+    if(pauseRequested)pendingAction=null;
     if(pendingAction){const action=pendingAction;pendingAction=null;send(action);return;}
     $('#ft-scene').hidden=false;drawFrame(displayState);
     renderResults(state.result);learningViz.render(state);
     const progress=state.progress||{},rollout=state.rollout||{};
-    const search=state.result?.strategy==='policy_search'||state.result?.algorithm==='bounded_paired_policy_search';
-    const phase={baseline:'Checking original clone',training:search?'Testing a candidate speed':'Exploring nearby actions',evaluation:'Testing the current policy',complete:'Training complete'}[progress.phase]||'Ready';
+    const search=['policy_search','residual_search'].includes(state.result?.strategy)||state.result?.algorithm==='bounded_paired_policy_search';
+    const phase={baseline:'Checking original clone',training:search?'Exploring a candidate policy':'Exploring nearby actions',evaluation:'Testing the current policy · no noise',complete:'Training complete'}[progress.phase]||'Ready';
     const training=state.training_active;
+    const live=state.live_action;
+    $('#ft-action').textContent=live?.source==='exploration'?
+      (Number.isFinite(live.max_action_change)?'Live controls · up to '+number(100*live.max_action_change,1)+
+        '% change from the clone at this state.':'Starting the next exploration.'):
+      live?.source==='deterministic_evaluation'?'Live evaluation · exploration noise is off.':'';
     $('#ft-showing').textContent=training?phase:rollout.active||rollout.done?
       (rollout.policy==='best'?'Best evaluated policy':'Original clone'):
       rollout.elapsed_seconds===0?'Starting pose':
@@ -316,7 +331,7 @@ function createFineTuningDemo(element,beforeRun) {
     else if(rollout.active)status(state.paused?'Policy paused. Resume to continue.':'Watching the policy without exploration noise.');
     else if(state.has_result)status('Experiment ready to compare. Watch the original clone and the best evaluated policy.');
     else status('Cloned policy loaded. Start fine-tuning when ready.');
-    if((document.hidden||pauseRequested)&&!state.paused&&(training||rollout.active)){
+    if(pauseRequested&&!state.paused&&(training||rollout.active)){
       send({kind:'ft-pause',paused:true});return;
     }
     controls();
@@ -341,7 +356,9 @@ function createFineTuningDemo(element,beforeRun) {
   }
   $('#ft-train').addEventListener('click',()=>startAction({kind:'ft-train',episodes:Number($('#ft-episodes').value),strategy:$('#ft-strategy').value}));
   $('#ft-strategy').addEventListener('change',()=>{
-    $('#ft-method-description').textContent=$('#ft-strategy').value==='ppo'?
+    $('#ft-method-description').textContent=$('#ft-strategy').value==='residual_search'?
+      'Motor exploration tries small changes to each joint, including joints the clone leaves still. Reward decides which changes to keep.':
+      $('#ft-strategy').value==='ppo'?
       'Actor–critic explores speed changes during a trial. A critic learns to predict future score and guides the policy update.':
       'Policy search tests paired faster/slower settings for approaching/pouring and returning the pot, keeping a candidate only when its score improves.';
   });
@@ -359,8 +376,9 @@ function createFineTuningDemo(element,beforeRun) {
     if(worker&&!loading&&state?.model_loaded&&!state.training_active&&state.rollout?.active)
       send({kind:'ft-speed',speed:Number($('#ft-playback-speed').value)});
   });
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
-  window.addEventListener('blur',pause);window.addEventListener('pagehide',pause);
+  // The worker advances training independently of tab focus and animation frames.
+  // Navigating away is different: stop before this document is suspended/unloaded.
+  window.addEventListener('pagehide',pause);
   return {pause,setModel(value){model=value;clearExperiment();},setEnabled(value){
     enabled=value;if(!value){model=null;clearExperiment();
       if(resizeObserver)resizeObserver.disconnect();resizeObserver=null;canvasRef=null;}

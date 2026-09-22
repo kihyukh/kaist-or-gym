@@ -36,6 +36,13 @@ the rest of the recording is checked. Play is available before preparation finis
 A bounded in-memory cache avoids repeating physics work for recently viewed recordings;
 closing or switching recordings cancels outstanding preparation.
 
+Use **Sort by** for newest submissions or numeric reward order; unavailable scores
+stay last. **Clear submissions** hides the selected class's current recordings
+from its list, replay, and cloning dataset, while preserving their archive files.
+**Undo clear** restores that batch, even after reloading, without affecting later
+submissions. Clearing or restoring resets the loaded policy; retrain it afterward.
+Cleared archives still count toward the storage limit.
+
 Displayed rewards are undiscounted sums of archived step rewards, not rewards
 recomputed by the viewer. This preserves recorded bonuses and penalties without
 adding a new end-of-episode reward. Older submissions acquire their reward summaries
@@ -134,9 +141,9 @@ accepts original schema-1 recordings.
 ## Fine-tuning with reward
 
 After training a cloned policy, use **Fine-tune with reinforcement learning**.
-The default is **Policy search · classroom demo**, with **10 iterations**; 25, 50,
-and 100 are also available. **Actor–critic · PPO** provides an alternative learning
-method. Both start by evaluating the original clone, then complete one exploratory
+The default is **Motor exploration**, with **10 iterations**; 25, 50,
+and 100 are also available. **Speed search** and **Actor–critic · PPO** remain
+available. All start by evaluating the original clone, then complete one exploratory
 or candidate trial per iteration and evaluate the resulting current policy without
 exploration noise. All trials use the same fixed starting pose and 1.28 m arm spacing.
 
@@ -150,7 +157,17 @@ stricter bonus conditions. The score trades accuracy against time and finish
 quality; it does not guarantee that every slow accurate pour outranks a faster
 inaccurate one. No particular learning gain is guaranteed.
 
-**Policy search** learns two positive speed multipliers: one for approaching and
+**Motor exploration** learns twelve parameters: six joint corrections for each
+of the clone's two motion phases. Each action adds `0.05 * tanh(parameter)` to
+the clone's current command and clips to `[-1, 1]`. This allows a stationary
+joint to move and a small wrong command to reverse, unlike a positive speed
+multiplier. Parameters stay within `[-2, 2]`. Opposite Gaussian perturbations
+(standard deviation 0.2) are tested around a shared parameter vector for each
+pair. Exploration does not shrink to zero after rejected trials. Only measured
+reward can accept a candidate, and a fresh deterministic evaluation supplies the
+chart's policy score. The clone, reward, initial pose, and physics stay fixed.
+
+**Speed search** learns two positive speed multipliers: one for approaching and
 pouring, and one for returning the pot. It always queries the clone with the real
 current observation. If the sum of the clone's three pot-control commands is less
 than `-1e-4`, it uses the return multiplier; otherwise it uses the approach/pour
@@ -175,15 +192,19 @@ noise has standard deviation 0.5 and is resampled every 0.5 simulated seconds.
 Updates use 12 clipped PPO epochs, learning rate 0.15, a sampled-state Gaussian
 KL cap of 0.08, and a global latent-mean change cap of 0.6. The critic and GAE
 remain unchanged. These limits bound updates; evaluated performance can rise or
-fall. In both methods the frozen
+fall. In the two speed-only methods the frozen
 clone is queried at every physics step; zero commands remain zero and motion
-directions remain those of the clone. Neither method calls the demonstration
+directions remain those of the clone. No method calls the demonstration
 controller, copies future actions from a recording, or uses an expert correction.
 
 A live chart sits beside the simulation on wider screens and stacks above it on
 phones. Every candidate is visible by default in amber, including rejected and
 failed trials. For policy search, each candidate is a deterministic policy run;
-for PPO, amber represents an exploratory rollout with action noise. Navy always
+for PPO, amber represents an exploratory rollout with action noise. Motor-search
+candidates also run deterministically after sampling their joint corrections.
+The animation uses the actual trial session, including rejected candidates and
+their terminal frames. Its live readout compares the executed action with the
+clone's action at that same pre-transition state. Navy always
 shows the separate current-policy evaluation without noise. Green shows the best
 evaluated score so far. Rejected search candidates leave the retained policy
 unchanged, so repeated navy scores and genuine plateaus are expected.
@@ -213,6 +234,12 @@ Adaptive batches of up to 32 steps reduce rendering overhead while yielding for
 pause, stop, and speed changes. Repeated geometry calculations are cached, and
 hidden training steps omit render-only diagnostics; displayed frames still use
 the full renderer.
+
+Fine-tuning continues when the tab or window loses focus. Its worker advances
+physics independently of drawing, and the scene catches up to the actual current
+trial on return. Pause and Stop still work explicitly. Closing or reloading the
+page ends its worker; browser suspension or device sleep can also suspend it.
+Student controls retain their automatic pause when the page loses focus.
 
 ### Additive reward shared by recordings and fine-tuning
 

@@ -477,7 +477,10 @@ def test_live_training_and_completed_scene_use_the_environment_additive_return(
     assert partial["progress"]["reward"] == pytest.approx(expected)
     assert partial["progress"]["raw_return"] == pytest.approx(rewards.sum())
     assert partial["progress"]["reward"] == pytest.approx(rewards.sum())
-    completed = call(runtime, "ft-step", max_steps=32)["finetuning"]
+    for _ in range(6):
+        completed = call(runtime, "ft-step", max_steps=32)["finetuning"]
+        if not completed["training_active"]:
+            break
     assert not completed["training_active"]
     assert completed["progress"]["reward"] == runtime.trainer.discounted_return
     assert completed["rollout"]["reward"] == runtime.trainer.discounted_return
@@ -514,3 +517,131 @@ def test_noise_free_watch_matches_evaluation_for_a_nonzero_learned_actor(runtime
             np.testing.assert_array_equal(trained["action"], watched["action"])
     finally:
         trainer.close()
+
+
+def test_live_scene_displays_a_rejected_exploration_then_separate_evaluation(monkeypatch, runtime, model):
+    from kaist_rl_lab.apps import coffee_finetuning as core
+
+    monkeypatch.setattr(core, "TRIAL_STEPS", 8)
+    moving = deepcopy(model)
+    moving["actions"][0] = [.08, -.04, .02, .08, .01, .03]
+    call(runtime, "ft-load", model=moving)
+    call(runtime, "ft-train", episodes=1, seed=1, strategy="policy_search")
+    call(runtime, "ft-step", max_steps=32)
+    starting = call(runtime, "ft-step", max_steps=32)
+    assert starting["finetuning"]["progress"]["phase"] == "training"
+    assert starting["finetuning"]["live_action"]["executed_action"] is None
+    # This actual candidate moves farther from level and therefore loses reward.
+    runtime.trainer.candidate_policy = core.ScaledClonedPolicy(runtime.trainer.base, 1.4, 1.4)
+    exploring = call(runtime, "ft-step", max_steps=3)
+    live = exploring["finetuning"]["live_action"]
+    transition = runtime.session.trajectory[-1]
+    clone_action = runtime.base_policy.predict(transition["observation"])
+    assert runtime.session is runtime.trainer.session
+    assert live["source"] == "exploration"
+    assert live["phase"] == "training"
+    assert live["episode"] == 1
+    assert live["episode_id"] == exploring["episode_id"]
+    assert live["step_index"] == 3
+    np.testing.assert_array_equal(live["executed_action"], transition["action"])
+    np.testing.assert_array_equal(live["cloned_action"], clone_action)
+    np.testing.assert_allclose(live["action_delta"], transition["action"] - clone_action)
+    assert live["max_action_change"] > .03
+    assert exploring["snapshot"] == runtime.trainer.session.animation_snapshot()
+    assert not np.array_equal(transition["action"], runtime.trainer.best_policy.predict(transition["observation"]))
+
+    terminal = call(runtime, "ft-step", max_steps=32)
+    ended = terminal["finetuning"]["live_action"]
+    assert ended["source"] == "exploration"
+    assert ended["step_index"] == 8
+    assert ended["max_action_change"] > .03
+    assert terminal["snapshot"]["playback"]["running"] is False
+    assert terminal["finetuning"]["progress"]["phase"] == "training"
+    assert terminal["snapshot"] == runtime.trainer.session.animation_snapshot()
+    boundary = call(runtime, "ft-step", max_steps=32)
+    state = boundary["finetuning"]
+    assert state["result"]["history"][0]["update"]["accepted"] is False
+    assert state["progress"]["phase"] == "evaluation"
+    assert state["live_action"]["source"] == "deterministic_evaluation"
+    assert state["live_action"]["executed_action"] is None
+    assert state["live_action"]["episode_id"] != live["episode_id"]
+    assert state["progress"]["total_steps"] == 16
+    evaluation = call(runtime, "ft-step", max_steps=3)
+    evaluated = evaluation["finetuning"]["live_action"]
+    assert evaluated["source"] == "deterministic_evaluation"
+    np.testing.assert_array_equal(evaluated["executed_action"], clone_action)
+    assert evaluated["max_action_change"] == 0
+    assert evaluation["snapshot"] == runtime.trainer.session.animation_snapshot()
+
+
+def test_live_ppo_controls_include_sampled_noise_at_the_action_state(monkeypatch, runtime, model):
+    from kaist_rl_lab.apps import coffee_finetuning as core
+
+    monkeypatch.setattr(core, "TRIAL_STEPS", 12)
+    moving = deepcopy(model)
+    moving["actions"][0] = [.08, -.04, .02, .08, .01, .03]
+    call(runtime, "ft-load", model=moving)
+    call(runtime, "ft-train", episodes=1, seed=42, strategy="ppo")
+    call(runtime, "ft-step", max_steps=32)
+    call(runtime, "ft-step", max_steps=32)
+    exploring = call(runtime, "ft-step", max_steps=3)
+    live = exploring["finetuning"]["live_action"]
+    transition = runtime.session.trajectory[-1]
+    assert live["source"] == "exploration"
+    np.testing.assert_array_equal(live["executed_action"], transition["action"])
+    np.testing.assert_array_equal(live["executed_action"], runtime.trainer.policy.action_with_latent(
+        transition["observation"], runtime.trainer.latent,
+    ))
+    assert live["max_action_change"] > 0
+    assert exploring["snapshot"] == runtime.session.animation_snapshot()
+    paused = call(runtime, "ft-pause", paused=True)
+    assert call(runtime, "ft-step", max_steps=32)["finetuning"]["live_action"] == paused["finetuning"]["live_action"]
+
+
+def test_terminal_live_action_records_executed_command_after_motors_stop(monkeypatch, runtime, model):
+    monkeypatch.setattr(module, "TRIAL_STEPS", 1)
+    moving = deepcopy(model)
+    moving["actions"][0] = [.08, -.04, .02, .08, .01, .03]
+    call(runtime, "ft-load", model=moving)
+    call(runtime, "ft-run", policy="base")
+    finished = call(runtime, "tick")
+    live = finished["finetuning"]["live_action"]
+    assert finished["snapshot"]["playback"]["motors"] == [0] * 6
+    assert live["source"] == "base_replay"
+    np.testing.assert_array_equal(live["executed_action"], runtime.session.trajectory[-1]["action"])
+    assert any(live["executed_action"])
+    assert live["max_action_change"] == 0
+
+
+def test_one_step_exploration_is_published_before_reset_and_stop_finalizes_evaluation(monkeypatch, runtime, model):
+    from kaist_rl_lab.apps import coffee_finetuning as core
+
+    monkeypatch.setattr(core, "TRIAL_STEPS", 1)
+    moving = deepcopy(model)
+    moving["actions"][0] = [.08, -.04, .02, .08, .01, .03]
+    call(runtime, "ft-load", model=moving)
+    call(runtime, "ft-train", episodes=1, seed=1, strategy="policy_search")
+    baseline_end = call(runtime, "ft-step", max_steps=32)
+    assert baseline_end["finetuning"]["live_action"]["source"] == "original_clone"
+    assert baseline_end["finetuning"]["live_action"]["step_index"] == 1
+    call(runtime, "ft-step", max_steps=32)
+    explored = call(runtime, "ft-step", max_steps=32)
+    assert explored["finetuning"]["live_action"]["source"] == "exploration"
+    assert explored["finetuning"]["live_action"]["step_index"] == 1
+    assert explored["finetuning"]["live_action"]["max_action_change"] > 0
+    assert not explored["snapshot"]["playback"]["running"]
+    assert explored["finetuning"]["result"]["history"] == []
+    evaluation_start = call(runtime, "ft-step", max_steps=32)
+    assert evaluation_start["finetuning"]["live_action"]["source"] == "deterministic_evaluation"
+    evaluated = call(runtime, "ft-step", max_steps=32)
+    ended_scene = evaluated["snapshot"]["state"]
+    assert evaluated["finetuning"]["progress"]["total_steps"] == 3
+    assert evaluated["finetuning"]["result"]["history"][0]["evaluation"] is None
+    stopped = call(runtime, "ft-stop")
+    assert stopped["finetuning"]["result"]["history"][0]["evaluation"] is not None
+    assert stopped["finetuning"]["best_available"]
+    assert stopped["finetuning"]["progress"]["completed_episodes"] == 1
+    assert stopped["finetuning"]["progress"]["total_steps"] == 3
+    assert stopped["snapshot"]["state"] == ended_scene
+    assert stopped["finetuning"]["live_action"] == evaluated["finetuning"]["live_action"]
+    assert call(runtime, "ft-step") == stopped

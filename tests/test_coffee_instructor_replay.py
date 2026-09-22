@@ -412,3 +412,74 @@ get('#participant-filter').value='nobody';get('#participant-filter').listeners.i
 assert.match(get('#submission-count').textContent,/4 demonstrations.*0 shown/);
 assert.equal(get('#empty-submissions').textContent,'No participants match this search.');
 """)
+
+
+def test_student_reward_sorting_is_stable_and_missing_rewards_stay_last(tmp_path):
+    run_instructor(tmp_path, r"""
+studentRows.push({...row,episode_id:'new',participant:'New',received_at:'2026-09-19T00:00:00Z',total_reward:0,reward_model:'additive_v1'});
+await login();
+const participants=()=>get('#submission-rows').children.map(item=>item.children[0].textContent);
+assert.equal(participants()[0],'New');
+get('#submission-sort').value='reward-desc';get('#submission-sort').listeners.change();
+assert.deepEqual(participants(),['New','Zero reward',row.participant,'Missing reward']);
+get('#submission-sort').value='reward-asc';get('#submission-sort').listeners.change();
+assert.deepEqual(participants(),[row.participant,'New','Zero reward','Missing reward']);
+assert.match(findRow('#submission-rows',row.participant).children[2].textContent,/Earlier score/);
+assert.doesNotMatch(findRow('#submission-rows','New').children[2].textContent,/Earlier score/);
+get('#participant-filter').value='reward';get('#participant-filter').listeners.input();
+assert.deepEqual(participants(),['Zero reward','Missing reward']);
+get('#participant-filter').value='';get('#participant-filter').listeners.input();
+await intervals[0].callback();await pump();
+assert.deepEqual(participants(),[row.participant,'New','Zero reward','Missing reward']);
+""")
+
+
+def test_class_clear_and_undo_invalidate_policy_and_preserve_new_submissions(tmp_path):
+    run_instructor(tmp_path, r"""
+await login();
+evaluate('let invalidations=0;const oldInvalidate=cloningDemo.invalidate;cloningDemo.invalidate=()=>{invalidations++;oldInvalidate();};');
+const clearPath='/api/instructor/sessions/test-class/submissions/clear';
+const restorePath='/api/instructor/sessions/test-class/submissions/restore';
+held.add(clearPath);held.add(restorePath);
+const originals=studentRows.slice(),batch={batch_id:'clear-batch',count:3};
+const clearing=click('#clear-submissions');await pump();
+assert.equal(get('#clear-submissions').disabled,true);
+studentRows.splice(0);resolveHeld(clearPath,{cleared_count:3,latest_clear:batch});await clearing;
+assert.equal(get('#submission-rows').children.length,0);
+assert.equal(get('#clear-submissions').disabled,true);
+assert.equal(get('#undo-clear-submissions').hidden,false);
+assert.equal(get('#undo-clear-submissions').textContent,'Undo clear (3)');
+assert.equal(evaluate('invalidations'),1);
+assert.match(get('#submission-clear-status').textContent,/Cleared 3/);
+const later={...row,episode_id:'later',participant:'New attempt'};studentRows.push(later);
+await intervals[0].callback();await pump();
+assert.equal(get('#submission-rows').children.length,1);
+assert.equal(evaluate('invalidations'),1,'Ordinary new student submissions do not discard a trained policy');
+const restoring=click('#undo-clear-submissions');await pump();
+assert.deepEqual(JSON.parse(requests.findLast(item=>item.path===restorePath).options.body),{batch_id:'clear-batch'});
+studentRows.push(...originals);resolveHeld(restorePath,{restored_count:3,latest_clear:null});await restoring;
+assert.equal(get('#submission-rows').children.length,4);
+assert.equal(get('#undo-clear-submissions').hidden,true);
+assert.equal(evaluate('invalidations'),2);
+assert.ok(findRow('#submission-rows','New attempt'));
+""")
+
+
+def test_clearing_ignores_stale_lists_and_restores_undo_after_reload(tmp_path):
+    run_instructor(tmp_path, r"""
+session.latest_clear={batch_id:'old-batch',count:2};await login();
+assert.equal(get('#undo-clear-submissions').hidden,false);
+assert.equal(get('#undo-clear-submissions').textContent,'Undo clear (2)');
+const path='/api/instructor/submissions?session=test-class';
+const clearPath='/api/instructor/sessions/test-class/submissions/clear';
+held.add(path);held.add(clearPath);
+const stale=evaluate('loadSubmissions()');await pump();
+const clearing=click('#clear-submissions');await pump();
+resolveHeld(clearPath,{cleared_count:3,latest_clear:{batch_id:'new-batch',count:3}});await pump();
+assert.equal(pending.get(path).length,2);
+resolveHeld(path,studentRows);await stale;
+assert.equal(get('#submission-rows').children.length,0,'Old fetched rows cannot resurrect cleared submissions');
+resolveHeld(path,[]);await clearing;
+assert.equal(get('#submission-rows').children.length,0);
+assert.equal(get('#undo-clear-submissions').textContent,'Undo clear (3)');
+""")

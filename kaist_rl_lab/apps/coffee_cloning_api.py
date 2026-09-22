@@ -56,14 +56,14 @@ def _prepare_and_train(store, *, source, session_id, successful_only):
             if not db.execute("SELECT id FROM classes WHERE id=?", (session_id,)).fetchone():
                 raise HTTPException(404, "Classroom not found.")
             total = db.execute(
-                "SELECT COUNT(*), COALESCE(SUM(success), 0) FROM submissions WHERE session_id=?",
+                "SELECT COUNT(*), COALESCE(SUM(success), 0) FROM submissions WHERE session_id=? AND cleared_batch IS NULL",
                 (session_id,),
             ).fetchone()
             selection["available_trajectories"] = total[0]
             selection["skipped_unsuccessful"] = total[0] - total[1] if successful_only else 0
             selection["eligible_trajectories"] = total[0] - selection["skipped_unsuccessful"]
             rows = db.execute(
-                "SELECT episode_id FROM submissions WHERE session_id=? AND (?=0 OR success=1) "
+                "SELECT episode_id FROM submissions WHERE session_id=? AND cleared_batch IS NULL AND (?=0 OR success=1) "
                 "ORDER BY received_at DESC, episode_id DESC LIMIT ?",
                 (session_id, int(successful_only), MAX_INSPECTED_ARCHIVES),
             ).fetchall()

@@ -62,6 +62,7 @@ class FineTuningRuntime:
         self.session = _new_session()
         self.model = None
         self.base_policy = None
+        self._reference_policy = None
         self.best_policy = None
         self.trainer = None
         self.training_active = False
@@ -131,6 +132,10 @@ class FineTuningRuntime:
 
     def _stop_training(self) -> None:
         if self.training_active:
+            if not self.session.running and not self.trainer.done:
+                # Finalize a fully executed trial before checkpointing. The
+                # trainer yields at this boundary without another physics step.
+                self.trainer.step_chunk(max_steps=1)
             self._capture_training(checkpoint=True)
             self.training_active = False
             self.training_paused = False
@@ -150,6 +155,7 @@ class FineTuningRuntime:
             self._replace_scene()
             self.model = command["model"]
             self.base_policy = policy
+            self._reference_policy = NearestNeighborPolicy(command["model"])
             self.best_policy = None
             self.progress = None
             self.result = None
@@ -169,7 +175,7 @@ class FineTuningRuntime:
                 raise ValueError("Stop the current training run before starting another.")
             strategy = command.get("strategy", "policy_search")
             if strategy not in STRATEGIES:
-                raise ValueError("Choose policy_search or ppo for fine-tuning.")
+                raise ValueError("Choose residual_search, policy_search, or ppo for fine-tuning.")
             trainer = FineTuningTrainer(self.model, seed=seed, episodes=episodes, strategy=strategy)
             self.close()
             self.trainer = trainer
@@ -266,6 +272,7 @@ class FineTuningRuntime:
                 "best_available": best_available,
                 "progress": self.progress,
                 "result": self.result,
+                "live_action": self._live_action(),
                 "paused": self.session.paused,
                 "playback_speed": self.playback_speed,
                 "rollout": {
@@ -280,3 +287,42 @@ class FineTuningRuntime:
                 },
             },
         }, allow_nan=False, separators=(",", ":"))
+
+    def _live_action(self) -> dict:
+        """Describe the command that produced this scene, never a best-policy replay.
+
+        A terminal scene has stopped motors, so read the recorded transition
+        rather than the current motor latch. Compare BC at that same pre-action
+        state; querying it at the displayed next state can pick another label.
+        """
+        training_scene = self.trainer is not None and self.session is self.trainer.session
+        if training_scene:
+            phase = (self.result or {}).get("phase", "baseline")
+            phase = "evaluation" if phase == "complete" else phase
+            source = {
+                "baseline": "original_clone",
+                "training": "exploration",
+                "evaluation": "deterministic_evaluation",
+            }[phase]
+            episode = (self.result or {}).get("episode", 0)
+        else:
+            phase = "replay" if self.rollout_active or self.rollout_done else "idle"
+            source = f"{self.rollout_policy}_replay" if phase == "replay" else "idle"
+            episode = None
+        transition = self.session.trajectory[-1] if self.session.trajectory else None
+        action = transition["action"].astype(float) if transition is not None else None
+        cloned = self._reference_policy.predict(transition["observation"]).astype(float) if (
+            transition is not None and self._reference_policy is not None
+        ) else None
+        delta = action - cloned if cloned is not None else None
+        return {
+            "phase": phase,
+            "source": source,
+            "episode": episode,
+            "episode_id": self.session.episode_id,
+            "step_index": len(self.session.trajectory),
+            "executed_action": None if action is None else action.tolist(),
+            "cloned_action": None if cloned is None else cloned.tolist(),
+            "action_delta": None if delta is None else delta.tolist(),
+            "max_action_change": None if delta is None else float(abs(delta).max()),
+        }

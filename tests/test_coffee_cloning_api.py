@@ -290,3 +290,27 @@ def test_legacy_and_different_geometry_recordings_are_skipped_without_losing_cur
     assert received[0][0][1]["arm_base_distance_m"] == ARM_BASE_DISTANCE_M
     with client.app.state.store.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM submissions WHERE session_id=?", (identifier,)).fetchone()[0] == 3
+
+
+def test_cleared_submissions_are_excluded_from_training_and_return_after_undo(client, archive, monkeypatch):
+    sign_in(client)
+    identifier, token = make_class(client)
+    upload(client, token, archive(success=True))
+    endpoint = f"/api/instructor/sessions/{identifier}/submissions"
+    batch = client.post(endpoint + "/clear").json()["latest_clear"]
+    received = mock_training(monkeypatch)
+    body = {"source": "students", "session_id": identifier, "successful_only": False}
+    cleared = client.post(ENDPOINT, json=body)
+    assert cleared.status_code == 409 and "no submitted" in cleared.text
+    assert received == []
+    upload(client, token, archive(success=False))
+    active = client.post(ENDPOINT, json=body)
+    assert active.status_code == 200
+    assert active.json()["selection"]["available_trajectories"] == 1
+    assert active.json()["selection"]["used_trajectories"] == 1
+    client.post(endpoint + "/restore", json={"batch_id": batch["batch_id"]})
+    restored = client.post(ENDPOINT, json=body)
+    assert restored.status_code == 200
+    assert restored.json()["selection"]["available_trajectories"] == 2
+    assert restored.json()["selection"]["used_trajectories"] == 2
+    assert [len(items) for items in received] == [1, 2]

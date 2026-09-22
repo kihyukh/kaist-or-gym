@@ -134,8 +134,8 @@ function start(){
   latest().receive(fixtures.loaded);latest().receive(fixtures.training);
 }
 function background(event){
-  if(event==='visibilitychange'){document.hidden=true;docListeners.get(event)();}
-  else winListeners.get(event)();
+  if(event==='visibilitychange'){document.hidden=true;docListeners.get(event)?.();}
+  else winListeners.get(event)?.();
 }
 """
 
@@ -183,7 +183,7 @@ def test_ten_iteration_default_and_additive_objective_are_explained_visibly():
     options = re.search(r'<select id="ft-episodes">(.*?)</select>', FINETUNING_HTML, re.DOTALL).group(1)
     assert re.findall(r'<option value="(\d+)"', options) == ["10", "25", "50", "100"]
     assert '<option value="10" selected>' in options
-    assert '<option value="policy_search" selected>' in FINETUNING_HTML
+    assert '<option value="residual_search" selected>' in FINETUNING_HTML
     assert '<option value="ppo">' in FINETUNING_HTML
     playback = re.search(r'<select id="ft-playback-speed">(.*?)</select>', FINETUNING_HTML, re.DOTALL).group(1)
     assert '<option value="4" selected>' in playback
@@ -244,13 +244,33 @@ assert.match(node('#ft-method-description').textContent,/paired faster\/slower/)
 click('#ft-train');assert.equal(worker.messages.at(-1).strategy,'policy_search');
 const search=clone(fixtures.training);search.finetuning.result.strategy='policy_search';
 search.finetuning.progress.phase='training';worker.receive(search);
-assert.match(node('#ft-status').textContent,/Testing a candidate speed/);
+assert.match(node('#ft-status').textContent,/Exploring a candidate policy/);
 """)
 
 
-@pytest.mark.parametrize("event", ["visibilitychange", "blur", "pagehide"])
+def test_live_exploration_readout_uses_the_current_action_not_the_previous_best(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const worker=latest(),training=clone(fixtures.training);
+training.finetuning.progress.phase='training';
+training.finetuning.live_action={source:'exploration',max_action_change:0.1234,
+  executed_action:[0.4,0,0,0,0,0],cloned_action:[0.2766,0,0,0,0,0]};
+worker.receive(training);
+assert.match(node('#ft-showing').textContent,/Explor/);
+assert.equal(node('#ft-action').textContent,'Live controls · up to 12.3% change from the clone at this state.');
+training.finetuning.live_action.max_action_change=0.007;
+worker.receive(training);
+assert.match(node('#ft-action').textContent,/0.7%/);
+training.finetuning.progress.phase='evaluation';
+training.finetuning.live_action={source:'deterministic_evaluation',max_action_change:0.007};
+worker.receive(training);
+assert.equal(node('#ft-action').textContent,'Live evaluation · exploration noise is off.');
+worker.receive(fixtures.running);assert.equal(node('#ft-action').textContent,'');
+""")
+
+
+@pytest.mark.parametrize("event", ["pagehide"])
 @pytest.mark.parametrize("stage", ["initializing", "loading-model", "starting", "training"])
-def test_backgrounding_prevents_late_training_start(tmp_path, finetuning_snapshots, event, stage):
+def test_leaving_page_prevents_late_training_start(tmp_path, finetuning_snapshots, event, stage):
     run_demo(tmp_path, finetuning_snapshots, r"""
 enable();click('#ft-train');const worker=latest();
 if(STAGE!=='initializing')worker.receive(fixtures.initial);
@@ -268,6 +288,61 @@ if(['initializing','loading-model'].includes(STAGE)){
   worker.receive(fixtures.paused);assert.equal(node('#ft-pause').textContent,'Resume');
 }
 """.replace("EVENT", json.dumps(event)).replace("STAGE", json.dumps(stage)))
+
+
+@pytest.mark.parametrize("event", ["visibilitychange", "blur"])
+@pytest.mark.parametrize("stage", ["initializing", "loading-model", "starting", "training"])
+def test_losing_focus_keeps_pending_and_active_training_running(
+    tmp_path, finetuning_snapshots, event, stage,
+):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+enable();click('#ft-train');const worker=latest();
+if(STAGE!=='initializing')worker.receive(fixtures.initial);
+if(['starting','training'].includes(STAGE))worker.receive(fixtures.loaded);
+if(STAGE==='training')worker.receive(fixtures.training);
+background(EVENT);
+if(STAGE==='initializing'){worker.receive(fixtures.initial);worker.receive(fixtures.loaded);}
+if(STAGE==='loading-model')worker.receive(fixtures.loaded);
+worker.receive(fixtures.training);
+assert.equal(kinds(worker).filter(kind=>kind==='ft-train').length,1);
+assert.equal(kinds(worker).includes('ft-pause'),false);
+assert.equal(worker.terminated,false);assert.equal(node('#ft-pause').textContent,'Pause');
+const next=clone(fixtures.training);
+Object.assign(next.finetuning.progress,{phase:'training',episode:2,completed_episodes:1,elapsed_seconds:10});
+worker.receive(next);
+assert.equal(node('#ft-time').textContent,'10.00000 s');
+assert.match(node('#ft-progress').textContent,/Completed 1 \/ 4/);
+assert.equal(kinds(worker).includes('ft-pause'),false);
+worker.receive(fixtures.completed);
+assert.equal(node('#ft-run-best').disabled,false);
+assert.equal(node('#ft-results').hidden,false);
+""".replace("EVENT", json.dumps(event)).replace("STAGE", json.dumps(stage)))
+
+
+def test_backgrounding_neither_cancels_manual_pause_nor_manual_stop(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+start();const worker=latest();click('#ft-pause');
+background('visibilitychange');background('blur');
+// An already dispatched frame cannot undo a user's explicit pause.
+worker.receive(fixtures.training);
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-pause',paused:true});
+worker.receive(fixtures.paused);
+assert.equal(node('#ft-pause').textContent,'Resume');
+const count=worker.messages.length;
+document.hidden=false;docListeners.get('visibilitychange')?.();winListeners.get('focus')?.();
+assert.equal(worker.messages.length,count,'Returning to the page must not auto-resume');
+click('#ft-pause');worker.receive(fixtures.training);
+background('visibilitychange');click('#ft-stop');
+assert.deepEqual(worker.messages.at(-1),{kind:'ft-stop'});
+worker.receive(fixtures.stopped_early);
+assert.equal(node('#ft-train').disabled,false);
+""")
+
+
+def test_background_training_help_states_browser_suspension_limit():
+    assert 'Training continues when you switch tabs' in FINETUNING_HTML
+    assert 'browser or device suspension can delay it' in FINETUNING_HTML
+    assert 'Switching away pauses it' not in FINETUNING_HTML
 
 
 @pytest.mark.parametrize("change", ["clear", "replace", "logout"])
@@ -396,7 +471,7 @@ frame.finetuning.result.history[0].update={
   accepted:false,actor_change:0,candidate_speed:.9,pair_center:1,
   exploration:{kind:'paired_parameter',speed_min:.9,speed_max:.9,slower_decisions:1,faster_decisions:0}};
 latest().receive(frame);
-assert.equal(node('#ft-exploration').textContent,'Candidate: 90.0% of cloned speed · pair centered at 100.0%.');
+assert.equal(node('#ft-exploration').textContent,'Last completed candidate: 90.0% of cloned speed · pair centered at 100.0%.');
 assert.doesNotMatch(node('#ft-exploration').textContent,/policy being explored|adjustments/);
 assert.equal(cells('#ft-history-rows')[1][8],'No change');
 """)
@@ -411,7 +486,7 @@ frame.finetuning.result.history[0].update={
   exploration:{kind:'paired_phase_parameter',speed_min:.95,speed_max:1.15,slower_decisions:1,faster_decisions:0}};
 latest().receive(frame);
 assert.equal(node('#ft-exploration').textContent,
-  'Candidate: approach/pour 115.0% · return 95.0% of cloned speed · exploring return speed · pair center 115.0% / 105.0%.');
+  'Last completed candidate: approach/pour 115.0% · return 95.0% of cloned speed · exploring return speed · pair center 115.0% / 105.0%.');
 assert.doesNotMatch(node('#ft-exploration').textContent,/policy being explored/);
 assert.equal(cells('#ft-history-rows')[1][8],'Applied');
 """)
@@ -545,4 +620,24 @@ assert.deepEqual(worker.messages.at(-1),{kind:'ft-speed',speed:8});
 worker.receive(fixtures.running);const before=worker.messages.length;
 node('#ft-speed').value='0';node('#ft-speed').listeners.change();assert.equal(worker.messages.length,before);
 worker.receive(fixtures.completed);click('#ft-train');assert.equal(worker.messages.at(-1).speed,0);
+""")
+
+
+def test_motor_exploration_selection_and_current_trial_are_distinct_from_last_candidate(tmp_path, finetuning_snapshots):
+    run_demo(tmp_path, finetuning_snapshots, r"""
+enable();node('#ft-strategy').value='residual_search';node('#ft-strategy').listeners.change();
+assert.match(node('#ft-method-description').textContent,/each joint/);
+click('#ft-train');const worker=latest();worker.receive(fixtures.initial);worker.receive(fixtures.loaded);
+assert.equal(worker.messages.at(-1).strategy,'residual_search');
+const frame=clone(fixtures.training);
+frame.finetuning.progress.phase='training';frame.finetuning.result.strategy='residual_search';
+frame.finetuning.result.baseline={return:100,fill_ml:650,spill_ml:0,seconds:45,success:false};
+frame.finetuning.result.history=[{episode:1,training:{return:110},evaluation:{return:110},
+ update:{accepted:true,actor_change:.1,exploration:{kind:'paired_motor_residual',max_motor_offset:.021}}}];
+frame.finetuning.live_action={source:'exploration',max_action_change:.037};
+worker.receive(frame);
+assert.equal(node('#ft-showing').textContent,'Exploring a candidate policy');
+assert.match(node('#ft-action').textContent,/3.7%/);
+assert.equal(node('#ft-exploration').textContent,'Last completed candidate: motor corrections up to 2.10% of full control · kept.');
+assert.equal(cells('#ft-history-rows')[1][1],'Candidate policy · no action noise');
 """)

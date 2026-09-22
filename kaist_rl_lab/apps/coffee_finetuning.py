@@ -1,8 +1,9 @@
-"""Two small reward learners that refine a frozen behavior-cloned policy.
+"""Small reward learners that refine a frozen behavior-cloned policy.
 
-Paired policy search adjusts approach/pouring and returning speeds separately.
+Motor search learns bounded corrections to individual joints. Speed-only
+paired search adjusts approach/pouring and returning speeds separately.
 PPO instead learns a state-dependent speed actor with a linear critic.
-Both query BC at each physical step, preserve motor directions, and use the same
+All query BC at each physical step and use the same
 additive accuracy/speed objective. Every exploration trial is followed by a
 separate noise-free evaluation; only evaluated checkpoints are offered for replay.
 """
@@ -37,7 +38,10 @@ ACTOR_FEATURES = 5
 GAE_LAMBDA = 0.95
 STEP_DISCOUNT = DISCOUNT_PER_SECOND**BROWSER_DT
 CRITIC_RETENTION = 0.95
-STRATEGIES = ("policy_search", "ppo")
+STRATEGIES = ("residual_search", "policy_search", "ppo")
+RESIDUAL_BOUND = 0.05
+RESIDUAL_STD = 0.2
+RESIDUAL_LATENT_BOUND = 2.0
 SEARCH_SPEED_MIN = 0.7
 SEARCH_SPEED_MAX = 1.4
 SEARCH_RADIUS_MIN = 0.12
@@ -199,6 +203,31 @@ class ScaledClonedPolicy:
         return np.clip(action * gain, -1, 1).astype(np.float32)
 
 
+class ResidualClonedPolicy:
+    """Small learned joint corrections, including to stationary BC commands.
+
+    Each of two phases has six independently learned motor offsets. The phase
+    uses only the current clone action, as in speed search; no expert, future
+    state, recorded action sequence, or changed simulator measurement is used.
+    """
+
+    def __init__(self, base: NearestNeighborPolicy, weights=None):
+        self.base = base
+        self.weights = np.zeros((2, 6)) if weights is None else np.asarray(
+            weights, dtype=np.float64,
+        ).copy()
+        if self.weights.shape != (2, 6) or not np.isfinite(self.weights).all() or np.any(
+            np.abs(self.weights) > RESIDUAL_LATENT_BOUND
+        ):
+            raise ValueError("Invalid residual policy weights.")
+
+    def predict(self, observation: np.ndarray) -> np.ndarray:
+        action = self.base.predict(observation)
+        phase = int(float(np.sum(action[3:])) < -1e-4)
+        offset = RESIDUAL_BOUND * np.tanh(self.weights[phase])
+        return np.clip(action + offset, -1, 1).astype(np.float32)
+
+
 class FineTuningTrainer:
     """Incremental training: a browser worker can yield between bounded chunks."""
 
@@ -208,7 +237,7 @@ class FineTuningTrainer:
         if type(episodes) is not int or not 1 <= episodes <= MAX_EPISODES:
             raise ValueError(f"Choose between 1 and {MAX_EPISODES} training episodes.")
         if strategy not in STRATEGIES:
-            raise ValueError("Choose policy_search or ppo for fine-tuning.")
+            raise ValueError("Choose residual_search, policy_search, or ppo for fine-tuning.")
         self.strategy = strategy
         self.base = NearestNeighborPolicy(model)
         if self.base.arm_base_distance != ARM_BASE_DISTANCE_M:
@@ -218,7 +247,8 @@ class FineTuningTrainer:
         self.base.actions = self.base.actions.copy()
         self.base.states.flags.writeable = False
         self.base.actions.flags.writeable = False
-        self.policy = (ScaledClonedPolicy(self.base) if strategy == "policy_search"
+        self.policy = (ResidualClonedPolicy(self.base) if strategy == "residual_search"
+                       else ScaledClonedPolicy(self.base) if strategy == "policy_search"
                        else FineTunedPolicy(self.base))
         self.best_policy = deepcopy(self.policy)
         self.search_proposals = []
@@ -229,6 +259,8 @@ class FineTuningTrainer:
         self.search_pair_started = False
         self.search_pair_improved = False
         self.candidate_policy = None
+        self.residual_proposals = []
+        self.residual_center = np.zeros((2, 6))
         self.rng = np.random.default_rng(seed)
         # Demonstrations cover varied poses; this experiment changes only the
         # policy. Every exploration/evaluation starts from the same fixed pose.
@@ -268,6 +300,16 @@ class FineTuningTrainer:
         self.discount_factor = 1.0
         self.decision_remaining = 0
         self.latent = 0.0
+        if self.strategy == "residual_search" and self.phase == "training":
+            if not self.residual_proposals:
+                self.residual_center = self.policy.weights.copy()
+                delta = self.rng.normal(0, RESIDUAL_STD, (2, 6))
+                self.residual_proposals = [
+                    np.clip(self.residual_center + sign * delta,
+                            -RESIDUAL_LATENT_BOUND, RESIDUAL_LATENT_BOUND)
+                    for sign in self.rng.permutation([-1, 1])
+                ]
+            self.candidate_policy = ResidualClonedPolicy(self.base, self.residual_proposals.pop(0))
         if self.strategy == "policy_search" and self.phase == "training":
             if not self.search_proposals:
                 # Complete both trials and their fresh evaluations before
@@ -296,7 +338,7 @@ class FineTuningTrainer:
             self.candidate_policy = ScaledClonedPolicy(self.base, *self.search_proposals.pop(0))
 
     def _begin_decision(self):
-        if self.strategy == "policy_search":
+        if self.strategy != "ppo":
             self.decision_remaining = DECISION_STEPS
             return
         features = actor_features(self.session.observation)
@@ -350,7 +392,26 @@ class FineTuningTrainer:
             self.episode = 1
             self.phase = "training"
         elif self.phase == "training":
-            if self.strategy == "policy_search":
+            if self.strategy == "residual_search":
+                previous = self.policy.weights.copy()
+                candidate = self.candidate_policy.weights
+                accepted = metrics["return"] > self.best["return"]
+                if accepted:
+                    self.policy = self.candidate_policy
+                offsets = RESIDUAL_BOUND * np.tanh(candidate)
+                self.update = {
+                    "actor_change": float(np.linalg.norm(self.policy.weights - previous)),
+                    "accepted": accepted,
+                    "candidate_offsets": offsets.tolist(),
+                    "pair_center": self.residual_center.tolist(),
+                    "exploration": {
+                        "kind": "paired_motor_residual", "decisions": 1,
+                        "max_motor_offset": float(np.abs(offsets).max()),
+                        "motor_offset_bound": RESIDUAL_BOUND,
+                        "latent_std": RESIDUAL_STD,
+                    },
+                }
+            elif self.strategy == "policy_search":
                 old_gains = self.policy.weights.copy()
                 candidate_gains = self.candidate_policy.weights
                 candidate_change = candidate_gains[self.search_coordinate] - self.search_center[self.search_coordinate]
@@ -418,6 +479,11 @@ class FineTuningTrainer:
     def step_chunk(self, max_steps=32):
         if type(max_steps) is not int or not 1 <= max_steps <= 32:
             raise ValueError("A training chunk must contain between 1 and 32 steps.")
+        if not self.done and not self.session.running:
+            # The preceding chunk published the actual terminal scene. Only
+            # now update the learner and reset for a separately labelled phase.
+            self._finish_rollout()
+            return self.result()
         for _ in range(max_steps):
             if self.done:
                 break
@@ -425,7 +491,7 @@ class FineTuningTrainer:
                 self._begin_decision()
             # Requery BC at every new physical state even while holding a
             # sampled speed: no prerecorded action timeline is replayed.
-            if self.strategy == "policy_search":
+            if self.strategy != "ppo":
                 active_policy = self.candidate_policy if self.phase == "training" else self.policy
                 action = active_policy.predict(self.session.observation)
             else:
@@ -445,15 +511,20 @@ class FineTuningTrainer:
             self.decision_remaining -= 1
             self.total_steps += 1
             if not self.session.running:
-                self._finish_rollout()
+                # Publish the final executed exploration/evaluation command,
+                # even if a short trial fits entirely inside this one chunk.
+                break
         return self.result()
 
     def result(self):
         return {
-            "algorithm": ("bounded_paired_policy_search" if self.strategy == "policy_search"
+            "algorithm": ("bounded_motor_residual_search" if self.strategy == "residual_search"
+                          else "bounded_paired_policy_search" if self.strategy == "policy_search"
                           else "bounded_speed_ppo_actor_critic"),
             "strategy": self.strategy,
-            "parameterization": "phase_speeds" if self.strategy == "policy_search" else "state_speed_actor",
+            "parameterization": ("phase_motor_residuals" if self.strategy == "residual_search"
+                                 else "phase_speeds" if self.strategy == "policy_search" else "state_speed_actor"),
+            "motor_offset_bound": RESIDUAL_BOUND if self.strategy == "residual_search" else 0.0,
             "speed_multiplier": getattr(self.policy, "multiplier", None),
             "return_speed_multiplier": getattr(self.policy, "return_multiplier", None),
             "best_speed_multiplier": getattr(self.best_policy, "multiplier", None),
@@ -470,7 +541,7 @@ class FineTuningTrainer:
             "evaluation_seed": self.evaluation_seed,
             "arm_base_distance_m": ARM_BASE_DISTANCE_M,
             "speed_bound": SPEED_BOUND,
-            "latent_std": LATENT_STD,
+            "latent_std": RESIDUAL_STD if self.strategy == "residual_search" else LATENT_STD,
             "max_latent_mean": MAX_LATENT_MEAN,
             "discount_per_second": DISCOUNT_PER_SECOND,
             "step_discount": STEP_DISCOUNT,

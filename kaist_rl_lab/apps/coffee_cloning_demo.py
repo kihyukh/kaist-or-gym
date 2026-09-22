@@ -213,7 +213,7 @@ function createCloningDemo(element,post,beforeRun,onModel=()=>{}) {
   $('#cloning-successful').addEventListener('change',()=>{clearPolicy();controls();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
   window.addEventListener('blur',pause);window.addEventListener('pagehide',pause);
-  return {pause,setEnabled(value) {
+  return {pause,invalidate(){clearPolicy();},setEnabled(value) {
     enabled=value;if(!value){context={id:null,name:'',total:0,successful:0};clearPolicy();
       if(resizeObserver)resizeObserver.disconnect();resizeObserver=null;canvasRef=null;}
     dataset();controls();

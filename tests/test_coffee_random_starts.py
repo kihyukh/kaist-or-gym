@@ -155,9 +155,10 @@ def test_invalid_seed_does_not_replace_a_working_policy_trial(model, invalid):
         trainer_module.FineTuningTrainer(model, seed=invalid)
 
 
-def test_exploration_and_all_checkpoints_share_the_fixed_policy_pose(monkeypatch, model):
+@pytest.mark.parametrize("strategy", trainer_module.STRATEGIES)
+def test_exploration_and_all_checkpoints_share_the_fixed_policy_pose(monkeypatch, model, strategy):
     monkeypatch.setattr(trainer_module, "TRIAL_STEPS", 2)
-    trainers = [trainer_module.FineTuningTrainer(model, seed=45, episodes=3) for _ in range(2)]
+    trainers = [trainer_module.FineTuningTrainer(model, seed=45, episodes=3, strategy=strategy) for _ in range(2)]
     results = []
     try:
         for trainer in trainers:
@@ -167,6 +168,10 @@ def test_exploration_and_all_checkpoints_share_the_fixed_policy_pose(monkeypatch
                 assert_classroom_pose(trainer.session, fixed=True)
                 poses.append((trainer.phase, trainer.session.seed, trainer.session.initial_joint_angles.copy()))
                 trainer.step_chunk(max_steps=2)
+                # Publish the terminal scene before advancing to the next pose.
+                assert trainer.session.env.elapsed_steps == 2
+                assert not trainer.session.running
+                trainer.step_chunk(max_steps=1)
             evaluation = [item for item in poses if item[0] != "training"]
             exploration = [item for item in poses if item[0] == "training"]
             assert len(evaluation) == 4
@@ -197,7 +202,9 @@ def test_finetuning_watch_and_reset_preserve_pose_while_experiments_refresh_nois
         call(runtime, "ft-train", episodes=1)
         first_seed = runtime.result["seed"]
         first_evaluation_seed = runtime.result["evaluation_seed"]
-        call(runtime, "ft-step", max_steps=6)
+        # Each rollout publishes its terminal frame before a separate phase change.
+        for _ in range(6):
+            call(runtime, "ft-step", max_steps=6)
         assert not runtime.training_active
         assert runtime.best_policy is not None
         call(runtime, "ft-run", policy="base")

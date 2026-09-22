@@ -258,3 +258,137 @@ def test_render_url_drives_class_links_and_instructor_origin(setup, monkeypatch,
         assert classroom["join_url"].startswith(origin + "/?class=")
         assert client.post("/api/instructor/sessions", json={"name": "Wrong origin"},
                            headers={"Origin": "https://unrelated.example"}).status_code == 403
+
+
+def test_clear_is_recoverable_class_scoped_and_preserves_later_submissions(setup):
+    client, kwargs = setup
+    classroom, token = new_class(client)
+    other, other_token = new_class(client)
+    old_data = recording("old")
+    old = upload(client, token, old_data).json()["episode_id"]
+    other_id = upload(client, other_token, recording("other")).json()["episode_id"]
+    endpoint = f"/api/instructor/sessions/{classroom['id']}/submissions"
+    response = client.post(endpoint + "/clear")
+    assert response.status_code == 200
+    batch = response.json()["latest_clear"]
+    assert response.json()["cleared_count"] == batch["count"] == 1
+    assert client.get("/api/instructor/submissions", params={"session": classroom["id"]}).json() == []
+    rows = client.get("/api/instructor/submissions", params={"session": other["id"]}).json()
+    assert [row["episode_id"] for row in rows] == [other_id]
+    for suffix in ("download", "replay", "replay-stream"):
+        assert client.get(f"/api/instructor/submissions/{old}/{suffix}").status_code == 404
+    assert client.app.state.store.archive_path(old).read_bytes() == old_data
+    # An old automatic upload retry must not undo the instructor's clear.
+    assert upload(client, token, old_data).json()["duplicate"] is True
+    assert client.get("/api/instructor/submissions", params={"session": classroom["id"]}).json() == []
+    later = upload(client, token, recording("later")).json()["episode_id"]
+    assert [row["episode_id"] for row in client.get(
+        "/api/instructor/submissions", params={"session": classroom["id"]}
+    ).json()] == [later]
+    # A batch token from one class cannot restore data into another.
+    wrong = client.post(f"/api/instructor/sessions/{other['id']}/submissions/restore",
+                        json={"batch_id": batch["batch_id"]})
+    assert wrong.json()["restored_count"] == 0
+    with TestClient(create_app(**kwargs), base_url="https://coffee.example",
+                    headers={"Origin": "https://coffee.example"}) as restarted:
+        login(restarted)
+        saved_class = next(item for item in restarted.get("/api/instructor/sessions").json()
+                           if item["id"] == classroom["id"])
+        assert saved_class["latest_clear"] == batch
+        restored = restarted.post(endpoint + "/restore", json={"batch_id": batch["batch_id"]})
+        assert restored.json() == {"restored_count": 1, "latest_clear": None}
+        rows = restarted.get("/api/instructor/submissions", params={"session": classroom["id"]}).json()
+        assert {row["episode_id"] for row in rows} == {old, later}
+        assert restarted.get(f"/api/instructor/submissions/{old}/download").content == old_data
+        assert restarted.post(endpoint + "/restore", json={"batch_id": batch["batch_id"]}).json()["restored_count"] == 0
+
+
+def test_repeated_clears_undo_only_the_selected_batch(setup):
+    client, _ = setup
+    classroom, token = new_class(client)
+    endpoint = f"/api/instructor/sessions/{classroom['id']}/submissions"
+    first = upload(client, token, recording("first")).json()["episode_id"]
+    batch1 = client.post(endpoint + "/clear").json()["latest_clear"]
+    # Clearing an empty active dataset does not discard the existing undo batch.
+    empty = client.post(endpoint + "/clear").json()
+    assert empty == {"cleared_count": 0, "latest_clear": batch1}
+    second = upload(client, token, recording("second")).json()["episode_id"]
+    batch2 = client.post(endpoint + "/clear").json()["latest_clear"]
+    third = upload(client, token, recording("third")).json()["episode_id"]
+    restored = client.post(endpoint + "/restore", json={"batch_id": batch2["batch_id"]}).json()
+    assert restored == {"restored_count": 1, "latest_clear": batch1}
+    rows = client.get("/api/instructor/submissions", params={"session": classroom["id"]}).json()
+    assert {row["episode_id"] for row in rows} == {second, third}
+    with client.app.state.store.connect() as db:
+        assert db.execute("SELECT cleared_batch FROM submissions WHERE episode_id=?", (first,)).fetchone()[0] == batch1["batch_id"]
+        assert db.execute("SELECT COUNT(*) FROM submissions").fetchone()[0] == 3
+
+
+def test_clear_and_restore_require_auth_origin_valid_class_and_batch(setup):
+    client, _ = setup
+    endpoint = "/api/instructor/sessions/missing/submissions"
+    assert client.post(endpoint + "/clear").status_code == 401
+    assert client.post(endpoint + "/restore", json={"batch_id": "invalid"}).status_code == 401
+    login(client)
+    for action in ("clear", "restore"):
+        assert client.post(endpoint + "/" + action, json={},
+                           headers={"Origin": "https://other.example"}).status_code == 403
+    assert client.post(endpoint + "/clear").status_code == 404
+    assert client.post(endpoint + "/restore", json={"batch_id": "invalid"}).status_code == 400
+    assert client.post(endpoint + "/restore", json={"batch_id": "00000000-0000-0000-0000-000000000000"}).status_code == 404
+
+
+def test_clear_transaction_does_not_capture_a_concurrent_later_upload(setup, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from kaist_rl_lab.apps.coffee_web import _validated_archive
+
+    client, _ = setup
+    classroom, token = new_class(client)
+    old = upload(client, token, recording("before-clear")).json()["episode_id"]
+    data = recording("after-clear")
+    arrays, metadata = _validated_archive(data)
+    store = client.app.state.store
+    at_snapshot, release_clear, upload_started = Event(), Event(), Event()
+    original_latest_clear = store.latest_clear
+
+    def held_snapshot(session_id, db=None):
+        at_snapshot.set()
+        assert release_clear.wait(5)
+        return original_latest_clear(session_id, db)
+
+    def later_upload():
+        upload_started.set()
+        return store.receive(token, data, arrays, metadata)
+
+    monkeypatch.setattr(store, "latest_clear", held_snapshot)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        clearing = pool.submit(store.clear_submissions, classroom["id"])
+        try:
+            assert at_snapshot.wait(5)
+            incoming = pool.submit(later_upload)
+            assert upload_started.wait(5)
+            assert not incoming.done()
+        finally:
+            release_clear.set()
+        result = clearing.result(timeout=5)
+        new = incoming.result(timeout=5)["episode_id"]
+    assert result["cleared_count"] == 1
+    with store.connect() as db:
+        states = dict(db.execute("SELECT episode_id, cleared_batch FROM submissions"))
+    assert states == {old: result["latest_clear"]["batch_id"], new: None}
+    restored = store.restore_submissions(classroom["id"], result["latest_clear"]["batch_id"])
+    assert restored["restored_count"] == 1
+    assert store.archive_path(new).read_bytes() == data
+
+
+def test_submission_management_has_a_shared_rate_limit(setup):
+    client, _ = setup
+    classroom, _ = new_class(client)
+    endpoint = f"/api/instructor/sessions/{classroom['id']}/submissions"
+    for _ in range(30):
+        assert client.post(endpoint + "/clear").status_code == 200
+    limited = client.post(endpoint + "/restore", json={"batch_id": "00000000-0000-0000-0000-000000000000"})
+    assert limited.status_code == 429
+    assert limited.headers["retry-after"] == "60"

@@ -116,3 +116,24 @@ That historical script compares frozen prior PPO from
 tuned PPO, and two-phase policy search. It also includes separate validation
 seeds 7, 99, and 2029 at the same pose. Those runs tested the previous reward; they have
 not been relabeled or reused as new measurements.
+
+## Motor exploration with two generated demonstrations
+
+`residual_benchmark.py` fits the unchanged clone using generated examples 1 and 2,
+then runs ten paired motor-correction trials and ten separate policy evaluations.
+`residual_results.json` stores all candidates, including rejected trials, and
+checks each selected policy with an independent physics replay.
+
+| Seed | Original score | Best score | Final fill | Time |
+|---|---:|---:|---:|---:|
+| 2026 | 299.78 | 416.79 | 696.02 mL | 35.53 s |
+| 2027 | 299.78 | 432.49 | 695.72 mL | 33.94 s |
+| 2028 | 299.78 | 427.38 | 696.09 mL | 34.47 s |
+
+These are generated-data tests, not results on the class's two student recordings.
+All use the canonical policy start. Sparse or poorly coordinated demonstrations
+can still produce a policy that needs more exploration or additional examples.
+The method keeps the original clone as a candidate and does not promise success.
+
+Reproduce from the repository root:
+`python benchmarks/coffee_finetuning/residual_benchmark.py`.
